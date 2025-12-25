@@ -13,12 +13,15 @@ FAQ_FILE = "faq.json"
 # Flask per mantenere il bot attivo su Replit
 app = Flask('')
 
+
 @app.route('/')
 def home():
     return "🤖 Bot Telegram è attivo!"
 
+
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
+
 
 # Carica le FAQ dal file JSON
 def load_faq():
@@ -36,7 +39,9 @@ def load_faq():
             json.dump(faq_example, f, ensure_ascii=False, indent=2)
         return faq_example
 
+
 FAQ = load_faq()
+
 
 # Verifica se l'utente è affidabile
 def is_trusted_user(user) -> bool:
@@ -49,16 +54,19 @@ def is_trusted_user(user) -> bool:
         return True
     return False
 
+
 # Cerca la risposta nelle FAQ
 def search_faq(question: str) -> str:
     """Cerca corrispondenze nelle FAQ"""
     question_lower = question.lower()
 
     for key, answer in FAQ.items():
-        if key.lower() in question_lower or any(word in question_lower for word in key.lower().split()):
+        if key.lower() in question_lower or any(
+                word in question_lower for word in key.lower().split()):
             return answer
 
     return None
+
 
 # Handler per il comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -69,12 +77,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=f"⚠️ TENTATIVO DI ACCESSO - Utente NON affidabile\n\n"
-                 f"👤 Nome: {user.first_name} {user.last_name or ''}\n"
-                 f"📱 Username: @{user.username or 'N/A'}\n"
-                 f"🆔 ID: {user.id}\n"
-                 f"💬 Comando: /start\n\n"
-                 f"❌ L'utente NON ha ricevuto risposta."
-        )
+            f"👤 Nome: {user.first_name} {user.last_name or ''}\n"
+            f"📱 Username: @{user.username or 'N/A'}\n"
+            f"🆔 ID: {user.id}\n"
+            f"💬 Comando: /start\n\n"
+            f"❌ L'utente NON ha ricevuto risposta.")
         return
 
     await update.message.reply_text(
@@ -82,8 +89,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Sono il bot FAQ. Puoi farmi domande e cercherò di risponderti.\n\n"
         "📋 Comandi disponibili:\n"
         "/start - Mostra questo messaggio\n"
-        "/help - Mostra le categorie FAQ disponibili"
-    )
+        "/help - Mostra le categorie FAQ disponibili")
+
 
 # Handler per il comando /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,19 +100,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=f"⚠️ TENTATIVO DI ACCESSO - Utente NON affidabile\n\n"
-                 f"👤 Nome: {user.first_name} {user.last_name or ''}\n"
-                 f"📱 Username: @{user.username or 'N/A'}\n"
-                 f"🆔 ID: {user.id}\n"
-                 f"💬 Comando: /help\n\n"
-                 f"❌ L'utente NON ha ricevuto risposta."
-        )
+            f"👤 Nome: {user.first_name} {user.last_name or ''}\n"
+            f"📱 Username: @{user.username or 'N/A'}\n"
+            f"🆔 ID: {user.id}\n"
+            f"💬 Comando: /help\n\n"
+            f"❌ L'utente NON ha ricevuto risposta.")
         return
 
     categories = "\n".join([f"• {key.capitalize()}" for key in FAQ.keys()])
     await update.message.reply_text(
         f"📋 Categorie FAQ disponibili:\n\n{categories}\n\n"
-        "Puoi farmi una domanda su uno di questi argomenti!"
-    )
+        "Puoi farmi una domanda su uno di questi argomenti!")
+
 
 # Handler per i messaggi di testo
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,12 +124,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=ADMIN_CHAT_ID,
             text=f"⚠️ TENTATIVO DI ACCESSO - Utente NON affidabile\n\n"
-                 f"👤 Nome: {user.first_name} {user.last_name or ''}\n"
-                 f"📱 Username: @{user.username or 'N/A'}\n"
-                 f"🆔 ID: {user.id}\n"
-                 f"💬 Messaggio:\n\"{message_text}\"\n\n"
-                 f"❌ L'utente NON ha ricevuto risposta."
-        )
+            f"👤 Nome: {user.first_name} {user.last_name or ''}\n"
+            f"📱 Username: @{user.username or 'N/A'}\n"
+            f"🆔 ID: {user.id}\n"
+            f"💬 Messaggio:\n\"{message_text}\"\n\n"
+            f"❌ L'utente NON ha ricevuto risposta.")
         return
 
     # Ricarica le FAQ (per aggiornamenti in tempo reale)
@@ -138,8 +143,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(
             "Mi dispiace, non ho trovato una risposta nelle FAQ. 😕\n\n"
-            "Usa /help per vedere le categorie disponibili."
-        )
+            "Usa /help per vedere le categorie disponibili.")
+
 
 # Funzione principale
 def main():
@@ -159,7 +164,8 @@ def main():
     # Registra gli handler
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     # Avvia il bot
     print("🤖 Bot avviato con successo!")
@@ -168,6 +174,7 @@ def main():
     print("\n✅ Il bot è pronto a ricevere messaggi!")
 
     application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
