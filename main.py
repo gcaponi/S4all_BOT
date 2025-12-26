@@ -7,8 +7,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import secrets
 import re
 #import requests
-from bs4 import BeautifulSoup
-from difflib import SequenceMatcher
+#from bs4 import BeautifulSoup
+#from difflib import SequenceMatcher
 import asyncio
 
 # Configurazione logging
