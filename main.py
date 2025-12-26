@@ -5,6 +5,10 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import secrets
+import re
+import requests
+from bs4 import BeautifulSoup
+from difflib import SequenceMatcher
 import asyncio
 
 # Configurazione logging
@@ -17,21 +21,63 @@ logger = logging.getLogger(__name__)
 # Configurazione da variabili d'ambiente
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')  # Es: https://tuobot.onrender.com
+WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 8080))
-
-# Flask app
-app = Flask(__name__)
 
 # File per salvare dati persistenti
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
 ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
 
-# Variabile globale per l'application
+# FAQ URL
+PASTE_URL = "https://justpaste.it/faq_4all"
+
+# Soglia per il fuzzy matching
+FUZZY_THRESHOLD = 0.6
+
+# Flask app
+app = Flask(__name__)
 bot_application = None
 
-# Funzioni per gestire dati persistenti
+# ============== FAQ FETCH FUNCTIONS ==============
+def fetch_markdown_from_html(url: str) -> str:
+    r = requests.get(url, timeout=10)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    content = soup.select_one("#articleContent")
+    if content is None:
+        raise RuntimeError("Contenuto principale non trovato")
+    text = content.get_text("\n")
+    return text.strip()
+
+def parse_faq(markdown: str) -> list:
+    pattern = r"^##\s+(.*?)\n(.*?)(?=\n##\s+|\Z)"
+    matches = re.findall(pattern, markdown, flags=re.S | re.M)
+    if not matches:
+        raise RuntimeError("Formato non valido: nessuna domanda trovata. Usa solo titoli '##'.")
+    faq = []
+    for domanda, risposta in matches:
+        risposta = risposta.strip()
+        faq.append({"domanda": domanda.strip(), "risposta": risposta})
+    return faq
+
+def write_faq_json(faq: list, filename: str):
+    faq_object = {"faq": faq}
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(faq_object, f, ensure_ascii=False, indent=2)
+
+def update_faq_from_web():
+    try:
+        markdown = fetch_markdown_from_html(PASTE_URL)
+        faq = parse_faq(markdown)
+        write_faq_json(faq, FAQ_FILE)
+        logger.info(f"FAQ aggiornate correttamente: {len(faq)} domande")
+        return True
+    except Exception as e:
+        logger.error(f"Errore aggiornamento FAQ: {e}")
+        return False
+
+# ============== PERSISTENT DATA FUNCTIONS ==============
 def load_json_file(filename, default=None):
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -81,7 +127,74 @@ def authorize_user(user_id):
 def get_bot_username():
     return getattr(get_bot_username, 'username', 'tuobot')
 
-# Handler per il comando /start
+# ============== FUZZY MATCHING FUNCTIONS ==============
+def calculate_similarity(text1: str, text2: str) -> float:
+    return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
+
+def normalize_text(text: str) -> str:
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip().lower()
+
+def extract_keywords(text: str) -> list:
+    normalized = normalize_text(text)
+    words = normalized.split()
+    stop_words = {'che', 'sono', 'come', 'dove', 'quando', 'quale', 'quali',
+                  'del', 'della', 'dei', 'delle', 'con', 'per', 'una', 'uno'}
+    keywords = [w for w in words if len(w) > 3 and w not in stop_words]
+    return keywords
+
+def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
+    user_normalized = normalize_text(user_message)
+    user_keywords = extract_keywords(user_message)
+    
+    best_match = None
+    best_score = 0
+    match_method = None
+    
+    for item in faq_list:
+        domanda = item["domanda"]
+        domanda_normalized = normalize_text(domanda)
+        
+        if domanda_normalized in user_normalized or user_normalized in domanda_normalized:
+            return {
+                'match': True,
+                'item': item,
+                'score': 1.0,
+                'method': 'exact'
+            }
+        
+        similarity = calculate_similarity(user_normalized, domanda_normalized)
+        if similarity > best_score:
+            best_score = similarity
+            best_match = item
+            match_method = 'similarity'
+        
+        if user_keywords:
+            domanda_keywords = extract_keywords(domanda)
+            matched_keywords = sum(1 for kw in user_keywords if any(
+                calculate_similarity(kw, dk) > 0.8 for dk in domanda_keywords
+            ))
+            
+            keyword_score = matched_keywords / len(user_keywords)
+            keyword_score = keyword_score * 1.2 if matched_keywords > 1 else keyword_score
+            
+            if keyword_score > best_score:
+                best_score = keyword_score
+                best_match = item
+                match_method = 'keywords'
+    
+    if best_score >= FUZZY_THRESHOLD:
+        return {
+            'match': True,
+            'item': best_match,
+            'score': best_score,
+            'method': match_method
+        }
+    
+    return {'match': False, 'item': None, 'score': best_score, 'method': None}
+
+# ============== BOT HANDLERS ==============
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -130,7 +243,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_user_authorized(user_id):
         await update.message.reply_text(
             f"👋 Ciao {user.first_name}!\n\n"
-            "Sono il bot FAQ. Scrivi la tua domanda o usa /help per vedere le categorie disponibili."
+            "Sono il bot FAQ con ricerca intelligente. Scrivi la tua domanda anche con errori di battitura!\n\n"
+            "💡 Usa /help per vedere tutte le categorie disponibili."
         )
     else:
         await update.message.reply_text(
@@ -165,17 +279,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    faq = load_faq()
+    faq_data = load_faq()
+    faq_list = faq_data.get("faq", [])
     
-    if not faq:
+    if not faq_list:
         await update.message.reply_text("❌ Nessuna FAQ disponibile al momento.")
         return
     
-    help_text = "📚 <b>Categorie FAQ disponibili:</b>\n\n"
-    for categoria in faq.keys():
-        help_text += f"• {categoria.title()}\n"
+    help_text = "📚 <b>Domande FAQ disponibili:</b>\n\n"
     
-    help_text += "\n💡 Scrivi una parola chiave per ottenere informazioni!"
+    for i, item in enumerate(faq_list, 1):
+        help_text += f"{i}. {item['domanda']}\n"
+    
+    help_text += "\n💡 <b>Ricerca intelligente attiva!</b>\n"
+    help_text += "Scrivi anche con errori di battitura, il bot capirà! 🎯"
     
     await update.message.reply_text(help_text, parse_mode='HTML')
 
@@ -189,7 +306,6 @@ async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     access_code = load_access_code()
     bot_username = get_bot_username.username
     link = f"https://t.me/{bot_username}?start={access_code}"
-    
     authorized_count = len(load_authorized_users())
     
     message = (
@@ -280,10 +396,35 @@ async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"❌ Utente {target_id} non era autorizzato.")
 
+async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
+    if user_id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Comando riservato all'amministratore.")
+        return
+    
+    message = (
+        "👑 <b>Comandi Admin disponibili:</b>\n\n"
+        "🔐 <b>Gestione accessi</b>\n"
+        "• /genera_link — genera link di accesso\n"
+        "• /cambia_codice — cambia il codice di accesso\n"
+        "• /lista_autorizzati — lista utenti autorizzati\n"
+        "• /revoca &lt;chat_id&gt; — rimuove un utente\n\n"
+        "👤 <b>Comandi Utente</b>\n"
+        "• /start\n"
+        "• /help\n\n"
+        "🎯 <b>Ricerca Fuzzy</b>\n"
+        "Il bot ora usa ricerca intelligente!\n"
+        "Soglia attuale: {:.0%}\n\n"
+        "💡 Solo l'ADMIN può vedere questo messaggio".format(FUZZY_THRESHOLD)
+    )
+    
+    await update.message.reply_text(message, parse_mode='HTML')
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
-    message_text = update.message.text.lower()
+    message_text = update.message.text
     
     if not is_user_authorized(user_id):
         await update.message.reply_text(
@@ -297,7 +438,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\n"
                 f"🆔 Username: @{user.username or 'N/A'}\n"
                 f"🔢 Chat ID: <code>{user_id}</code>\n"
-                f"💬 Messaggio: {update.message.text[:100]}"
+                f"💬 Messaggio: {message_text[:100]}"
             )
             try:
                 await context.bot.send_message(
@@ -318,41 +459,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    risposta_trovata = None
-    categoria_trovata = None
+    faq_list = faq.get("faq", [])
     
-    for categoria, risposta in faq.items():
-        if categoria.lower() in message_text:
-            risposta_trovata = risposta
-            categoria_trovata = categoria
-            break
+    result = fuzzy_search_faq(message_text, faq_list)
     
-    if risposta_trovata:
-        await update.message.reply_text(
-            f"📌 <b>{categoria_trovata.title()}</b>\n\n{risposta_trovata}",
-            parse_mode='HTML'
-        )
+    if result['match']:
+        item = result['item']
+        score = result['score']
+        
+        confidence_emoji = "🎯" if score > 0.9 else "✅" if score > 0.75 else "💡"
+        
+        response = f"{confidence_emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
+        
+        if score < 0.9:
+            response += f"\n\n<i>💬 Confidenza: {score:.0%}</i>"
+        
+        await update.message.reply_text(response, parse_mode='HTML')
+        
+        logger.info(f"Match trovato: {result['method']}, score: {score:.2f}, query: '{message_text}'")
     else:
         await update.message.reply_text(
-            "❓ Non ho trovato una risposta per la tua domanda.\n\n"
-            "Usa /help per vedere le categorie FAQ disponibili."
+            f"❓ Non ho trovato una risposta per: <i>\"{message_text}\"</i>\n\n"
+            f"🔍 Ho cercato con somiglianza fino a {result['score']:.0%}\n\n"
+            f"💡 Prova a:\n"
+            f"• Riformulare la domanda\n"
+            f"• Usare parole chiave diverse\n"
+            f"• Vedere tutte le FAQ con /help",
+            parse_mode='HTML'
         )
 
-# Flask routes
+# ============== FLASK ROUTES ==============
 @app.route('/')
 def index():
     return "Bot Telegram FAQ attivo! ✅"
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Handle incoming webhook requests from Telegram"""
     if request.method == "POST":
         update = Update.de_json(request.get_json(force=True), bot_application.bot)
         asyncio.run(bot_application.process_update(update))
     return "OK"
 
+# ============== BOT SETUP ==============
 async def setup_application():
-    """Setup the bot application"""
     global bot_application
     
     if not BOT_TOKEN or not ADMIN_CHAT_ID:
@@ -361,7 +510,14 @@ async def setup_application():
         print("="*50 + "\n")
         return None
     
-    # Crea l'applicazione
+    # Aggiorna FAQ da web
+    print("📡 Aggiornamento FAQ da web...")
+    if update_faq_from_web():
+        print("✅ FAQ aggiornate con successo!")
+    else:
+        print("⚠️  Errore aggiornamento FAQ - uso cache locale")
+    
+    # Crea l'applicazione (SENZA updater per webhook)
     application = Application.builder().token(BOT_TOKEN).updater(None).build()
     
     # Salva il bot username
@@ -376,9 +532,10 @@ async def setup_application():
     application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
     application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
     application.add_handler(CommandHandler("revoca", revoca_command))
+    application.add_handler(CommandHandler("admin_help", admin_help_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Setup webhook se WEBHOOK_URL è configurato
+    # Setup webhook
     if WEBHOOK_URL:
         webhook_url = f"{WEBHOOK_URL}/webhook"
         await application.bot.set_webhook(url=webhook_url)
@@ -393,11 +550,12 @@ async def setup_application():
     
     faq = load_faq()
     if faq:
-        print(f"📝 FAQ caricate: {len(faq)} categorie")
+        print(f"📝 FAQ caricate: {len(faq.get('faq', []))} domande")
     else:
-        print("⚠️  Nessuna FAQ trovata - crea il file faq.json")
+        print("⚠️  Nessuna FAQ trovata")
     
     print(f"🔗 Codice accesso attuale: {load_access_code()}")
+    print(f"🎯 Ricerca fuzzy attiva (soglia: {FUZZY_THRESHOLD:.0%})")
     print("\n✅ Il bot è pronto a ricevere messaggi!")
     print("💡 Usa /genera_link per ottenere il link di accesso")
     print("="*50 + "\n")
@@ -405,11 +563,9 @@ async def setup_application():
     return application
 
 if __name__ == '__main__':
-    # Setup bot
     bot_application = asyncio.run(setup_application())
     
     if bot_application:
-        # Avvia Flask
         app.run(host='0.0.0.0', port=PORT, debug=False)
     else:
         print("Errore: impossibile avviare il bot")
