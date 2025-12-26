@@ -362,7 +362,7 @@ async def setup_application():
         return None
     
     # Crea l'applicazione
-    application = Application.builder().token(BOT_TOKEN).build()
+    application = Application.builder().token(BOT_TOKEN).updater(None).build()
     
     # Salva il bot username
     bot = await application.bot.get_me()
