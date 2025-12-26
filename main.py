@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import secrets
 import re
-import requests
+#import requests
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 import asyncio
