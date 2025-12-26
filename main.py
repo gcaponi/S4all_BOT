@@ -579,10 +579,22 @@ def initialize_bot():
         return application
     
     # Esegui setup in modo sincrono
-    bot_application = asyncio.run(setup())
+    try:
+        # Crea un nuovo event loop per l'inizializzazione
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        bot_application = loop.run_until_complete(setup())
+        # NON chiudere il loop qui - lascialo aperto per il webhook
+    except Exception as e:
+        logger.error(f"Errore durante l'inizializzazione del bot: {e}")
+        import traceback
+        traceback.print_exc()
 
 # Inizializza il bot quando Flask parte
 initialize_bot()
+
+# Log finale per confermare che gunicorn può partire
+logger.info("🚀 Inizializzazione completata - Flask pronto per gunicorn")
 
 # Entry point per gunicorn
 if __name__ == '__main__':
