@@ -10,6 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 import asyncio
+from threading import Thread
 
 # Configurazione logging
 logging.basicConfig(
@@ -38,6 +39,7 @@ FUZZY_THRESHOLD = 0.6
 # Flask app
 app = Flask(__name__)
 bot_application = None
+bot_initialized = False
 
 # ============== FAQ FETCH FUNCTIONS ==============
 def fetch_markdown_from_html(url: str) -> str:
@@ -491,6 +493,64 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
 
+# ============== BOT INITIALIZATION ==============
+def initialize_bot_sync():
+    """Inizializza il bot in modo sincrono (chiamato in un thread separato)"""
+    global bot_application, bot_initialized
+    
+    if bot_initialized:
+        return
+    
+    try:
+        logger.info("📡 Inizio inizializzazione bot...")
+        
+        # Aggiorna FAQ
+        if update_faq_from_web():
+            logger.info("✅ FAQ aggiornate")
+        
+        async def setup():
+            global bot_application
+            
+            application = Application.builder().token(BOT_TOKEN).updater(None).build()
+            
+            bot = await application.bot.get_me()
+            get_bot_username.username = bot.username
+            logger.info(f"Bot username: @{bot.username}")
+            
+            # Registra handler
+            application.add_handler(CommandHandler("start", start))
+            application.add_handler(CommandHandler("help", help_command))
+            application.add_handler(CommandHandler("genera_link", genera_link_command))
+            application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
+            application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
+            application.add_handler(CommandHandler("revoca", revoca_command))
+            application.add_handler(CommandHandler("admin_help", admin_help_command))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+            
+            # Setup webhook
+            if WEBHOOK_URL:
+                webhook_url = f"{WEBHOOK_URL}/webhook"
+                await application.bot.set_webhook(url=webhook_url)
+                logger.info(f"✅ Webhook: {webhook_url}")
+            
+            await application.initialize()
+            await application.start()
+            
+            logger.info("🤖 Bot pronto!")
+            return application
+        
+        # Crea event loop e inizializza
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        bot_application = loop.run_until_complete(setup())
+        bot_initialized = True
+        logger.info("✅ Inizializzazione completata")
+        
+    except Exception as e:
+        logger.error(f"❌ Errore inizializzazione: {e}")
+        import traceback
+        traceback.print_exc()
+
 # ============== FLASK ROUTES ==============
 @app.route('/')
 def index():
@@ -499,104 +559,45 @@ def index():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Riceve gli update da Telegram"""
+    global bot_initialized
+    
+    # Inizializza il bot se non già fatto
+    if not bot_initialized:
+        initialize_bot_sync()
+    
+    if not bot_application:
+        return "Bot not ready", 503
+    
     try:
         update = Update.de_json(request.get_json(force=True), bot_application.bot)
-        # Processa l'update in modo asincrono
-        asyncio.run(bot_application.process_update(update))
+        # Crea task per processare l'update
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot_application.process_update(update))
         return "OK", 200
     except Exception as e:
-        logger.error(f"Errore nel webhook: {e}")
+        logger.error(f"Errore webhook: {e}")
         return "ERROR", 500
 
 @app.route('/health')
 def health():
-    """Health check per Render"""
+    """Health check"""
     return "OK", 200
 
-# ============== BOT INITIALIZATION ==============
-def initialize_bot():
-    """Inizializza il bot all'avvio di Flask"""
-    global bot_application
-    
-    if not BOT_TOKEN or not ADMIN_CHAT_ID:
-        logger.error("BOT_TOKEN o ADMIN_CHAT_ID non configurati!")
-        return
-    
-    # Aggiorna FAQ da web
-    logger.info("📡 Aggiornamento FAQ da web...")
-    if update_faq_from_web():
-        logger.info("✅ FAQ aggiornate con successo!")
+# Inizializza il bot in un thread separato per non bloccare gunicorn
+def start_bot_thread():
+    if BOT_TOKEN and ADMIN_CHAT_ID:
+        thread = Thread(target=initialize_bot_sync, daemon=True)
+        thread.start()
+        logger.info("🚀 Thread inizializzazione bot avviato")
     else:
-        logger.warning("⚠️ Errore aggiornamento FAQ - uso cache locale")
-    
-    # Crea l'applicazione in modo sincrono
-    async def setup():
-        global bot_application
-        
-        # Crea l'applicazione senza updater (usa webhook)
-        application = Application.builder().token(BOT_TOKEN).updater(None).build()
-        
-        # Salva il bot username
-        bot = await application.bot.get_me()
-        get_bot_username.username = bot.username
-        logger.info(f"Bot username: @{bot.username}")
-        
-        # Registra gli handler
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("genera_link", genera_link_command))
-        application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
-        application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
-        application.add_handler(CommandHandler("revoca", revoca_command))
-        application.add_handler(CommandHandler("admin_help", admin_help_command))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-        
-        # Setup webhook
-        if WEBHOOK_URL:
-            webhook_url = f"{WEBHOOK_URL}/webhook"
-            await application.bot.set_webhook(url=webhook_url)
-            logger.info(f"✅ Webhook configurato: {webhook_url}")
-        
-        # Inizializza e avvia l'applicazione
-        await application.initialize()
-        await application.start()
-        
-        logger.info("="*50)
-        logger.info("🤖 Bot avviato con successo!")
-        logger.info(f"👤 Admin Chat ID: {ADMIN_CHAT_ID}")
-        
-        faq = load_faq()
-        if faq:
-            logger.info(f"📝 FAQ caricate: {len(faq.get('faq', []))} domande")
-        else:
-            logger.warning("⚠️ Nessuna FAQ trovata")
-        
-        logger.info(f"🔗 Codice accesso: {load_access_code()}")
-        logger.info(f"🎯 Ricerca fuzzy attiva (soglia: {FUZZY_THRESHOLD:.0%})")
-        logger.info("✅ Il bot è pronto a ricevere messaggi!")
-        logger.info("="*50)
-        
-        return application
-    
-    # Esegui setup in modo sincrono
-    try:
-        # Crea un nuovo event loop per l'inizializzazione
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        bot_application = loop.run_until_complete(setup())
-        # NON chiudere il loop qui - lascialo aperto per il webhook
-    except Exception as e:
-        logger.error(f"Errore durante l'inizializzazione del bot: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("❌ BOT_TOKEN o ADMIN_CHAT_ID mancanti")
 
-# Inizializza il bot quando Flask parte
-initialize_bot()
+# Avvia il thread di inizializzazione
+start_bot_thread()
 
-# Log finale per confermare che gunicorn può partire
-logger.info("🚀 Inizializzazione completata - Flask pronto per gunicorn")
+logger.info("🌐 Flask app pronta per gunicorn")
 
-# Entry point per gunicorn
+# Entry point per test locali
 if __name__ == '__main__':
-    # Questo viene usato solo per test locali
     app.run(host='0.0.0.0', port=PORT, debug=False)
