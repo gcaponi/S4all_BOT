@@ -584,12 +584,48 @@ def health():
     """Health check"""
     return "OK", 200
 
+# ============== KEEP-ALIVE SYSTEM ==============
+import time
+
+def keep_alive_ping():
+    """Self-ping per mantenere il bot attivo (Render sleep dopo 15 min)"""
+    
+    # COLD START: primo ping dopo 10 minuti dall'avvio
+    logger.info("💓 Self-ping: primo ping programmato tra 10 minuti (cold start protection)")
+    time.sleep(600)  # 10 minuti
+    
+    # Primo ping
+    try:
+        if WEBHOOK_URL:
+            response = requests.get(f"{WEBHOOK_URL}/health", timeout=5)
+            logger.info(f"💓 Cold start ping OK - Status: {response.status_code}")
+    except Exception as e:
+        logger.error(f"❌ Cold start ping fallito: {e}")
+    
+    # Loop regolare ogni 13 minuti
+    while True:
+        try:
+            time.sleep(780)  # 13 minuti
+            if WEBHOOK_URL:
+                response = requests.get(f"{WEBHOOK_URL}/health", timeout=5)
+                if response.status_code == 200:
+                    logger.info("💓 Self-ping OK - Bot resta attivo")
+                else:
+                    logger.warning(f"⚠️ Self-ping risposta: {response.status_code}")
+        except Exception as e:
+            logger.error(f"❌ Errore self-ping: {e}")
+
 # Inizializza il bot in un thread separato per non bloccare gunicorn
 def start_bot_thread():
     if BOT_TOKEN and ADMIN_CHAT_ID:
         thread = Thread(target=initialize_bot_sync, daemon=True)
         thread.start()
         logger.info("🚀 Thread inizializzazione bot avviato")
+        
+        # Avvia keep-alive in un altro thread
+        keepalive_thread = Thread(target=keep_alive_ping, daemon=True)
+        keepalive_thread.start()
+        logger.info("💓 Self-ping attivato: cold start in 10min, poi ogni 13min")
     else:
         logger.error("❌ BOT_TOKEN o ADMIN_CHAT_ID mancanti")
 
