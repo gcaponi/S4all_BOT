@@ -12,36 +12,57 @@ from difflib import SequenceMatcher
 import asyncio
 from threading import Thread
 
+# =========================
 # Configurazione logging
+# =========================
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
+# =========================
 # Configurazione da variabili d'ambiente
+# =========================
+
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 10000))
 
+# =========================
 # File per salvare dati persistenti
+# =========================
+
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
 ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
 
+# =========================
 # FAQ URL
+# =========================
+
 PASTE_URL = "https://justpaste.it/faq_4all"
 
+# =========================
 # Soglia per il fuzzy matching
+# =========================
+
 FUZZY_THRESHOLD = 0.6
 
+# =========================
 # Flask app
+# =========================
+
 app = Flask(__name__)
 bot_application = None
 bot_initialized = False
 
-# ============== FAQ FETCH FUNCTIONS ==============
+# =========================
+#  FAQ FETCH FUNCTIONS
+# =========================
+
 def fetch_markdown_from_html(url: str) -> str:
     r = requests.get(url, timeout=10)
     r.raise_for_status()
@@ -79,7 +100,10 @@ def update_faq_from_web():
         logger.error(f"Errore aggiornamento FAQ: {e}")
         return False
 
-# ============== PERSISTENT DATA FUNCTIONS ==============
+# =========================
+# PERSISTENT DATA FUNCTIONS
+# =========================
+
 def load_json_file(filename, default=None):
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -144,7 +168,9 @@ def authorize_user(user_id, first_name=None, last_name=None, username=None):
 def get_bot_username():
     return getattr(get_bot_username, 'username', 'tuobot')
 
-# ============== FUZZY MATCHING FUNCTIONS ==============
+# =========================
+# FUZZY MATCHING FUNCTIONS
+# =========================
 def calculate_similarity(text1: str, text2: str) -> float:
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
 
@@ -211,7 +237,10 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     
     return {'match': False, 'item': None, 'score': best_score, 'method': None}
 
-# ============== BOT HANDLERS ==============
+# =========================
+# BOT HANDLERS
+# =========================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
@@ -515,8 +544,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Vedere tutte le FAQ con /help",
             parse_mode='HTML'
         )
+        
+# =========================
+# BOT INITIALIZATION
+# =========================
 
-# ============== BOT INITIALIZATION ==============
 def initialize_bot_sync():
     """Inizializza il bot in modo sincrono"""
     global bot_application, bot_initialized
@@ -574,7 +606,10 @@ def initialize_bot_sync():
         import traceback
         traceback.print_exc()
 
-# ============== FLASK ROUTES ==============
+# =========================
+# FLASK ROUTES
+# =========================
+
 @app.route('/')
 def index():
     return "🤖 Bot Telegram FAQ attivo! ✅", 200
@@ -608,7 +643,10 @@ def health():
     """Health check per UptimeRobot"""
     return "OK", 200
 
+# =========================
 # Inizializza il bot in un thread separato
+# =========================
+
 def start_bot_thread():
     if BOT_TOKEN and ADMIN_CHAT_ID:
         thread = Thread(target=initialize_bot_sync, daemon=True)
@@ -617,11 +655,17 @@ def start_bot_thread():
     else:
         logger.error("❌ BOT_TOKEN o ADMIN_CHAT_ID mancanti")
 
+# =========================
 # Avvia il thread di inizializzazione
+# =========================
+
 start_bot_thread()
 
 logger.info("🌐 Flask app pronta")
 
+# =========================
 # Entry point per test locali
+# =========================
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
