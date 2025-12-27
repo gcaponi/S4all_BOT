@@ -95,7 +95,11 @@ def save_json_file(filename, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def load_authorized_users():
-    return load_json_file(AUTHORIZED_USERS_FILE, default=[])
+    data = load_json_file(AUTHORIZED_USERS_FILE, default={})
+    # Retrocompatibilità: se è una lista, convertila in dizionario
+    if isinstance(data, list):
+        return {str(uid): {"id": uid, "name": "Sconosciuto", "username": None} for uid in data}
+    return data
 
 def save_authorized_users(users):
     save_json_file(AUTHORIZED_USERS_FILE, users)
@@ -116,12 +120,23 @@ def load_faq():
 
 def is_user_authorized(user_id):
     authorized_users = load_authorized_users()
-    return user_id in authorized_users
+    return str(user_id) in authorized_users
 
-def authorize_user(user_id):
+def authorize_user(user_id, first_name=None, last_name=None, username=None):
     authorized_users = load_authorized_users()
-    if user_id not in authorized_users:
-        authorized_users.append(user_id)
+    user_id_str = str(user_id)
+    
+    if user_id_str not in authorized_users:
+        # Crea il nome completo
+        full_name = f"{first_name or ''} {last_name or ''}".strip()
+        if not full_name:
+            full_name = "Sconosciuto"
+        
+        authorized_users[user_id_str] = {
+            "id": user_id,
+            "name": full_name,
+            "username": username
+        }
         save_authorized_users(authorized_users)
         return True
     return False
@@ -206,7 +221,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         correct_code = load_access_code()
         
         if provided_code == correct_code:
-            was_new = authorize_user(user_id)
+            was_new = authorize_user(user_id, user.first_name, user.last_name, user.username)
             
             if was_new:
                 await update.message.reply_text(
@@ -364,10 +379,18 @@ async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAUL
     
     message = f"👥 <b>Utenti autorizzati ({len(authorized_users)}):</b>\n\n"
     
-    for i, uid in enumerate(authorized_users, 1):
-        message += f"{i}. Chat ID: <code>{uid}</code>\n"
+    for i, (user_id_str, user_data) in enumerate(authorized_users.items(), 1):
+        name = user_data.get('name', 'Sconosciuto')
+        username = user_data.get('username')
+        user_id_display = user_data.get('id', user_id_str)
+        
+        # Formatta la riga
+        username_text = f"@{username}" if username else "N/A"
+        message += f"{i}. <b>{name}</b>\n"
+        message += f"   👤 Username: {username_text}\n"
+        message += f"   🔢 ID: <code>{user_id_display}</code>\n\n"
     
-    message += f"\n💡 Usa /revoca seguito dal Chat ID per rimuovere un utente"
+    message += f"💡 Usa /revoca seguito dal Chat ID per rimuovere un utente"
     
     await update.message.reply_text(message, parse_mode='HTML')
 
@@ -394,8 +417,8 @@ async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     authorized_users = load_authorized_users()
     
-    if target_id in authorized_users:
-        authorized_users.remove(target_id)
+    if str(target_id) in authorized_users:
+        del authorized_users[str(target_id)]
         save_authorized_users(authorized_users)
         await update.message.reply_text(f"✅ Utente {target_id} rimosso dagli autorizzati.")
     else:
