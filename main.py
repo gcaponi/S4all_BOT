@@ -171,6 +171,7 @@ def get_bot_username():
 # =========================
 # FUZZY MATCHING FUNCTIONS
 # =========================
+
 def calculate_similarity(text1: str, text2: str) -> float:
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
 
@@ -544,7 +545,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• Vedere tutte le FAQ con /help",
             parse_mode='HTML'
         )
-        
+
 # =========================
 # BOT INITIALIZATION
 # =========================
@@ -628,14 +629,23 @@ def webhook():
     
     try:
         update = Update.de_json(request.get_json(force=True), bot_application.bot)
-        # Crea nuovo event loop per ogni richiesta
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        
+        # Usa il loop esistente invece di crearne uno nuovo
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # Esegui l'update
         loop.run_until_complete(bot_application.process_update(update))
-        loop.close()
+        
+        # NON chiudere il loop!
         return "OK", 200
+        
     except Exception as e:
         logger.error(f"Errore webhook: {e}")
+        import traceback
+        traceback.print_exc()
         return "ERROR", 500
 
 @app.route('/health')
