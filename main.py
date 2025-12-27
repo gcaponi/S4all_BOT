@@ -1,15 +1,11 @@
 import os
 import json
 import logging
-import secrets
-import re
-import requests
+import difflib
+from typing import Dict, List
 
-from flask import Flask, request
-from bs4 import BeautifulSoup
-from difflib import SequenceMatcher
-
-from telegram import Update, Bot
+from flask import Flask, request, jsonify
+from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -18,171 +14,173 @@ from telegram.ext import (
     filters,
 )
 
-# ================= CONFIG =================
+# =========================
+# CONFIG
+# =========================
 
-BOT_TOKEN = os.environ["BOT_TOKEN"]
-ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]
-
-AUTHORIZED_USERS_FILE = "authorized_users.json"
-ACCESS_CODE_FILE = "access_code.json"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "supersecret")
+BASE_URL = os.getenv("BASE_URL")  # es: https://s4all-bot.onrender.com
 FAQ_FILE = "faq.json"
 
-FAQ_URL = "https://justpaste.it/faq_4all"
-FUZZY_THRESHOLD = 0.6
+ADMIN_IDS = {
+    123456789,  # <-- sostituisci con il tuo Telegram ID
+}
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
-log = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+
+# =========================
+# LOAD FAQ
+# =========================
+
+def load_faq() -> Dict[str, str]:
+    if not os.path.exists(FAQ_FILE):
+        return {}
+    with open(FAQ_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+FAQ_DATA: Dict[str, str] = load_faq()
+logger.info("FAQ caricate: %s", len(FAQ_DATA))
+
+
+# =========================
+# FUZZY SEARCH
+# =========================
+
+def fuzzy_search(query: str, data: Dict[str, str]) -> List[str]:
+    keys = list(data.keys())
+    matches = difflib.get_close_matches(
+        query,
+        keys,
+        n=3,
+        cutoff=0.45,  # soglia reale (non troppo alta)
+    )
+    return matches
+
+
+# =========================
+# TELEGRAM HANDLERS
+# =========================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👋 Benvenuto!\nScrivi una domanda oppure usa /help"
+    )
+
+
+async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not FAQ_DATA:
+        await update.message.reply_text("⚠️ Nessuna FAQ disponibile.")
+        return
+
+    text = "📚 *FAQ disponibili:*\n\n"
+    for q in FAQ_DATA.keys():
+        text += f"• {q}\n"
+
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def admin_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    await update.message.reply_text(
+        "/lista_autorizzati\n"
+        "/admin_help\n"
+    )
+
+
+async def lista_autorizzati(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    text = "👮 Admin autorizzati:\n\n"
+    for admin in ADMIN_IDS:
+        text += f"• {admin}\n"
+
+    await update.message.reply_text(text)
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip()
+
+    if not FAQ_DATA:
+        await update.message.reply_text("⚠️ FAQ vuote.")
+        return
+
+    # match diretto
+    if query in FAQ_DATA:
+        await update.message.reply_text(FAQ_DATA[query])
+        return
+
+    # fuzzy
+    matches = fuzzy_search(query, FAQ_DATA)
+
+    if matches:
+        text = "🤔 Intendevi:\n\n"
+        for m in matches:
+            text += f"• {m}\n"
+        await update.message.reply_text(text)
+    else:
+        await update.message.reply_text("❌ Nessuna FAQ trovata.")
+
+
+# =========================
+# TELEGRAM APPLICATION
+# =========================
+
+application = Application.builder().token(BOT_TOKEN).build()
+
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("help", help_cmd))
+application.add_handler(CommandHandler("admin_help", admin_help))
+application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+
+# =========================
+# FLASK APP
+# =========================
 
 app = Flask(__name__)
 
-# ================= STORAGE =================
-
-def load_json(path, default):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return default
-
-
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-# ================= AUTH =================
-
-def load_authorized_users():
-    return load_json(AUTHORIZED_USERS_FILE, {})
-
-
-def is_authorized(user_id):
-    return str(user_id) in load_authorized_users()
-
-
-def authorize_user(user):
-    users = load_authorized_users()
-    uid = str(user.id)
-    if uid not in users:
-        users[uid] = {
-            "id": user.id,
-            "name": f"{user.first_name or ''} {user.last_name or ''}".strip(),
-            "username": user.username,
-        }
-        save_json(AUTHORIZED_USERS_FILE, users)
-        return True
-    return False
-
-
-def load_access_code():
-    data = load_json(ACCESS_CODE_FILE, {})
-    if "code" not in data:
-        data["code"] = secrets.token_urlsafe(12)
-        save_json(ACCESS_CODE_FILE, data)
-    return data["code"]
-
-# ================= FAQ =================
-
-def update_faq():
-    r = requests.get(FAQ_URL, timeout=10)
-    soup = BeautifulSoup(r.text, "html.parser")
-    content = soup.select_one("#articleContent")
-    text = content.get_text("\n")
-
-    pattern = r"^##\s+(.*?)\n(.*?)(?=\n##|\Z)"
-    matches = re.findall(pattern, text, re.S | re.M)
-
-    faq = [{"domanda": d.strip(), "risposta": r.strip()} for d, r in matches]
-    save_json(FAQ_FILE, {"faq": faq})
-    log.info("FAQ aggiornate: %s", len(faq))
-
-
-def load_faq():
-    return load_json(FAQ_FILE, {"faq": []})["faq"]
-
-# ================= FUZZY =================
-
-def normalize(t):
-    t = re.sub(r"[^\w\s]", "", t.lower())
-    return re.sub(r"\s+", " ", t).strip()
-
-
-def similarity(a, b):
-    return SequenceMatcher(None, a, b).ratio()
-
-
-def fuzzy_search(query, faq):
-    q = normalize(query)
-    best, score = None, 0
-    for item in faq:
-        s = similarity(q, normalize(item["domanda"]))
-        if s > score:
-            best, score = item, s
-    return (best, score) if score >= FUZZY_THRESHOLD else (None, score)
-
-# ================= HANDLERS =================
-
-async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-
-    if ctx.args and ctx.args[0] == load_access_code():
-        new = authorize_user(user)
-        await update.message.reply_text("✅ Accesso autorizzato!" if new else "✅ Sei già autorizzato")
-        return
-
-    if not is_authorized(user.id):
-        await update.message.reply_text("❌ Accesso non autorizzato")
-        return
-
-    await update.message.reply_text("👋 Scrivi la tua domanda")
-
-async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update.effective_user.id):
-        return
-
-    faq = load_faq()
-    msg = "📚 FAQ disponibili:\n\n"
-    for i, f in enumerate(faq, 1):
-        msg += f"{i}. {f['domanda']}\n"
-    await update.message.reply_text(msg)
-
-async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update.effective_user.id):
-        return
-
-    faq = load_faq()
-    match, score = fuzzy_search(update.message.text, faq)
-
-    if match:
-        await update.message.reply_text(f"🎯 {match['domanda']}\n\n{match['risposta']}")
-    else:
-        await update.message.reply_text("❓ Nessuna risposta trovata")
-
-# ================= APPLICATION =================
-
-application = Application.builder().token(BOT_TOKEN).build()
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("help", help_cmd))
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-@app.before_first_request
-def setup():
-    update_faq()
-    application.bot.set_webhook(WEBHOOK_URL)
-    log.info("🤖 Bot pronto")
-
-# ================= WEBHOOK =================
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    update = Update.de_json(request.json, application.bot)
-    application.update_queue.put(update)
+@app.route("/", methods=["GET", "HEAD"])
+def index():
     return "OK", 200
 
-@app.route("/", methods=["GET", "HEAD"])
+
 @app.route("/health", methods=["GET", "HEAD"])
 def health():
+    return jsonify(status="ok"), 200
+
+
+@app.route("/webhook", methods=["POST"])
+async def webhook():
+    if request.headers.get("X-Telegram-Bot-Api-Secret-Token") != WEBHOOK_SECRET:
+        return "Unauthorized", 403
+
+    update = Update.de_json(request.json, application.bot)
+    await application.process_update(update)
     return "OK", 200
+
+
+# =========================
+# WEBHOOK SETUP (ON BOOT)
+# =========================
+
+async def setup_webhook():
+    webhook_url = f"{BASE_URL}/webhook"
+    await application.bot.set_webhook(
+        url=webhook_url,
+        secret_token=WEBHOOK_SECRET,
+    )
+    logger.info("Webhook impostato: %s", webhook_url)
+
+
+import asyncio
+asyncio.get_event_loop().run_until_complete(setup_webhook())
