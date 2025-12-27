@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-import asyncio
 import secrets
 import re
 import requests
@@ -10,7 +9,7 @@ from flask import Flask, request
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 
-from telegram import Update
+from telegram import Update, Bot
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -23,7 +22,7 @@ from telegram.ext import (
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]  # es: https://xxx.onrender.com/webhook
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
 
 AUTHORIZED_USERS_FILE = "authorized_users.json"
 ACCESS_CODE_FILE = "access_code.json"
@@ -36,14 +35,11 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
-
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
-application: Application | None = None
-event_loop: asyncio.AbstractEventLoop | None = None
 
-# ================= UTILS =================
+# ================= STORAGE =================
 
 def load_json(path, default):
     try:
@@ -57,21 +53,19 @@ def save_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-
 # ================= AUTH =================
 
 def load_authorized_users():
     return load_json(AUTHORIZED_USERS_FILE, {})
 
 
-def is_authorized(user_id: int) -> bool:
+def is_authorized(user_id):
     return str(user_id) in load_authorized_users()
 
 
 def authorize_user(user):
     users = load_authorized_users()
     uid = str(user.id)
-
     if uid not in users:
         users[uid] = {
             "id": user.id,
@@ -90,10 +84,9 @@ def load_access_code():
         save_json(ACCESS_CODE_FILE, data)
     return data["code"]
 
-
 # ================= FAQ =================
 
-def fetch_faq():
+def update_faq():
     r = requests.get(FAQ_URL, timeout=10)
     soup = BeautifulSoup(r.text, "html.parser")
     content = soup.select_one("#articleContent")
@@ -110,52 +103,41 @@ def fetch_faq():
 def load_faq():
     return load_json(FAQ_FILE, {"faq": []})["faq"]
 
-
 # ================= FUZZY =================
 
-def normalize(t: str) -> str:
+def normalize(t):
     t = re.sub(r"[^\w\s]", "", t.lower())
     return re.sub(r"\s+", " ", t).strip()
 
 
-def similarity(a: str, b: str) -> float:
+def similarity(a, b):
     return SequenceMatcher(None, a, b).ratio()
 
 
 def fuzzy_search(query, faq):
     q = normalize(query)
     best, score = None, 0
-
     for item in faq:
         s = similarity(q, normalize(item["domanda"]))
         if s > score:
             best, score = item, s
-
-    if score >= FUZZY_THRESHOLD:
-        return best, score
-
-    return None, score
-
+    return (best, score) if score >= FUZZY_THRESHOLD else (None, score)
 
 # ================= HANDLERS =================
 
 async def start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
 
-    if ctx.args:
-        if ctx.args[0] == load_access_code():
-            new = authorize_user(user)
-            await update.message.reply_text(
-                "✅ Accesso autorizzato!" if new else "✅ Sei già autorizzato"
-            )
-            return
+    if ctx.args and ctx.args[0] == load_access_code():
+        new = authorize_user(user)
+        await update.message.reply_text("✅ Accesso autorizzato!" if new else "✅ Sei già autorizzato")
+        return
 
     if not is_authorized(user.id):
         await update.message.reply_text("❌ Accesso non autorizzato")
         return
 
     await update.message.reply_text("👋 Scrivi la tua domanda")
-
 
 async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update.effective_user.id):
@@ -165,76 +147,42 @@ async def help_cmd(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     msg = "📚 FAQ disponibili:\n\n"
     for i, f in enumerate(faq, 1):
         msg += f"{i}. {f['domanda']}\n"
-
     await update.message.reply_text(msg)
 
-
 async def handle_message(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not is_authorized(user.id):
+    if not is_authorized(update.effective_user.id):
         return
 
     faq = load_faq()
     match, score = fuzzy_search(update.message.text, faq)
 
     if match:
-        await update.message.reply_text(
-            f"🎯 {match['domanda']}\n\n{match['risposta']}"
-        )
+        await update.message.reply_text(f"🎯 {match['domanda']}\n\n{match['risposta']}")
     else:
         await update.message.reply_text("❓ Nessuna risposta trovata")
 
+# ================= APPLICATION =================
 
-# ================= BOT INIT =================
+application = Application.builder().token(BOT_TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("help", help_cmd))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-async def init_bot():
-    global application
-
-    fetch_faq()
-
-    application = Application.builder().token(BOT_TOKEN).build()
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_cmd))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    await application.initialize()
-    await application.bot.set_webhook(WEBHOOK_URL)
-    await application.start()
-
+@app.before_first_request
+def setup():
+    update_faq()
+    application.bot.set_webhook(WEBHOOK_URL)
     log.info("🤖 Bot pronto")
 
-
-# ================= FLASK =================
-
-@app.route("/")
-def root():
-    return "OK", 200
-
-
-@app.route("/health", methods=["GET", "HEAD"])
-def health():
-    return "OK", 200
-
+# ================= WEBHOOK =================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
     update = Update.de_json(request.json, application.bot)
-    asyncio.run_coroutine_threadsafe(
-        application.process_update(update), event_loop
-    )
+    application.update_queue.put(update)
     return "OK", 200
 
-
-# ================= ENTRY =================
-
-def start_bot():
-    global event_loop
-    event_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(event_loop)
-    event_loop.run_until_complete(init_bot())
-    event_loop.run_forever()
-
-
-import threading
-threading.Thread(target=start_bot, daemon=True).start()
+@app.route("/", methods=["GET", "HEAD"])
+@app.route("/health", methods=["GET", "HEAD"])
+def health():
+    return "OK", 200
