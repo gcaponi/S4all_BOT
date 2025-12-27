@@ -90,4 +90,4 @@ def save_json(path, data):
 def load_authorized_users():
     data = load_json(AUTHORIZED_USERS_FILE, {})
     if isinstance(data, list):
-        return {str(uid): {"id"
+        return {str(uid): {"id"}
