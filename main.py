@@ -1,9 +1,8 @@
-# Creo il file main.py CORRETTO
-code = '''import os
+import os
 import json
 import logging
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 import secrets
 import re
@@ -31,7 +30,6 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 10000))
-ORDER_CHANNEL_ID = int(os.environ.get('ORDER_CHANNEL_ID', 0)) if os.environ.get('ORDER_CHANNEL_ID') else None
 
 # ====
 # File per salvare dati persistenti
@@ -82,11 +80,11 @@ def fetch_markdown_from_html(url: str) -> str:
     content = soup.select_one("#articleContent")
     if content is None:
         raise RuntimeError("Contenuto principale non trovato")
-    text = content.get_text("\\n")
+    text = content.get_text("\n")
     return text.strip()
 
 def parse_faq(markdown: str) -> list:
-    pattern = r"^##\\s+(.*?)\\n(.*?)(?=\\n##\\s+|\\Z)"
+    pattern = r"^##\s+(.*?)\n(.*?)(?=\n##\s+|\Z)"
     matches = re.findall(pattern, markdown, flags=re.S | re.M)
     if not matches:
         raise RuntimeError("Formato non valido: nessuna domanda trovata. Usa solo titoli '##'.")
@@ -195,13 +193,18 @@ def has_payment_method(text: str) -> tuple:
 
 def looks_like_order(text: str) -> bool:
     """Determina se un messaggio sembra un ordine"""
-    # Controlla se contiene numeri (quantità)
-    has_numbers = bool(re.search(r'\\d', text))
-
-    # Controlla lunghezza minima
+    has_numbers = bool(re.search(r'\d', text))
     is_long_enough = len(text.strip()) > 10
-
     return has_numbers and is_long_enough
+
+async def is_bot_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
+    """Verifica se il bot è admin nella chat"""
+    try:
+        bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
+        return bot_member.status in [ChatMember.ADMINISTRATOR, ChatMember.OWNER]
+    except Exception as e:
+        logger.error(f"Errore verifica admin status: {e}")
+        return False
 
 # ====
 # FUZZY MATCHING FUNCTIONS
@@ -211,8 +214,8 @@ def calculate_similarity(text1: str, text2: str) -> float:
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
 
 def normalize_text(text: str) -> str:
-    text = re.sub(r'[^\\w\\s]', '', text)
-    text = re.sub(r'\\s+', ' ', text)
+    text = re.sub(r'[^\w\s]', '', text)
+    text = re.sub(r'\s+', ' ', text)
     return text.strip().lower()
 
 def extract_keywords(text: str) -> list:
@@ -290,15 +293,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             if was_new:
                 await update.message.reply_text(
-                    "✅ Sei stato autorizzato con successo!\\n\\n"
+                    "✅ Sei stato autorizzato con successo!\n\n"
                     "Ora puoi usare il bot liberamente. Scrivi la tua domanda o usa /help per vedere le categorie FAQ."
                 )
 
                 if ADMIN_CHAT_ID:
                     admin_msg = (
-                        f"✅ <b>Nuovo utente autorizzato tramite link!</b>\\n\\n"
-                        f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\\n"
-                        f"🆔 Username: @{user.username or 'N/A'}\\n"
+                        f"✅ <b>Nuovo utente autorizzato tramite link!</b>\n\n"
+                        f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\n"
+                        f"🆔 Username: @{user.username or 'N/A'}\n"
                         f"🔢 Chat ID: <code>{user_id}</code>"
                     )
                     try:
@@ -311,35 +314,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         logger.error(f"Errore invio notifica admin: {e}")
             else:
                 await update.message.reply_text(
-                    "✅ Sei già autorizzato!\\n\\n"
+                    "✅ Sei già autorizzato!\n\n"
                     "Scrivi la tua domanda o usa /help per vedere le categorie FAQ."
                 )
             return
         else:
             await update.message.reply_text(
-                "❌ Codice di accesso non valido.\\n\\n"
+                "❌ Codice di accesso non valido.\n\n"
                 "Contatta l'amministratore per ottenere il link corretto."
             )
             return
 
     if is_user_authorized(user_id):
         await update.message.reply_text(
-            f"👋 Ciao {user.first_name}!\\n\\n"
-            "Sono il bot FAQ con ricerca intelligente. Scrivi la tua domanda anche con errori di battitura!\\n\\n"
+            f"👋 Ciao {user.first_name}!\n\n"
+            "Sono il bot FAQ con ricerca intelligente. Scrivi la tua domanda anche con errori di battitura!\n\n"
             "💡 Usa /help per vedere tutte le categorie disponibili."
         )
     else:
         await update.message.reply_text(
-            "❌ Non sei autorizzato ad usare questo bot.\\n\\n"
+            "❌ Non sei autorizzato ad usare questo bot.\n\n"
             "Contatta l'amministratore per ottenere il link di accesso."
         )
 
         if ADMIN_CHAT_ID:
             admin_msg = (
-                f"⚠️ <b>Tentativo di accesso non autorizzato!</b>\\n\\n"
-                f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\\n"
-                f"🆔 Username: @{user.username or 'N/A'}\\n"
-                f"🔢 Chat ID: <code>{user_id}</code>\\n"
+                f"⚠️ <b>Tentativo di accesso non autorizzato!</b>\n\n"
+                f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\n"
+                f"🆔 Username: @{user.username or 'N/A'}\n"
+                f"🔢 Chat ID: <code>{user_id}</code>\n"
                 f"💬 Messaggio: /start"
             )
             try:
@@ -356,7 +359,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_user_authorized(user_id):
         await update.message.reply_text(
-            "❌ Non sei autorizzato ad usare questo bot.\\n\\n"
+            "❌ Non sei autorizzato ad usare questo bot.\n\n"
             "Contatta l'amministratore per ottenere il link di accesso."
         )
         return
@@ -366,50 +369,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not faq_list:
         await update.message.reply_text(
-            "❌ Nessuna FAQ disponibile al momento.\\n\\n"
+            "❌ Nessuna FAQ disponibile al momento.\n\n"
             "Contatta l'amministratore."
         )
         return
 
-    help_text = "📚 <b>Domande FAQ disponibili:</b>\\n\\n"
+    help_text = "📚 <b>Domande FAQ disponibili:</b>\n\n"
 
     for i, item in enumerate(faq_list, 1):
-        help_text += f"{i}. {item['domanda']}\\n"
+        help_text += f"{i}. {item['domanda']}\n"
 
-    help_text += "\\n💡 <b>Ricerca intelligente attiva!</b>\\n"
+    help_text += "\n💡 <b>Ricerca intelligente attiva!</b>\n"
     help_text += "Scrivi anche con errori di battitura, il bot capirà! 🎯"
 
     await update.message.reply_text(help_text, parse_mode='HTML')
-
-async def get_chat_id_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mostra l'ID della chat corrente"""
-    user_id = update.effective_user.id
-
-    if user_id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Comando riservato all'amministratore.")
-        return
-
-    chat = update.effective_chat
-    chat_type = chat.type
-
-    message = (
-        f"📊 <b>Informazioni Chat Corrente:</b>\\n\\n"
-        f"🆔 <b>Chat ID:</b> <code>{chat.id}</code>\\n"
-        f"📝 <b>Tipo:</b> {chat_type}\\n"
-    )
-
-    if chat.title:
-        message += f"📌 <b>Nome:</b> {chat.title}\\n"
-
-    if chat.username:
-        message += f"🔗 <b>Username:</b> @{chat.username}\\n"
-
-    message += (
-        f"\\n💡 <b>Usa questo ID per ORDER_CHANNEL_ID</b>\\n"
-        f"Copia il numero qui sopra (incluso il segno meno se presente)"
-    )
-
-    await update.message.reply_text(message, parse_mode='HTML')
 
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -424,13 +397,13 @@ async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     authorized_count = len(load_authorized_users())
 
     message = (
-        f"🔗 <b>Link di accesso universale:</b>\\n\\n"
-        f"<code>{link}</code>\\n\\n"
-        f"📋 <b>Istruzioni:</b>\\n"
-        f"• Condividi questo link con i tuoi contatti fidati\\n"
-        f"• Chi clicca il link viene autorizzato automaticamente\\n"
-        f"• Il link è valido per sempre (finché non lo cambi)\\n\\n"
-        f"👥 Utenti già autorizzati: {authorized_count}\\n\\n"
+        f"🔗 <b>Link di accesso universale:</b>\n\n"
+        f"<code>{link}</code>\n\n"
+        f"📋 <b>Istruzioni:</b>\n"
+        f"• Condividi questo link con i tuoi contatti fidati\n"
+        f"• Chi clicca il link viene autorizzato automaticamente\n"
+        f"• Il link è valido per sempre (finché non lo cambi)\n\n"
+        f"👥 Utenti già autorizzati: {authorized_count}\n\n"
         f"🔄 Usa /cambia_codice per generare un nuovo link"
     )
 
@@ -450,10 +423,10 @@ async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TY
     new_link = f"https://t.me/{bot_username}?start={new_code}"
 
     message = (
-        f"✅ <b>Nuovo codice generato!</b>\\n\\n"
-        f"🔗 <b>Nuovo link:</b>\\n"
-        f"<code>{new_link}</code>\\n\\n"
-        f"⚠️ <b>Attenzione:</b> Il vecchio link non funziona più!\\n"
+        f"✅ <b>Nuovo codice generato!</b>\n\n"
+        f"🔗 <b>Nuovo link:</b>\n"
+        f"<code>{new_link}</code>\n\n"
+        f"⚠️ <b>Attenzione:</b> Il vecchio link non funziona più!\n"
         f"Gli utenti già autorizzati possono continuare ad usare il bot."
     )
 
@@ -472,7 +445,7 @@ async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("📋 Nessun utente autorizzato al momento.")
         return
 
-    message = f"👥 <b>Utenti autorizzati ({len(authorized_users)}):</b>\\n\\n"
+    message = f"👥 <b>Utenti autorizzati ({len(authorized_users)}):</b>\n\n"
 
     for i, (user_id_str, user_data) in enumerate(authorized_users.items(), 1):
         name = user_data.get('name', 'Sconosciuto')
@@ -480,9 +453,9 @@ async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAUL
         user_id_display = user_data.get('id', user_id_str)
 
         username_text = f"@{username}" if username else "N/A"
-        message += f"{i}. <b>{name}</b>\\n"
-        message += f"   👤 Username: {username_text}\\n"
-        message += f"   🔢 ID: <code>{user_id_display}</code>\\n\\n"
+        message += f"{i}. <b>{name}</b>\n"
+        message += f"   👤 Username: {username_text}\n"
+        message += f"   🔢 ID: <code>{user_id_display}</code>\n\n"
 
     message += f"💡 Usa /revoca seguito dal Chat ID per rimuovere un utente"
 
@@ -497,8 +470,8 @@ async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         await update.message.reply_text(
-            "❌ Uso: /revoca <chat_id>\\n\\n"
-            "Esempio: /revoca 123456789\\n"
+            "❌ Uso: /revoca <chat_id>\n\n"
+            "Esempio: /revoca 123456789\n"
             "Usa /lista_autorizzati per vedere i Chat ID"
         )
         return
@@ -526,36 +499,27 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     message = (
-        "👑 <b>Comandi Admin disponibili:</b>\\n\\n"
-        "🔐 <b>Gestione accessi</b>\\n"
-        "• /genera_link — genera link di accesso\\n"
-        "• /cambia_codice — cambia il codice di accesso\\n"
-        "• /lista_autorizzati — lista utenti autorizzati\\n"
-        "• /revoca &lt;chat_id&gt; — rimuove un utente\\n\\n"
-        "🆔 <b>Gestione canale</b>\\n"
-        "• /get_chat_id — mostra ID della chat corrente\\n\\n"
-        "👤 <b>Comandi Utente</b>\\n"
-        "• /start\\n"
-        "• /help\\n\\n"
-        "🎯 <b>Ricerca Fuzzy</b>\\n"
-        "Il bot ora usa ricerca intelligente!\\n"
-        "Soglia attuale: {:.0%}\\n\\n"
-        "🛒 <b>Supervisione Ordini</b>\\n"
-        "Canale monitorato: {}\\n"
-        "Metodi pagamento: {}\\n\\n"
-        "💡 Solo l'ADMIN può vedere questo messaggio".format(
-            FUZZY_THRESHOLD,
-            ORDER_CHANNEL_ID if ORDER_CHANNEL_ID else "Non configurato",
-            len(PAYMENT_KEYWORDS)
-        )
+        "👑 <b>Comandi Admin disponibili:</b>\n\n"
+        "🔐 <b>Gestione accessi</b>\n"
+        "• /genera_link — genera link di accesso\n"
+        "• /cambia_codice — cambia il codice di accesso\n"
+        "• /lista_autorizzati — lista utenti autorizzati\n"
+        "• /revoca &lt;chat_id&gt; — rimuove un utente\n\n"
+        "👤 <b>Comandi Utente</b>\n"
+        "• /start\n"
+        "• /help\n\n"
+        "🎯 <b>Ricerca Fuzzy</b>\n"
+        "Il bot ora usa ricerca intelligente!\n"
+        "Soglia attuale: {:.0%}\n\n"
+        "💡 Solo l'ADMIN può vedere questo messaggio".format(FUZZY_THRESHOLD)
     )
 
     await update.message.reply_text(message, parse_mode='HTML')
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce i messaggi PRIVATI (non del canale)"""
-    # Ignora se non c'è un utente o un messaggio (es: messaggi del canale)
-    if not update.effective_user or not update.message or not update.message.text:
+async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce messaggi privati (FAQ)"""
+    # Controllo sicurezza
+    if not update.message or not update.message.text or not update.effective_user:
         return
 
     user = update.effective_user
@@ -564,16 +528,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not is_user_authorized(user_id):
         await update.message.reply_text(
-            "❌ Non sei autorizzato ad usare questo bot.\\n\\n"
+            "❌ Non sei autorizzato ad usare questo bot.\n\n"
             "Contatta l'amministratore per ottenere il link di accesso."
         )
 
         if ADMIN_CHAT_ID:
             admin_msg = (
-                f"⚠️ <b>Tentativo di accesso non autorizzato!</b>\\n\\n"
-                f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\\n"
-                f"🆔 Username: @{user.username or 'N/A'}\\n"
-                f"🔢 Chat ID: <code>{user_id}</code>\\n"
+                f"⚠️ <b>Tentativo di accesso non autorizzato!</b>\n\n"
+                f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\n"
+                f"🆔 Username: @{user.username or 'N/A'}\n"
+                f"🔢 Chat ID: <code>{user_id}</code>\n"
                 f"💬 Messaggio: {message_text[:100]}"
             )
             try:
@@ -590,7 +554,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not faq:
         await update.message.reply_text(
-            "❌ Nessuna FAQ disponibile al momento.\\n\\n"
+            "❌ Nessuna FAQ disponibile al momento.\n\n"
             "Riprova più tardi o contatta l'amministratore."
         )
         return
@@ -605,40 +569,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         confidence_emoji = "🎯" if score > 0.9 else "✅" if score > 0.75 else "💡"
 
-        response = f"{confidence_emoji} <b>{item['domanda']}</b>\\n\\n{item['risposta']}"
+        response = f"{confidence_emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
 
         if score < 0.9:
-            response += f"\\n\\n<i>💬 Confidenza: {score:.0%}</i>"
+            response += f"\n\n<i>💬 Confidenza: {score:.0%}</i>"
 
         await update.message.reply_text(response, parse_mode='HTML')
 
         logger.info(f"Match trovato: {result['method']}, score: {score:.2f}, query: '{message_text}'")
     else:
         await update.message.reply_text(
-            f"❓ Non ho trovato una risposta per: <i>\\"{message_text}\\"</i>\\n\\n"
-            f"🔍 Ho cercato con somiglianza fino a {result['score']:.0%}\\n\\n"
-            f"💡 Prova a:\\n"
-            f"• Riformulare la domanda\\n"
-            f"• Usare parole chiave diverse\\n"
+            f"❓ Non ho trovato una risposta per: <i>\"{message_text}\"</i>\n\n"
+            f"🔍 Ho cercato con somiglianza fino a {result['score']:.0%}\n\n"
+            f"💡 Prova a:\n"
+            f"• Riformulare la domanda\n"
+            f"• Usare parole chiave diverse\n"
             f"• Vedere tutte le FAQ con /help",
             parse_mode='HTML'
         )
 
-async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce i messaggi postati nel canale"""
-    if not ORDER_CHANNEL_ID:
+async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce messaggi in gruppi/canali (supervisione ordini)"""
+    # Controllo sicurezza
+    message = update.message or update.channel_post
+    if not message or not message.text:
         return
 
-    channel_post = update.channel_post
-    if not channel_post or not channel_post.text:
-        return
+    chat = update.effective_chat
+    message_text = message.text
 
-    # Verifica che il messaggio sia dal canale configurato
-    if channel_post.chat.id != ORDER_CHANNEL_ID:
+    # Verifica se il bot è admin
+    if not await is_bot_admin(context, chat.id):
         return
-
-    message_text = channel_post.text
-    message_id = channel_post.message_id
 
     # Controlla se sembra un ordine
     if not looks_like_order(message_text):
@@ -648,41 +610,40 @@ async def handle_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE
     has_payment, methods = has_payment_method(message_text)
 
     if not has_payment:
-        # Crea bottoni inline
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Ho specificato", callback_data=f"order_ok_{message_id}"),
-                InlineKeyboardButton("❌ Devo aggiungerlo", callback_data=f"order_missing_{message_id}")
-            ],
-            [
-                InlineKeyboardButton("🚫 Non è un ordine", callback_data=f"order_not_{message_id}")
-            ]
+        return
+
+    # Crea i bottoni inline
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Conferma Ordine", callback_data=f"confirm_{message.message_id}"),
+            InlineKeyboardButton("❌ Rifiuta", callback_data=f"reject_{message.message_id}")
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
-        warning_text = (
-            f"🤔 <b>Possibile ordine senza metodo di pagamento</b>\\n\\n"
-            f"Ho rilevato un possibile ordine ma non vedo il metodo di pagamento.\\n\\n"
-            f"<b>Metodi accettati:</b>\\n"
-            f"💳 Carta, Bancomat, POS\\n"
-            f"💰 Contanti, PayPal, Satispay\\n"
-            f"🏦 Bonifico, Postepay, Wallet\\n"
-            f"₿ Crypto (BTC, ETH, USDT, USDC)\\n\\n"
-            f"<i>Messaggio originale:</i>\\n"
-            f"<code>{message_text[:200]}</code>"
+    # Prepara il messaggio per l'admin
+    sender_info = "Canale" if message.sender_chat else f"@{message.from_user.username or message.from_user.first_name}"
+    methods_str = ", ".join(methods)
+
+    notification = (
+        f"🔔 <b>Possibile ordine rilevato!</b>\n\n"
+        f"📍 Chat: {chat.title or chat.first_name}\n"
+        f"👤 Da: {sender_info}\n"
+        f"💳 Metodo: {methods_str}\n\n"
+        f"📝 <b>Messaggio:</b>\n{message_text[:200]}"
+    )
+
+    try:
+        # Invia notifica all'admin con bottoni
+        await context.bot.send_message(
+            chat_id=ADMIN_CHAT_ID,
+            text=notification,
+            reply_markup=reply_markup,
+            parse_mode='HTML'
         )
-
-        try:
-            await context.bot.send_message(
-                chat_id=ORDER_CHANNEL_ID,
-                text=warning_text,
-                parse_mode='HTML',
-                reply_to_message_id=message_id,
-                reply_markup=reply_markup
-            )
-            logger.info(f"Avviso pagamento inviato per messaggio {message_id}")
-        except Exception as e:
-            logger.error(f"Errore invio avviso: {e}")
+        logger.info(f"Ordine rilevato in {chat.title or chat.id}: {methods_str}")
+    except Exception as e:
+        logger.error(f"Errore invio notifica ordine: {e}")
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce i click sui bottoni inline"""
@@ -691,25 +652,19 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
     data = query.data
 
-    if data.startswith("order_ok_"):
+    if data.startswith("confirm_"):
         await query.edit_message_text(
-            "✅ <b>Perfetto!</b>\\n\\n"
-            "Il metodo di pagamento è stato specificato correttamente.",
+            text=query.message.text + "\n\n✅ <b>ORDINE CONFERMATO</b>",
             parse_mode='HTML'
         )
-    elif data.startswith("order_missing_"):
+        logger.info(f"Ordine confermato dall'admin")
+
+    elif data.startswith("reject_"):
         await query.edit_message_text(
-            "⚠️ <b>Attenzione!</b>\\n\\n"
-            "Ricordati di specificare il metodo di pagamento nel prossimo ordine.\\n\\n"
-            "Metodi accettati: carta, contanti, bonifico, PayPal, Satispay, crypto, ecc.",
+            text=query.message.text + "\n\n❌ <b>ORDINE RIFIUTATO</b>",
             parse_mode='HTML'
         )
-    elif data.startswith("order_not_"):
-        await query.edit_message_text(
-            "👍 <b>Ok, capito!</b>\\n\\n"
-            "Non era un ordine. Grazie per la conferma!",
-            parse_mode='HTML'
-        )
+        logger.info(f"Ordine rifiutato dall'admin")
 
 # ====
 # BOT INITIALIZATION
@@ -738,25 +693,36 @@ def initialize_bot_sync():
             get_bot_username.username = bot.username
             logger.info(f"Bot username: @{bot.username}")
 
-            # Registra handler - ORDINE IMPORTANTE!
-            # 1. Prima i comandi
+            # Registra handler NELL'ORDINE CORRETTO
+            # 1. Comandi (hanno priorità)
             application.add_handler(CommandHandler("start", start))
             application.add_handler(CommandHandler("help", help_command))
-            application.add_handler(CommandHandler("get_chat_id", get_chat_id_command))
             application.add_handler(CommandHandler("genera_link", genera_link_command))
             application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
             application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
             application.add_handler(CommandHandler("revoca", revoca_command))
             application.add_handler(CommandHandler("admin_help", admin_help_command))
 
-            # 2. Poi i messaggi del canale (CHANNEL_POST)
-            application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, handle_channel_post))
-
-            # 3. Infine i messaggi privati (TEXT ma NON comandi)
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
-
-            # 4. Callback query per i bottoni
+            # 2. Callback query per i bottoni inline
             application.add_handler(CallbackQueryHandler(handle_callback_query))
+
+            # 3. Messaggi privati (FAQ)
+            application.add_handler(MessageHandler(
+                filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+                handle_private_message
+            ))
+
+            # 4. Messaggi in gruppi/supergroup (supervisione ordini)
+            application.add_handler(MessageHandler(
+                filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+                handle_group_message
+            ))
+
+            # 5. Post nei canali (supervisione ordini)
+            application.add_handler(MessageHandler(
+                filters.TEXT & filters.ChatType.CHANNEL,
+                handle_group_message
+            ))
 
             # Setup webhook
             if WEBHOOK_URL:
@@ -768,8 +734,6 @@ def initialize_bot_sync():
             await application.start()
 
             logger.info("🤖 Bot pronto!")
-            if ORDER_CHANNEL_ID:
-                logger.info(f"📢 Supervisione ordini attiva sul canale: {ORDER_CHANNEL_ID}")
             return application
 
         # Crea event loop e inizializza
@@ -790,13 +754,14 @@ def initialize_bot_sync():
 
 @app.route('/')
 def index():
-    return "🤖 Bot Telegram FAQ attivo! ✅", 200
+    return "🤖 Bot Telegram FAQ + Supervisione Ordini attivo! ✅", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """Riceve gli update da Telegram"""
     global bot_initialized
 
+    # Inizializza il bot se non già fatto
     if not bot_initialized:
         initialize_bot_sync()
 
@@ -806,11 +771,13 @@ def webhook():
     try:
         update = Update.de_json(request.get_json(force=True), bot_application.bot)
 
+        # Usa il loop esistente invece di crearne uno nuovo
         loop = asyncio.get_event_loop()
         if loop.is_closed():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
+        # Esegui l'update
         loop.run_until_complete(bot_application.process_update(update))
 
         return "OK", 200
@@ -852,18 +819,3 @@ logger.info("🌐 Flask app pronta")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
-'''
-
-# Salva il file
-with open('main.py', 'w', encoding='utf-8') as f:
-    f.write(code)
-
-print("✅ File main.py CORRETTO creato con successo!")
-print("\n🔧 CORREZIONI APPLICATE:")
-print("• handle_message ora controlla se update.effective_user esiste")
-print("• Aggiunto filtro filters.ChatType.PRIVATE per messaggi privati")
-print("• handle_channel_post gestisce SOLO i post del canale")
-print("• Ordine corretto degli handler per evitare conflitti")
-print("\n📢 Il bot ora funziona correttamente con:")
-print("• Messaggi privati degli utenti (FAQ)")
-print("• Post del canale (supervisione ordini)")
