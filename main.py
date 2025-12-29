@@ -201,9 +201,11 @@ async def is_bot_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool
     """Verifica se il bot è admin nella chat"""
     try:
         bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
-        return bot_member.status in [ChatMember.ADMINISTRATOR, ChatMember.OWNER]
+        is_admin = bot_member.status in [ChatMember.ADMINISTRATOR, ChatMember.OWNER]
+        logger.info(f"🔍 Bot admin check in chat {chat_id}: {is_admin} (status: {bot_member.status})")
+        return is_admin
     except Exception as e:
-        logger.error(f"Errore verifica admin status: {e}")
+        logger.error(f"Errore verifica admin status in chat {chat_id}: {e}")
         return False
 
 # ====
@@ -518,13 +520,14 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce messaggi privati (FAQ)"""
-    # Controllo sicurezza
     if not update.message or not update.message.text or not update.effective_user:
         return
 
     user = update.effective_user
     user_id = user.id
     message_text = update.message.text
+
+    logger.info(f"📨 Messaggio privato da {user_id}: {message_text[:50]}")
 
     if not is_user_authorized(user_id):
         await update.message.reply_text(
@@ -590,27 +593,49 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce messaggi in gruppi/canali (supervisione ordini)"""
-    # Controllo sicurezza
     message = update.message or update.channel_post
     if not message or not message.text:
+        logger.debug("⏭️ Messaggio senza testo, ignorato")
         return
 
     chat = update.effective_chat
     message_text = message.text
 
+    # LOG DETTAGLIATO
+    chat_type = chat.type
+    chat_title = chat.title or chat.first_name or "N/A"
+    sender = "Canale" if message.sender_chat else (message.from_user.username if message.from_user else "N/A")
+
+    logger.info(f"📢 MESSAGGIO RICEVUTO:")
+    logger.info(f"   Chat ID: {chat.id}")
+    logger.info(f"   Chat Type: {chat_type}")
+    logger.info(f"   Chat Title: {chat_title}")
+    logger.info(f"   Sender: {sender}")
+    logger.info(f"   Text: {message_text[:100]}")
+
     # Verifica se il bot è admin
-    if not await is_bot_admin(context, chat.id):
+    is_admin = await is_bot_admin(context, chat.id)
+    if not is_admin:
+        logger.warning(f"⚠️ Bot NON è admin in {chat_title} ({chat.id})")
         return
+
+    logger.info(f"✅ Bot è admin in {chat_title}")
 
     # Controlla se sembra un ordine
     if not looks_like_order(message_text):
+        logger.info(f"⏭️ Messaggio non sembra un ordine (no numeri o troppo corto)")
         return
+
+    logger.info(f"🔍 Messaggio sembra un ordine, controllo metodo pagamento...")
 
     # Controlla metodo di pagamento
     has_payment, methods = has_payment_method(message_text)
 
     if not has_payment:
+        logger.info(f"⏭️ Nessun metodo di pagamento trovato")
         return
+
+    logger.info(f"💳 ORDINE RILEVATO! Metodi: {methods}")
 
     # Crea i bottoni inline
     keyboard = [
@@ -627,7 +652,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     notification = (
         f"🔔 <b>Possibile ordine rilevato!</b>\n\n"
-        f"📍 Chat: {chat.title or chat.first_name}\n"
+        f"📍 Chat: {chat_title}\n"
         f"👤 Da: {sender_info}\n"
         f"💳 Metodo: {methods_str}\n\n"
         f"📝 <b>Messaggio:</b>\n{message_text[:200]}"
@@ -641,9 +666,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             reply_markup=reply_markup,
             parse_mode='HTML'
         )
-        logger.info(f"Ordine rilevato in {chat.title or chat.id}: {methods_str}")
+        logger.info(f"✅ Notifica ordine inviata all'admin")
     except Exception as e:
-        logger.error(f"Errore invio notifica ordine: {e}")
+        logger.error(f"❌ Errore invio notifica ordine: {e}")
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce i click sui bottoni inline"""
@@ -657,14 +682,14 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             text=query.message.text + "\n\n✅ <b>ORDINE CONFERMATO</b>",
             parse_mode='HTML'
         )
-        logger.info(f"Ordine confermato dall'admin")
+        logger.info(f"✅ Ordine confermato dall'admin")
 
     elif data.startswith("reject_"):
         await query.edit_message_text(
             text=query.message.text + "\n\n❌ <b>ORDINE RIFIUTATO</b>",
             parse_mode='HTML'
         )
-        logger.info(f"Ordine rifiutato dall'admin")
+        logger.info(f"❌ Ordine rifiutato dall'admin")
 
 # ====
 # BOT INITIALIZATION
@@ -714,7 +739,7 @@ def initialize_bot_sync():
 
             # 4. Messaggi in gruppi/supergroup (supervisione ordini)
             application.add_handler(MessageHandler(
-                filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
+                filters.TEXT & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
                 handle_group_message
             ))
 
@@ -734,6 +759,10 @@ def initialize_bot_sync():
             await application.start()
 
             logger.info("🤖 Bot pronto!")
+            logger.info("📋 CONFIGURAZIONE SUPERVISIONE ORDINI:")
+            logger.info(f"   • Metodi pagamento: {len(PAYMENT_KEYWORDS)} keywords")
+            logger.info(f"   • Admin chat ID: {ADMIN_CHAT_ID}")
+            logger.info(f"   • Il bot supervisionerà TUTTI i canali/gruppi dove è admin")
             return application
 
         # Crea event loop e inizializza
