@@ -2,8 +2,8 @@ import os
 import json
 import logging
 from flask import Flask, request
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import secrets
 import re
 import requests
@@ -50,16 +50,6 @@ PASTE_URL = "https://justpaste.it/faq_4all"
 # ====
 
 FUZZY_THRESHOLD = 0.6
-
-# ====
-# Parole chiave per metodi di pagamento
-# ====
-
-PAYMENT_KEYWORDS = [
-    'contanti', 'carta', 'bancomat', 'bonifico', 'paypal',
-    'satispay', 'postepay', 'pos', 'wallet', 'ricarica',
-    'usdt', 'crypto', 'cripto', 'bitcoin', 'bit', 'btc', 'eth', 'usdc'
-]
 
 # ====
 # Flask app
@@ -179,39 +169,6 @@ def get_bot_username():
     return getattr(get_bot_username, 'username', 'tuobot')
 
 # ====
-# ORDER DETECTION FUNCTIONS
-# ====
-
-def has_payment_method(text: str) -> str:
-    """Controlla se il messaggio contiene un metodo di pagamento"""
-    text_lower = text.lower()
-    
-    for keyword in PAYMENT_KEYWORDS:
-        if keyword in text_lower:
-            return keyword
-    
-    return None
-
-def looks_like_order(text: str) -> bool:
-    """Determina se un messaggio sembra un ordine"""
-    # Controlla se contiene numeri (quantità)
-    has_numbers = bool(re.search(r'\d', text))
-    
-    # Controlla lunghezza minima
-    is_long_enough = len(text.strip()) > 10
-    
-    return has_numbers and is_long_enough
-
-async def is_bot_admin(bot, chat_id: int) -> bool:
-    """Verifica se il bot è admin nella chat"""
-    try:
-        chat_member = await bot.get_chat_member(chat_id, bot.id)
-        return chat_member.status in ['administrator', 'creator']
-    except Exception as e:
-        logger.error(f"Errore verifica admin: {e}")
-        return False
-
-# ====
 # FUZZY MATCHING FUNCTIONS
 # ====
 
@@ -308,14 +265,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\n"
                     f"🆔 Username: @{user.username or 'N/A'}\n"
                     f"🔢 Chat ID: <code>{user_id}</code>"
-                    )
-                    try:
+                )
+                try:
                     await context.bot.send_message(
-                    chat_id=ADMIN_CHAT_ID,
-                    text=admin_msg,
-                    parse_mode='HTML'
+                        chat_id=ADMIN_CHAT_ID,
+                        text=admin_msg,
+                        parse_mode='HTML'
                     )
-                    except Exception as e:
+                except Exception as e:
                     logger.error(f"Errore invio notifica admin: {e}")
             else:
                 await update.message.reply_text(
@@ -523,7 +480,6 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(message, parse_mode='HTML')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce i messaggi PRIVATI (FAQ)"""
     user = update.effective_user
     user_id = user.id
     message_text = update.message.text
@@ -590,76 +546,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
 
-async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle messages in groups/supergroups/channels where bot is admin"""
-    message = update.message or update.channel_post
-    if not message or not message.text:
-        return
-    
-    chat = update.effective_chat
-    
-    # Check if bot is admin in this chat
-    if not await is_bot_admin(context.bot, chat.id):
-        return
-    
-    # Check if message looks like an order
-    if not looks_like_order(message.text):
-        return
-    
-    # Check if payment method is mentioned
-    payment_method = has_payment_method(message.text)
-    
-    if payment_method:
-        # Payment method found - send confirmation with buttons
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Conferma", callback_data=f"confirm_{message.message_id}"),
-                InlineKeyboardButton("❌ Annulla", callback_data=f"cancel_{message.message_id}")
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await message.reply_text(
-            f"🔔 <b>Ordine rilevato!</b>\n\n"
-            f"💳 Metodo di pagamento: <b>{payment_method}</b>\n\n"
-            f"Conferma per procedere con l'ordine.",
-            reply_markup=reply_markup,
-            parse_mode='HTML'
-        )
-    else:
-        # No payment method - ask for it
-        await message.reply_text(
-            "⚠️ <b>Attenzione!</b>\n\n"
-            "Sembra un ordine ma non è stato specificato il metodo di pagamento.\n\n"
-            "Metodi accettati: contanti, carta, bancomat, bonifico, PayPal, Satispay, "
-            "Postepay, POS, wallet, ricarica, USDT, crypto, Bitcoin, BTC, ETH, USDC.",
-            parse_mode='HTML'
-        )
-
-
-async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle button callbacks for order confirmation"""
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    action, message_id = data.split('_')
-    
-    if action == "confirm":
-        await query.edit_message_text(
-            f"✅ <b>Ordine confermato!</b>\n\n"
-            f"L'ordine è stato preso in carico.\n"
-            f"Messaggio ID: {message_id}",
-            parse_mode='HTML'
-        )
-    elif action == "cancel":
-        await query.edit_message_text(
-            f"❌ <b>Ordine annullato</b>\n\n"
-            f"L'ordine è stato annullato.\n"
-            f"Messaggio ID: {message_id}",
-            parse_mode='HTML'
-        )
-
 # ====
 # BOT INITIALIZATION
 # ====
@@ -695,21 +581,7 @@ def initialize_bot_sync():
             application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
             application.add_handler(CommandHandler("revoca", revoca_command))
             application.add_handler(CommandHandler("admin_help", admin_help_command))
-            
-            # Handle callback queries for order confirmation buttons
-            application.add_handler(CallbackQueryHandler(handle_callback_query))
-            
-            # Handle private messages (FAQ)
-            application.add_handler(MessageHandler(filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_message))
-            
-            # Handle messages in groups/supergroups (order supervision)
-            application.add_handler(MessageHandler(
-                (filters.ChatType.GROUPS | filters.ChatType.SUPERGROUP) & filters.TEXT & ~filters.COMMAND,
-                handle_group_message
-            ))
-            
-            # Handle channel posts (order supervision)
-            application.add_handler(MessageHandler(filters.ChatType.CHANNEL & filters.TEXT, handle_group_message))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
             
             # Setup webhook
             if WEBHOOK_URL:
