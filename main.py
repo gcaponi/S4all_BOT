@@ -552,6 +552,11 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(message, parse_mode='HTML')
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce i messaggi PRIVATI (non del canale)"""
+    # Ignora se non c'è un utente (es: messaggi del canale)
+    if not update.effective_user:
+        return
+
     user = update.effective_user
     user_id = user.id
     message_text = update.message.text
@@ -732,7 +737,8 @@ def initialize_bot_sync():
             get_bot_username.username = bot.username
             logger.info(f"Bot username: @{bot.username}")
 
-            # Registra handler
+            # Registra handler - ORDINE IMPORTANTE!
+            # 1. Prima i comandi
             application.add_handler(CommandHandler("start", start))
             application.add_handler(CommandHandler("help", help_command))
             application.add_handler(CommandHandler("get_chat_id", get_chat_id_command))
@@ -741,8 +747,14 @@ def initialize_bot_sync():
             application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
             application.add_handler(CommandHandler("revoca", revoca_command))
             application.add_handler(CommandHandler("admin_help", admin_help_command))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+            # 2. Poi i messaggi del canale (CHANNEL_POST)
             application.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, handle_channel_post))
+
+            # 3. Infine i messaggi privati (TEXT ma NON comandi)
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
+
+            # 4. Callback query per i bottoni
             application.add_handler(CallbackQueryHandler(handle_callback_query))
 
             # Setup webhook
