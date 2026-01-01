@@ -636,14 +636,19 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
-        # CORREZIONE: Usa reply_to_message_id per rispondere nel thread corretto
-        # Questo funziona sia per canali normali che per supergroup con topics
-        await message.reply_text(
-            text="🤔 <b>Questo sembra un ordine ma non vedo il metodo di pagamento</b>\n\nHai specificato come pagherai?",
-            reply_markup=reply_markup,
-            parse_mode='HTML',
-            reply_to_message_id=message.message_id  # Risponde al messaggio originale
-        )
+        # CORREZIONE: Specifica message_thread_id per gruppi di discussione
+        reply_kwargs = {
+            "text": "🤔 <b>Questo sembra un ordine ma non vedo il metodo di pagamento</b>\n\nHai specificato come pagherai?",
+            "reply_markup": reply_markup,
+            "parse_mode": 'HTML'
+        }
+
+        # Se il messaggio ha un message_thread_id (gruppo di discussione), lo specifichiamo
+        if hasattr(message, 'message_thread_id') and message.message_thread_id:
+            reply_kwargs['message_thread_id'] = message.message_thread_id
+            logger.info(f"📌 Rispondo nel thread: {message.message_thread_id}")
+
+        await message.reply_text(**reply_kwargs)
         logger.info("✅ Pulsanti avviso inviati con successo")
     except Exception as e:
         logger.error(f"❌ Errore invio pulsanti: {e}")
@@ -856,18 +861,3 @@ logger.info("🌐 Flask app pronta")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
-
-# Salva il file
-with open('main.py', 'w', encoding='utf-8') as f:
-    f.write(code)
-
-print("✅ File main.py CORRETTO generato!")
-print("")
-print("🔧 CORREZIONI APPLICATE:")
-print("   1. ✅ Oggetto Flask 'app' presente")
-print("   2. ✅ Gestione message_thread_id per gruppi di discussione")
-print("")
-print("📋 Come funziona:")
-print("   • Nei gruppi di discussione, il bot specifica il thread corretto")
-print("   • Risolve l'errore 'Channel direct messages topic must be specified'")
-print("   • Mantiene tutte le funzionalità precedenti")
