@@ -12,10 +12,7 @@ from difflib import SequenceMatcher
 import asyncio
 from threading import Thread
 
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -26,15 +23,10 @@ PORT = int(os.environ.get('PORT', 10000))
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
 ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
-
 PASTE_URL = "https://justpaste.it/faq_4all"
 FUZZY_THRESHOLD = 0.6
 
-PAYMENT_KEYWORDS = [
-    "contanti", "carta", "bancomat", "bonifico", "paypal",
-    "satispay", "postepay", "pos", "wallet", "ricarica",
-    "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc"
-]
+PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc"]
 
 app = Flask(__name__)
 bot_application = None
@@ -46,19 +38,15 @@ def fetch_markdown_from_html(url: str) -> str:
     soup = BeautifulSoup(r.text, "html.parser")
     content = soup.select_one("#articleContent")
     if content is None:
-        raise RuntimeError("Contenuto principale non trovato")
-    text = content.get_text("\n")
-    return text.strip()
+        raise RuntimeError("Contenuto non trovato")
+    return content.get_text("\n").strip()
 
 def parse_faq(markdown: str) -> list:
     pattern = r"^##\s+(.*?)\n(.*?)(?=\n##\s+|\Z)"
     matches = re.findall(pattern, markdown, flags=re.S | re.M)
     if not matches:
         raise RuntimeError("Formato non valido")
-    faq = []
-    for domanda, risposta in matches:
-        faq.append({"domanda": domanda.strip(), "risposta": risposta.strip()})
-    return faq
+    return [{"domanda": d.strip(), "risposta": r.strip()} for d, r in matches]
 
 def write_faq_json(faq: list, filename: str):
     with open(filename, "w", encoding="utf-8") as f:
@@ -69,7 +57,7 @@ def update_faq_from_web():
         markdown = fetch_markdown_from_html(PASTE_URL)
         faq = parse_faq(markdown)
         write_faq_json(faq, FAQ_FILE)
-        logger.info(f"FAQ aggiornate: {len(faq)} domande")
+        logger.info(f"FAQ aggiornate: {len(faq)}")
         return True
     except Exception as e:
         logger.error(f"Errore FAQ: {e}")
@@ -182,36 +170,36 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.args[0] == load_access_code():
             was_new = authorize_user(user_id, user.first_name, user.last_name, user.username)
             if was_new:
-                await update.message.reply_text("✅ Autorizzato! Usa /help per le FAQ.")
+                await update.message.reply_text("✅ Autorizzato! Usa /help")
                 if ADMIN_CHAT_ID:
                     try:
-                        await context.bot.send_message(ADMIN_CHAT_ID, f"✅ Nuovo utente: {user.first_name} (@{user.username or 'N/A'})", parse_mode='HTML')
+                        await context.bot.send_message(ADMIN_CHAT_ID, f"✅ Nuovo: {user.first_name}")
                     except:
                         pass
             else:
                 await update.message.reply_text("✅ Già autorizzato!")
             return
         else:
-            await update.message.reply_text("❌ Codice non valido.")
+            await update.message.reply_text("❌ Codice non valido")
             return
 
     if is_user_authorized(user_id):
-        await update.message.reply_text(f"👋 Ciao {user.first_name}! Scrivi la tua domanda o usa /help.")
+        await update.message.reply_text(f"👋 Ciao {user.first_name}! Usa /help")
     else:
-        await update.message.reply_text("❌ Non autorizzato. Contatta l'admin.")
+        await update.message.reply_text("❌ Non autorizzato")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_user_authorized(update.effective_user.id):
-        await update.message.reply_text("❌ Non autorizzato.")
+        await update.message.reply_text("❌ Non autorizzato")
         return
 
     faq_data = load_faq()
     faq_list = faq_data.get("faq", []) if faq_data else []
     if not faq_list:
-        await update.message.reply_text("❌ Nessuna FAQ disponibile.")
+        await update.message.reply_text("❌ Nessuna FAQ")
         return
 
-    text = "📚 <b>FAQ disponibili:</b>\n\n"
+    text = "📚 <b>FAQ:</b>\n\n"
     for i, item in enumerate(faq_list, 1):
         text += f"{i}. {item['domanda']}\n"
     text += "\n💡 Scrivi anche con errori!"
@@ -219,15 +207,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Solo admin.")
+        await update.message.reply_text("❌ Solo admin")
         return
 
     link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
-    await update.message.reply_text(f"🔗 Link:\n<code>{link}</code>\n\n👥 Autorizzati: {len(load_authorized_users())}", parse_mode='HTML')
+    await update.message.reply_text(f"🔗 <code>{link}</code>\n\n👥 Autorizzati: {len(load_authorized_users())}", parse_mode='HTML')
 
 async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Solo admin.")
+        await update.message.reply_text("❌ Solo admin")
         return
 
     new_code = secrets.token_urlsafe(12)
@@ -237,26 +225,29 @@ async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Solo admin.")
+        await update.message.reply_text("❌ Solo admin")
         return
 
     users = load_authorized_users()
     if not users:
-        await update.message.reply_text("📋 Nessuno autorizzato.")
+        await update.message.reply_text("📋 Nessuno")
         return
 
     msg = f"👥 <b>Autorizzati ({len(users)}):</b>\n\n"
     for i, (uid, data) in enumerate(users.items(), 1):
-        msg += f"{i}. {data.get('name')} (@{data.get('username') or 'N/A'}) - <code>{data.get('id')}</code>\n"
+        name = data.get('name', 'N/A')
+        username = data.get('username', 'N/A')
+        user_id_val = data.get('id', uid)
+        msg += f"{i}. {name} (@{username}) - {user_id_val}\n"
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Solo admin.")
+        await update.message.reply_text("❌ Solo admin")
         return
 
     if not context.args:
-        await update.message.reply_text("❌ Uso: /revoca <chat_id>")
+        await update.message.reply_text("❌ Uso: /revoca (ID)")
         return
 
     try:
@@ -265,35 +256,23 @@ async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if target_id in users:
             del users[target_id]
             save_authorized_users(users)
-            await update.message.reply_text(f"✅ Utente {target_id} rimosso.")
+            await update.message.reply_text(f"✅ Rimosso {target_id}")
         else:
-            await update.message.reply_text(f"❌ Utente {target_id} non trovato.")
+            await update.message.reply_text(f"❌ Non trovato {target_id}")
     except:
-        await update.message.reply_text("❌ ID non valido.")
+        await update.message.reply_text("❌ ID non valido")
 
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Solo admin.")
+        await update.message.reply_text("❌ Solo admin")
         return
 
-    msg = (
-        "👑 <b>Comandi Admin:</b>\n\n"
-        "🔐 Accessi:\n"
-        "• /genera_link\n"
-        "• /cambia_codice\n"
-        "• /lista_autorizzati\n"
-        "• /revoca <id>\n\n"
-        "📚 FAQ:\n"
-        "• /aggiorna_faq\n\n"
-        "👤 Utente:\n"
-        "• /start\n"
-        "• /help"
-    )
+    msg = "👑 <b>Comandi Admin:</b>\n\n🔐 Accessi:\n• /genera_link\n• /cambia_codice\n• /lista_autorizzati\n• /revoca (ID)\n\n📚 FAQ:\n• /aggiorna_faq\n\n👤 Utente:\n• /start\n• /help"
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
-        await update.message.reply_text("❌ Solo admin.")
+        await update.message.reply_text("❌ Solo admin")
         return
 
     await update.message.reply_text("⏳ Aggiorno FAQ...")
@@ -301,17 +280,17 @@ async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYP
         faq_list = load_faq().get("faq", [])
         await update.message.reply_text(f"✅ <b>FAQ aggiornate!</b>\n\n📊 Totale: {len(faq_list)}", parse_mode="HTML")
     else:
-        await update.message.reply_text("❌ Errore aggiornamento FAQ.")
+        await update.message.reply_text("❌ Errore aggiornamento")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_user_authorized(user.id):
-        await update.message.reply_text("❌ Non autorizzato.")
+        await update.message.reply_text("❌ Non autorizzato")
         return
 
     faq = load_faq()
     if not faq:
-        await update.message.reply_text("❌ Nessuna FAQ.")
+        await update.message.reply_text("❌ Nessuna FAQ")
         return
 
     result = fuzzy_search_faq(update.message.text, faq.get("faq", []))
@@ -323,7 +302,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             resp += f"\n\n<i>Confidenza: {result['score']:.0%}</i>"
         await update.message.reply_text(resp, parse_mode='HTML')
     else:
-        await update.message.reply_text(f"❓ Nessuna risposta trovata. Usa /help", parse_mode='HTML')
+        await update.message.reply_text("❓ Nessuna risposta. Usa /help", parse_mode='HTML')
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message or update.channel_post
@@ -344,7 +323,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     try:
         kwargs = {
             "chat_id": message.chat.id,
-            "text": "🤔 <b>Ordine senza metodo di pagamento?</b>\n\nHai specificato come pagherai?",
+            "text": "🤔 <b>Ordine senza pagamento?</b>\n\nHai specificato come pagherai?",
             "reply_markup": InlineKeyboardMarkup(keyboard),
             "parse_mode": "HTML"
         }
@@ -363,7 +342,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("payment_ok_"):
         await query.edit_message_text(f"✅ Confermato da {query.from_user.first_name}!", parse_mode="HTML")
     elif query.data.startswith("payment_no_"):
-        await query.edit_message_text(f"💡 Specifica il metodo: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
+        await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
 
 def initialize_bot_sync():
     global bot_application, bot_initialized
@@ -371,44 +350,44 @@ def initialize_bot_sync():
         return
 
     try:
-        logger.info("📡 Inizializzazione bot...")
+        logger.info("📡 Inizializzazione...")
         if update_faq_from_web():
             logger.info("✅ FAQ aggiornate")
 
         async def setup():
             global bot_application
-            app = Application.builder().token(BOT_TOKEN).updater(None).build()
-            bot = await app.bot.get_me()
+            application = Application.builder().token(BOT_TOKEN).updater(None).build()
+            bot = await application.bot.get_me()
             get_bot_username.username = bot.username
-            logger.info(f"Bot username: @{bot.username}")
+            logger.info(f"Bot: @{bot.username}")
 
-            app.add_handler(CommandHandler("start", start))
-            app.add_handler(CommandHandler("help", help_command))
-            app.add_handler(CommandHandler("genera_link", genera_link_command))
-            app.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
-            app.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
-            app.add_handler(CommandHandler("revoca", revoca_command))
-            app.add_handler(CommandHandler("admin_help", admin_help_command))
-            app.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
-            app.add_handler(CallbackQueryHandler(handle_callback_query))
-            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message))
-            app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_group_message))
-            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
+            application.add_handler(CommandHandler("start", start))
+            application.add_handler(CommandHandler("help", help_command))
+            application.add_handler(CommandHandler("genera_link", genera_link_command))
+            application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
+            application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
+            application.add_handler(CommandHandler("revoca", revoca_command))
+            application.add_handler(CommandHandler("admin_help", admin_help_command))
+            application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
+            application.add_handler(CallbackQueryHandler(handle_callback_query))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message))
+            application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_group_message))
+            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
             if WEBHOOK_URL:
-                await app.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+                await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
                 logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
 
-            await app.initialize()
-            await app.start()
+            await application.initialize()
+            await application.start()
             logger.info("🤖 Bot pronto!")
-            return app
+            return application
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         bot_application = loop.run_until_complete(setup())
         bot_initialized = True
-        logger.info("✅ Inizializzazione completata")
+        logger.info("✅ Completato")
     except Exception as e:
         logger.error(f"❌ Errore: {e}")
         import traceback
@@ -444,12 +423,12 @@ def health():
 def start_bot_thread():
     if BOT_TOKEN and ADMIN_CHAT_ID:
         Thread(target=initialize_bot_sync, daemon=True).start()
-        logger.info("🚀 Thread bot avviato")
+        logger.info("🚀 Thread avviato")
     else:
-        logger.error("❌ BOT_TOKEN o ADMIN_CHAT_ID mancanti")
+        logger.error("❌ Token/Admin mancanti")
 
 start_bot_thread()
-logger.info("🌐 Flask app pronta")
+logger.info("🌐 Flask pronta")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
