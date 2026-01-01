@@ -1,5 +1,5 @@
 python-telegram-bot==20.7
 flask==3.0.0
 beautifulsoup4==4.12.3
-httpx==0.24.1
+httpx>=0.25.2,<0.26
 gunicorn==21.2.0
