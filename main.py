@@ -379,7 +379,7 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     "• /start\n"
     "• /help\n"
     "• /lista\n\n"
-)
+   )
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
