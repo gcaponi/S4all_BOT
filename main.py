@@ -701,11 +701,13 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             "reply_to_message_id": message.message_id,
         }
 
-        # CORREZIONE: Passiamo SEMPRE message_thread_id se esiste (anche se None)
-        # Questo risolve l'errore nei gruppi di discussione collegati a canali
-        if hasattr(message, "message_thread_id"):
+        # CORREZIONE: Passiamo message_thread_id SOLO se ha un valore valido (non None)
+        # Nei gruppi di discussione collegati a canali, None non è accettato da Telegram
+        if hasattr(message, "message_thread_id") and message.message_thread_id is not None:
             send_kwargs["message_thread_id"] = message.message_thread_id
-            logger.info(f"📌 message_thread_id presente: {message.message_thread_id}")
+            logger.info(f"📌 message_thread_id valido: {message.message_thread_id}")
+        else:
+            logger.info("📌 message_thread_id è None o assente, non lo passo")
 
         await context.bot.send_message(**send_kwargs)
         logger.info("✅ Pulsanti avviso inviati con successo.")
