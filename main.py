@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # main.py - Bot Telegram con ricerca FAQ fuzzy e ricerca "lista" da justpaste.it
-# Ottimizzato per deploy (non esegue app.run() automaticamente; usa wsgi.py con Gunicorn)
+# Ottimizzato: inizializzazione idempotente, webhook robusto, pronto per Gunicorn+wsgi.py
 
 import os
 import json
 import logging
-import signal
 import asyncio
 import secrets
 import re
+import threading
 from threading import Thread
+from typing import Optional
 
 from flask import Flask, request
 
@@ -33,15 +34,18 @@ from telegram.ext import (
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("main")
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 try:
     ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "0"))
-except:
+except Exception:
     ADMIN_CHAT_ID = 0
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").strip()
-PORT = int(os.environ.get("PORT", 10000))
+try:
+    PORT = int(os.environ.get("PORT", "10000"))
+except Exception:
+    PORT = 10000
 
 AUTHORIZED_USERS_FILE = "authorized_users.json"
 ACCESS_CODE_FILE = "access_code.json"
@@ -64,9 +68,14 @@ PAYMENT_KEYWORDS = [
 app = Flask(__name__)
 
 # Bot application (initialized later)
-bot_application: Application | None = None
+bot_application: Optional[Application] = None
 bot_initialized = False
-BOT_LOOP: asyncio.AbstractEventLoop | None = None
+BOT_LOOP: Optional[asyncio.AbstractEventLoop] = None
+
+# Guardia per inizializzazione (idempotente/thread-safe)
+_INIT_LOCK = threading.Lock()
+_bot_thread: Optional[Thread] = None
+_bot_thread_started_for_pid: Optional[int] = None
 
 # -----------------------
 # Utility: file I/O JSON
@@ -496,41 +505,41 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             logger.exception("Errore edit message callback")
 
 # -----------------------
-# Startup / initialization
+# Startup / initialization (idempotente)
 # -----------------------
-def signal_handler(signum, frame):
-    logger.info("Segnale ricevuto: %s. Arresto in corso...", signum)
-    shutdown_bot()
-    os._exit(0)
-
-def shutdown_bot():
-    global bot_application, BOT_LOOP
-    if bot_application and BOT_LOOP:
-        async def stop_app():
-            try:
-                await bot_application.stop()
-                await bot_application.shutdown()
-            except Exception:
-                logger.exception("Errore durante shutdown bot")
-        try:
-            BOT_LOOP.run_until_complete(stop_app())
-        except Exception:
-            logger.exception("Errore fermando loop")
-        try:
-            BOT_LOOP.stop()
-        except Exception:
-            pass
+def _is_main_thread():
+    return threading.current_thread() == threading.main_thread()
 
 def start_bot_thread():
-    t = Thread(target=initialize_bot_sync, daemon=True)
-    t.start()
+    """
+    Avvia il thread che inizializza l'event loop del bot.
+    Idempotente: non avvia più thread se già avviato per lo stesso PID.
+    """
+    global _bot_thread, _bot_thread_started_for_pid
+    with _INIT_LOCK:
+        current_pid = os.getpid()
+        if _bot_thread and _bot_thread.is_alive() and _bot_thread_started_for_pid == current_pid:
+            logger.info("start_bot_thread: già avviato per pid %s", current_pid)
+            return
+        logger.info("start_bot_thread: avvio thread bot per pid %s", current_pid)
+        _bot_thread = Thread(target=initialize_bot_sync, daemon=True, name="bot-init-thread")
+        _bot_thread.start()
+        _bot_thread_started_for_pid = current_pid
 
 def initialize_bot_sync():
+    """
+    Funzione che crea un nuovo event loop nel thread e avvia l'Application.
+    Non registra signal handlers (vanno gestiti dal processo principale / Gunicorn).
+    """
     global bot_application, bot_initialized, BOT_LOOP
-    if bot_initialized:
-        return
+    with _INIT_LOCK:
+        if bot_initialized:
+            logger.info("initialize_bot_sync: bot già inizializzato; esco")
+            return
+        logger.info("initialize_bot_sync: inizio inizializzazione bot (thread=%s, pid=%s)",
+                    threading.current_thread().name, os.getpid())
+
     try:
-        logger.info("Inizializzazione bot...")
         loop = asyncio.new_event_loop()
         BOT_LOOP = loop
         asyncio.set_event_loop(loop)
@@ -539,6 +548,7 @@ def initialize_bot_sync():
             global bot_application
             application = Application.builder().token(BOT_TOKEN).build()
 
+            # register handlers
             application.add_handler(CommandHandler("start", start))
             application.add_handler(CommandHandler("help", help_command))
             application.add_handler(CommandHandler("genera_link", genera_link_command))
@@ -551,6 +561,7 @@ def initialize_bot_sync():
             application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
             application.add_handler(CallbackQueryHandler(handle_callback_query))
 
+            # message handlers: group/channel and private
             application.add_handler(
                 MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message)
             )
@@ -565,10 +576,12 @@ def initialize_bot_sync():
             await application.start()
             bot_application = application
             me = await application.bot.get_me()
-            logger.info("Bot avviato: @%s", me.username)
+            logger.info("Application.started -> Bot avviato: @%s (id=%s)", me.username, me.id)
 
+            # set webhook only if WEBHOOK_URL configured
             if WEBHOOK_URL:
                 try:
+                    # ensure webhook only set once (idempotent)
                     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
                     logger.info("Webhook impostato: %s/webhook", WEBHOOK_URL)
                 except Exception:
@@ -576,13 +589,14 @@ def initialize_bot_sync():
 
             return application
 
+        # run the setup_and_start in this thread's loop
         bot_application = loop.run_until_complete(setup_and_start())
-        bot_initialized = True
+        with _INIT_LOCK:
+            bot_initialized = True
 
-      ##  signal.signal(signal.SIGINT, signal_handler)
-      ##  signal.signal(signal.SIGTERM, signal_handler)
+        logger.info("initialize_bot_sync: inizializzazione completata (thread=%s)", threading.current_thread().name)
 
-        logger.info("Inizializzazione completata")
+        # prefetch lista and faq once at startup (non bloccante for loop)
         try:
             loop.run_until_complete(fetch_lista_async())
         except Exception:
@@ -592,8 +606,22 @@ def initialize_bot_sync():
         except Exception:
             logger.exception("Errore fetching faq iniziale")
 
+        # keep loop running in this thread; the Application's start() already started background tasks
+        # we do not call loop.run_forever() here; the thread will keep the loop alive because Application uses it.
+        # However, to keep the event loop alive in some environments we can run a minimal sleep loop.
+        # run a background coroutine that prevents loop from closing until process exits
+        async def _keep_loop_alive():
+            while True:
+                await asyncio.sleep(3600)
+
+        try:
+            loop.create_task(_keep_loop_alive())
+        except Exception:
+            logger.exception("Errore scheduling keep-alive task")
+
     except Exception:
         logger.exception("Errore initialize_bot_sync")
+        # leave bot_initialized False so a subsequent start attempt can retry
 
 # -----------------------
 # Flask routes for webhook & health
@@ -608,23 +636,29 @@ def health():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    """
+    Webhook handler robusto:
+    - se bot non pronto -> 503
+    - inoltra update al bot loop (BOT_LOOP) con run_coroutine_threadsafe
+    - timeout controllato, logging esteso
+    """
     global bot_initialized, bot_application, BOT_LOOP
-    if not bot_initialized:
-        initialize_bot_sync()
-    if not bot_application or not BOT_LOOP:
+    if not bot_initialized or not bot_application or not BOT_LOOP:
+        logger.warning("Webhook ricevuto ma bot non pronto (initialized=%s, app=%s, loop=%s)",
+                       bot_initialized, bool(bot_application), bool(BOT_LOOP))
         return "Bot not ready", 503
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, bot_application.bot)
+        logger.info("Webhook update ricevuto: type=%s chat=%s", type(update).__name__, getattr(update, "effective_chat", None))
         fut = asyncio.run_coroutine_threadsafe(bot_application.process_update(update), BOT_LOOP)
-        fut.result(timeout=30)
+        logger.debug("Inoltro update al bot loop")
+        # timeout increased for debug; in produzione si può ridurre
+        fut.result(timeout=60)
+        logger.debug("Update processato correttamente")
         return "OK", 200
     except Exception:
         logger.exception("Errore webhook processing")
         return "ERROR", 500
 
-# Note: per deploy con Gunicorn/Wsgi, non avviare app.run() qui.
-# Se vuoi eseguire localmente direttamente, puoi decommentare il blocco seguente:
-# if __name__ == "__main__":
-#     start_bot_thread()
-#     app.run(host="0.0.0.0", port=PORT, debug=False)
+# End of main.py
