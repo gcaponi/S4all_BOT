@@ -26,8 +26,7 @@ FAQ_FILE = 'faq.json'
 PASTE_URL = "https://justpaste.it/faq_4all"
 FUZZY_THRESHOLD = 0.6
 
-# Lista aggiornata metodi di pagamento
-PAYMENT_KEYWORDS = ["bonifico bancario", "usdt", "xmr", "btc", "eth", "usdc"]
+PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc"]
 
 app = Flask(__name__)
 bot_application = None
@@ -200,11 +199,34 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Nessuna FAQ")
         return
 
-    text = "📚 <b>FAQ:</b>\n\n"
-    for i, item in enumerate(faq_list, 1):
-        text += f"{i}. {item['domanda']}\n"
-    text += "\n💡 Scrivi anche con errori!"
-    await update.message.reply_text(text, parse_mode='HTML')
+    # STAMPA TUTTO IL CONTENUTO FAQ
+    full_text = "🗒️Ciao! Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: tempi di spedizione, metodi di pagamento come ordinare ecc. 🗒️\n\n"
+    full_text += "📍NOTA BENE: la qualità è la priorità principale, i vari brand sono selezionati direttamente tra i migliori sul mercato, se cerchi prodotti scadenti ed economici non acquistare qui!\n\n"
+    full_text += "🔴🔴Se vuoi puoi lasciarmi la tua Email per essere avvertito in caso di cambio contatto Telegram {tra qualche mese mi sposto su una nuova piattaforma per la sicurezza di tutti} e per essere avvertito all' arrivo dei prodotti terminati o prodotti nuovi e promozioni🔴🔴\n\n"
+
+    for item in faq_list:
+        full_text += f"## {item['domanda']}\n{item['risposta']}\n\n"
+
+    full_text += "💡 Scrivi anche con errori!"
+
+    # Dividi in messaggi se troppo lungo
+    max_length = 4000
+    if len(full_text) <= max_length:
+        await update.message.reply_text(full_text)
+    else:
+        parts = []
+        current = ""
+        for line in full_text.split("\n"):
+            if len(current) + len(line) + 1 > max_length:
+                parts.append(current)
+                current = line + "\n"
+            else:
+                current += line + "\n"
+        if current:
+            parts.append(current)
+
+        for part in parts:
+            await update.message.reply_text(part)
 
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
@@ -343,7 +365,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("payment_ok_"):
         await query.edit_message_text(f"✅ Confermato da {query.from_user.first_name}!", parse_mode="HTML")
     elif query.data.startswith("payment_no_"):
-        await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS)}", parse_mode="HTML")
+        await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
 
 def initialize_bot_sync():
     global bot_application, bot_initialized
@@ -433,3 +455,5 @@ logger.info("🌐 Flask pronta")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
+
+# End of main.py
