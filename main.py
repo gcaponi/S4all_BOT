@@ -23,6 +23,8 @@ PORT = int(os.environ.get('PORT', 10000))
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
 ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
+LISTA_URL = "https://justpaste.it/lista_4all"
+LISTA_FILE = "lista.txt"
 PASTE_URL = "https://justpaste.it/faq_4all"
 FUZZY_THRESHOLD = 0.6
 
@@ -63,6 +65,32 @@ def update_faq_from_web():
         logger.error(f"Errore FAQ: {e}")
         return False
 
+# -----------------------
+# Lista (justpaste.it/lista_4all)
+# -----------------------
+def update_lista_from_web():
+    try:
+        r = requests.get(LISTA_URL, timeout=10)
+        r.raise_for_status()
+        text = r.text.strip()
+        with open(LISTA_FILE, "w", encoding="utf-8") as f:
+            f.write(text)
+        logger.info("Lista aggiornata correttamente")
+        return True
+    except Exception as e:
+        logger.error(f"Errore aggiornamento lista: {e}")
+        return False
+
+def load_lista():
+    try:
+        with open(LISTA_FILE, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+# -----------------------
+# Utility: file I/O JSON
+# -----------------------
 def load_json_file(filename, default=None):
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -162,8 +190,13 @@ def has_payment_method(text: str) -> bool:
 def looks_like_order(text: str) -> bool:
     return bool(re.search(r'\d', text)) and len(text) >= 5
 
+# -----------------------
+# Handlers: commands & messages
+# -----------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
+    if user is None:
+        return
     user_id = user.id
 
     if context.args:
@@ -174,8 +207,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if ADMIN_CHAT_ID:
                     try:
                         await context.bot.send_message(ADMIN_CHAT_ID, f"✅ Nuovo: {user.first_name}")
-                    except:
-                        pass
+                    except Exception:
+                        logger.exception("Invio notifica admin fallito")
             else:
                 await update.message.reply_text("✅ Già autorizzato!")
             return
@@ -228,8 +261,47 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for part in parts:
             await update.message.reply_text(part)
 
+# -----------------------
+# /lista (tutti gli utenti)
+# -----------------------
+async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Comando disponibile a tutti (no autorizzazione richiesta)
+    try:
+        # Aggiorniamo la lista da web per avere sempre la versione più recente
+        update_lista_from_web()
+    except Exception:
+        logger.exception("Errore aggiornamento lista (ignorato)")
+
+    lista_text = load_lista()
+    if not lista_text:
+        await update.message.reply_text("❌ Lista non disponibile")
+        return
+
+    max_len = 4000
+    # Invia la lista a pezzi se troppo lunga
+    for i in range(0, len(lista_text), max_len):
+        await update.message.reply_text(lista_text[i:i+max_len])
+
+# -----------------------
+# /aggiorna_lista (solo admin)
+# -----------------------
+async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo admin")
+        return
+
+    await update.message.reply_text("⏳ Aggiorno lista...")
+    ok = update_lista_from_web()
+    if ok:
+        await update.message.reply_text("✅ Lista aggiornata!")
+    else:
+        await update.message.reply_text("❌ Errore aggiornamento lista")
+
+# -----------------------
+# Altri comandi admin e gestione FAQ (esistenti)
+# -----------------------
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
         return
 
@@ -237,7 +309,7 @@ async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(f"🔗 <code>{link}</code>\n\n👥 Autorizzati: {len(load_authorized_users())}", parse_mode='HTML')
 
 async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
         return
 
@@ -247,7 +319,7 @@ async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(f"✅ Nuovo link:\n<code>{link}</code>", parse_mode='HTML')
 
 async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
         return
 
@@ -265,7 +337,7 @@ async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAUL
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
         return
 
@@ -286,15 +358,15 @@ async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ ID non valido")
 
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
         return
 
-    msg = "👑 <b>Comandi Admin:</b>\n\n🔐 Accessi:\n• /genera_link\n• /cambia_codice\n• /lista_autorizzati\n• /revoca (ID)\n\n📚 FAQ:\n• /aggiorna_faq\n\n👤 Utente:\n• /start\n• /help"
+    msg = "👑 <b>Comandi Admin:</b>\n\n🔐 Accessi:\n• /genera_link\n• /cambia_codice\n• /lista_autorizzati\n• /revoca (ID)\n\n📚 FAQ:\n• /aggiorna_faq\n• /aggiorna_lista\n\n👤 Utente:\n• /start\n• /help"
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
         return
 
@@ -307,7 +379,7 @@ async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if not is_user_authorized(user.id):
+    if user is None or not is_user_authorized(user.id):
         await update.message.reply_text("❌ Non autorizzato")
         return
 
@@ -367,6 +439,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data.startswith("payment_no_"):
         await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
 
+# -----------------------
+# Startup / initialization (idempotente)
+# -----------------------
 def initialize_bot_sync():
     global bot_application, bot_initialized
     if bot_initialized:
@@ -374,8 +449,16 @@ def initialize_bot_sync():
 
     try:
         logger.info("📡 Inizializzazione...")
-        if update_faq_from_web():
-            logger.info("✅ FAQ aggiornate")
+        # prefetch FAQ e Lista
+        try:
+            if update_faq_from_web():
+                logger.info("✅ FAQ aggiornate")
+        except Exception:
+            logger.exception("Errore update FAQ iniziale (ignorato)")
+        try:
+            update_lista_from_web()
+        except Exception:
+            logger.exception("Errore update LISTA iniziale (ignorato)")
 
         async def setup():
             global bot_application
@@ -384,6 +467,7 @@ def initialize_bot_sync():
             get_bot_username.username = bot.username
             logger.info(f"Bot: @{bot.username}")
 
+            # Command handlers
             application.add_handler(CommandHandler("start", start))
             application.add_handler(CommandHandler("help", help_command))
             application.add_handler(CommandHandler("genera_link", genera_link_command))
@@ -392,6 +476,10 @@ def initialize_bot_sync():
             application.add_handler(CommandHandler("revoca", revoca_command))
             application.add_handler(CommandHandler("admin_help", admin_help_command))
             application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
+            # NEW handlers for lista
+            application.add_handler(CommandHandler("lista", lista_command))
+            application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
+
             application.add_handler(CallbackQueryHandler(handle_callback_query))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message))
             application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_group_message))
@@ -444,7 +532,7 @@ def health():
     return "OK", 200
 
 def start_bot_thread():
-    if BOT_TOKEN and ADMIN_CHAT_ID:
+    if BOT_TOKEN and ADMIN_CHAT_ID is not None:
         Thread(target=initialize_bot_sync, daemon=True).start()
         logger.info("🚀 Thread avviato")
     else:
