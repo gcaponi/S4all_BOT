@@ -519,7 +519,7 @@ async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAUL
         msg += f"   👤 Username: {user_str}\n"
         msg += f"   🔢 ID: <code>{uid_real}</code>\n\n"
 
-    msg += "💡 Usa /revoca <chat_id> per rimuovere un utente."
+    msg += "💡 Usa /revoca <code>chat_id</code> per rimuovere un utente."
     await update.message.reply_text(msg, parse_mode="HTML")
 
 
