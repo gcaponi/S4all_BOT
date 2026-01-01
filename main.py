@@ -26,7 +26,7 @@ FAQ_FILE = 'faq.json'
 PASTE_URL = "https://justpaste.it/faq_4all"
 FUZZY_THRESHOLD = 0.6
 
-PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc"]
+PAYMENT_KEYWORDS = ["Bonifico Bancario", "USDT", "XMR", "BTC", "ETH", "USDC"]
 
 app = Flask(__name__)
 bot_application = None
