@@ -818,10 +818,11 @@ def initialize_bot_sync():
             application.add_handler(CommandHandler("revoca", revoca_command))
             application.add_handler(CommandHandler("admin_help", admin_help_command))
 
-            # MESSAGGI PRIVATI → FAQ
+            # MESSAGGI TESTUALI → FAQ (privati + gruppo discussione)
             application.add_handler(
                 MessageHandler(
-                    filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+                    filters.TEXT & ~filters.COMMAND
+                    & (filters.ChatType.PRIVATE | filters.ChatType.GROUP | filters.ChatType.SUPERGROUP),
                     handle_message,
                 )
             )
