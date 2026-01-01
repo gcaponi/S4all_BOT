@@ -366,20 +366,20 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Solo admin")
         return
 
-   msg = (
-    "👑 <b>Comandi Admin:</b>\n\n"
-    "🔐 Accessi:\n"
-    "• /genera_link\n"
-    "• /cambia_codice\n"
-    "• /lista_autorizzati\n"
-    "• /revoca (ID)\n"
-    "• /aggiorna_faq\n"
-    "• /aggiorna_lista\n\n"
-    "👤 Utente:\n"
-    "• /start\n"
-    "• /help\n"
-    "• /lista\n\n"
-   )
+    msg = (
+        "👑 <b>Comandi Admin:</b>\n\n"
+        "🔐 Accessi:\n"
+        "• /genera_link\n"
+        "• /cambia_codice\n"
+        "• /lista_autorizzati\n"
+        "• /revoca (ID)\n"
+        "• /aggiorna_faq\n"
+        "• /aggiorna_lista\n\n"
+        "👤 Utente:\n"
+        "• /start\n"
+        "• /help\n"
+        "• /lista\n\n"
+    )
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
