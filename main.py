@@ -701,11 +701,11 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             "reply_to_message_id": message.message_id,
         }
 
-        # Se è un messaggio in un topic (forum), specifichiamo anche message_thread_id
-        # Questo è il modo corretto per gruppi di discussione collegati a canali
-        if getattr(message, "is_topic_message", False):
+        # CORREZIONE: Passiamo SEMPRE message_thread_id se esiste (anche se None)
+        # Questo risolve l'errore nei gruppi di discussione collegati a canali
+        if hasattr(message, "message_thread_id"):
             send_kwargs["message_thread_id"] = message.message_thread_id
-            logger.info(f"📌 Messaggio in topic, thread id: {message.message_thread_id}")
+            logger.info(f"📌 message_thread_id presente: {message.message_thread_id}")
 
         await context.bot.send_message(**send_kwargs)
         logger.info("✅ Pulsanti avviso inviati con successo.")
