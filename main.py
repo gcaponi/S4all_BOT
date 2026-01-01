@@ -112,7 +112,7 @@ def looks_like_order(text: str) -> bool:
     """
     has_numbers = bool(re.search(r"\d+", text))
     has_currency = bool(re.search(r"[€$£¥₿]", text))
-    is_long_enough = len(text) >= 10
+    is_long_enough = len(text) >= 5
     return (has_numbers or has_currency) and is_long_enough
 
 
