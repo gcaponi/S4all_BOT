@@ -44,24 +44,15 @@ PORT = int(os.environ.get("PORT", 10000))
 # METODI DI PAGAMENTO
 # ====
 PAYMENT_KEYWORDS = [
-    "contanti",
-    "carta",
-    "bancomat",
-    "bonifico",
-    "paypal",
-    "satispay",
-    "postepay",
-    "pos",
-    "wallet",
-    "ricarica",
-    "usdt",
+    "Bonifico",
+    "USDT",
     "crypto",
     "cripto",
     "bitcoin",
-    "bit",
-    "btc",
-    "eth",
-    "usdc",
+    "XMR",
+    "BTC",
+    "ETH",
+    "USDC",
 ]
 
 # ====
