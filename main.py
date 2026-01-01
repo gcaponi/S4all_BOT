@@ -689,7 +689,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
-        # Usiamo send_message per controllare TUTTI i parametri:
+        # Preparo i parametri base
         send_kwargs = {
             "chat_id": chat.id,
             "text": (
@@ -698,16 +698,19 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             ),
             "reply_markup": reply_markup,
             "parse_mode": "HTML",
-            "reply_to_message_id": message.message_id,
         }
 
-        # CORREZIONE: Passiamo message_thread_id SOLO se ha un valore valido (non None)
-        # Nei gruppi di discussione collegati a canali, None non è accettato da Telegram
-        if hasattr(message, "message_thread_id") and message.message_thread_id is not None:
-            send_kwargs["message_thread_id"] = message.message_thread_id
-            logger.info(f"📌 message_thread_id valido: {message.message_thread_id}")
+        thread_id = getattr(message, "message_thread_id", None)
+
+        if thread_id is not None:
+            # Se abbiamo un thread, rispondiamo dentro il thread e in reply al messaggio
+            send_kwargs["message_thread_id"] = thread_id
+            send_kwargs["reply_to_message_id"] = message.message_id
+            logger.info(f"📌 message_thread_id valido: {thread_id}")
         else:
-            logger.info("📌 message_thread_id è None o assente, non lo passo")
+            # Se NON abbiamo thread, NON passiamo né message_thread_id né reply_to_message_id
+            # (così Telegram non richiede il topic)
+            logger.info("📌 Nessun thread id: invio senza message_thread_id e senza reply_to_message_id")
 
         await context.bot.send_message(**send_kwargs)
         logger.info("✅ Pulsanti avviso inviati con successo.")
