@@ -10,7 +10,6 @@ import requests
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 import asyncio
-from threading import Thread
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,6 +32,7 @@ PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "sati
 app = Flask(__name__)
 bot_application = None
 bot_initialized = False
+initialization_lock = False
 
 def fetch_markdown_from_html(url: str) -> str:
     r = requests.get(url, timeout=10)
@@ -65,9 +65,6 @@ def update_faq_from_web():
         logger.error(f"Errore FAQ: {e}")
         return False
 
-# -----------------------
-# Lista (justpaste.it/lista_4all)
-# -----------------------
 def update_lista_from_web():
     try:
         r = requests.get(LISTA_URL, timeout=10)
@@ -92,9 +89,6 @@ def load_lista():
     except Exception:
         return ""
 
-# -----------------------
-# Utility: file I/O JSON
-# -----------------------
 def load_json_file(filename, default=None):
     try:
         with open(filename, 'r', encoding='utf-8') as f:
@@ -194,9 +188,6 @@ def has_payment_method(text: str) -> bool:
 def looks_like_order(text: str) -> bool:
     return bool(re.search(r'\d', text)) and len(text) >= 5
 
-# -----------------------
-# Handlers: commands & messages
-# -----------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -236,7 +227,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Nessuna FAQ")
         return
 
-    # STAMPA TUTTO IL CONTENUTO FAQ
     full_text = "🗒️Ciao! Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: tempi di spedizione, metodi di pagamento come ordinare ecc. 🗒️\n\n"
     full_text += "📍NOTA BENE: la qualità è la priorità principale, i vari brand sono selezionati direttamente tra i migliori sul mercato, se cerchi prodotti scadenti ed economici non acquistare qui!\n\n"
     full_text += "🔴🔴Se vuoi puoi lasciarmi la tua Email per essere avvertito in caso di cambio contatto Telegram {tra qualche mese mi sposto su una nuova piattaforma per la sicurezza di tutti} e per essere avvertito all' arrivo dei prodotti terminati o prodotti nuovi e promozioni🔴🔴\n\n"
@@ -246,7 +236,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     full_text += "💡 Scrivi anche con errori!"
 
-    # Dividi in messaggi se troppo lungo
     max_length = 4000
     if len(full_text) <= max_length:
         await update.message.reply_text(full_text)
@@ -265,13 +254,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for part in parts:
             await update.message.reply_text(part)
 
-# -----------------------
-# /lista (tutti gli utenti)
-# -----------------------
 async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Comando disponibile a tutti (no autorizzazione richiesta)
     try:
-        # Aggiorniamo la lista da web per avere sempre la versione più recente
         update_lista_from_web()
     except Exception:
         logger.exception("Errore aggiornamento lista (ignorato)")
@@ -282,13 +266,9 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     max_len = 4000
-    # Invia la lista a pezzi se troppo lunga
     for i in range(0, len(lista_text), max_len):
         await update.message.reply_text(lista_text[i:i+max_len])
 
-# -----------------------
-# /aggiorna_lista (solo admin)
-# -----------------------
 async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
@@ -301,9 +281,6 @@ async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_T
     else:
         await update.message.reply_text("❌ Errore aggiornamento lista")
 
-# -----------------------
-# Altri comandi admin e gestione FAQ (esistenti)
-# -----------------------
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
@@ -456,70 +433,61 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data.startswith("payment_no_"):
         await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
 
-# -----------------------
-# Startup / initialization (idempotente)
-# -----------------------
-def initialize_bot_sync():
-    global bot_application, bot_initialized
-    if bot_initialized:
-        return
-
+async def setup_bot():
+    """Setup bot once with proper error handling"""
+    global bot_application, initialization_lock
+    
+    if initialization_lock:
+        logger.info("⏳ Inizializzazione già in corso...")
+        return None
+    
+    initialization_lock = True
+    
     try:
-        logger.info("📡 Inizializzazione...")
-        # prefetch FAQ e Lista
+        logger.info("📡 Inizializzazione bot...")
+        
+        # Prefetch FAQ e Lista (silently)
         try:
-            if update_faq_from_web():
-                logger.info("✅ FAQ aggiornate")
-        except Exception:
-            logger.exception("Errore update FAQ iniziale (ignorato)")
-        try:
+            update_faq_from_web()
             update_lista_from_web()
-        except Exception:
-            logger.exception("Errore update LISTA iniziale (ignorato)")
+        except Exception as e:
+            logger.warning(f"Prefetch warning: {e}")
+        
+        application = Application.builder().token(BOT_TOKEN).updater(None).build()
+        bot = await application.bot.get_me()
+        get_bot_username.username = bot.username
+        logger.info(f"Bot: @{bot.username}")
 
-        async def setup():
-            global bot_application
-            application = Application.builder().token(BOT_TOKEN).updater(None).build()
-            bot = await application.bot.get_me()
-            get_bot_username.username = bot.username
-            logger.info(f"Bot: @{bot.username}")
+        # Add handlers
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("genera_link", genera_link_command))
+        application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
+        application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
+        application.add_handler(CommandHandler("revoca", revoca_command))
+        application.add_handler(CommandHandler("admin_help", admin_help_command))
+        application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
+        application.add_handler(CommandHandler("lista", lista_command))
+        application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
+        application.add_handler(CallbackQueryHandler(handle_callback_query))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message))
+        application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_group_message))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
 
-            # Command handlers
-            application.add_handler(CommandHandler("start", start))
-            application.add_handler(CommandHandler("help", help_command))
-            application.add_handler(CommandHandler("genera_link", genera_link_command))
-            application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
-            application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
-            application.add_handler(CommandHandler("revoca", revoca_command))
-            application.add_handler(CommandHandler("admin_help", admin_help_command))
-            application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
-            # NEW handlers for lista
-            application.add_handler(CommandHandler("lista", lista_command))
-            application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
+        # Set webhook only if URL provided
+        if WEBHOOK_URL:
+            await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+            logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
 
-            application.add_handler(CallbackQueryHandler(handle_callback_query))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message))
-            application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_group_message))
-            application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
-
-            if WEBHOOK_URL:
-                await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-                logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
-
-            await application.initialize()
-            await application.start()
-            logger.info("🤖 Bot pronto!")
-            return application
-
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        bot_application = loop.run_until_complete(setup())
-        bot_initialized = True
-        logger.info("✅ Completato")
+        await application.initialize()
+        await application.start()
+        logger.info("🤖 Bot pronto!")
+        
+        return application
     except Exception as e:
-        logger.error(f"❌ Errore: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"❌ Setup error: {e}")
+        initialization_lock = False
+        raise
 
 @app.route('/')
 def index():
@@ -527,11 +495,22 @@ def index():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    global bot_initialized
+    global bot_application, bot_initialized
+    
+    # Initialize bot on first webhook call
     if not bot_initialized:
-        initialize_bot_sync()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            bot_application = loop.run_until_complete(setup_bot())
+            bot_initialized = True
+        except Exception as e:
+            logger.error(f"Webhook init error: {e}")
+            return "Init error", 503
+    
     if not bot_application:
         return "Bot not ready", 503
+    
     try:
         update = Update.de_json(request.get_json(force=True), bot_application.bot)
         loop = asyncio.get_event_loop()
@@ -541,24 +520,14 @@ def webhook():
         loop.run_until_complete(bot_application.process_update(update))
         return "OK", 200
     except Exception as e:
-        logger.error(f"Errore webhook: {e}")
+        logger.error(f"Webhook error: {e}")
         return "ERROR", 500
 
 @app.route('/health')
 def health():
     return "OK", 200
 
-def start_bot_thread():
-    if BOT_TOKEN and ADMIN_CHAT_ID is not None:
-        Thread(target=initialize_bot_sync, daemon=True).start()
-        logger.info("🚀 Thread avviato")
-    else:
-        logger.error("❌ Token/Admin mancanti")
-
-start_bot_thread()
-logger.info("🌐 Flask pronta")
-
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
 
-# End of main.py
+# END main.py
