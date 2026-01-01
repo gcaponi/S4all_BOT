@@ -84,23 +84,11 @@ def has_payment_method(text: str) -> bool:
 
 def looks_like_order(text: str) -> bool:
     """Controlla se il messaggio sembra un ordine (contiene numeri/prezzi)"""
-    # Cerca numeri con simboli di valuta o standalone
     has_numbers = bool(re.search(r'\d+', text))
     has_currency = bool(re.search(r'[€$£¥₿]', text))
     is_long_enough = len(text) >= 10
 
     return (has_numbers or has_currency) and is_long_enough
-
-async def is_bot_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
-    """Verifica se il bot è admin nella chat"""
-    try:
-        bot_member = await context.bot.get_chat_member(chat_id, context.bot.id)
-        is_admin = bot_member.status in ['administrator', 'creator']
-        logger.info(f"🔍 Bot admin check in chat {chat_id}: {is_admin} (status: {bot_member.status})")
-        return is_admin
-    except Exception as e:
-        logger.error(f"Errore controllo admin: {e}")
-        return False
 
 # ====
 #  FAQ FETCH FUNCTIONS
@@ -603,11 +591,10 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     logger.info(f"   Chat Title: {chat.title or 'N/A'}")
     logger.info(f"   Sender: {sender.first_name if sender else 'Channel'}")
     logger.info(f"   Text: {message.text}")
+    logger.info(f"   Message Thread ID: {message.message_thread_id}")
 
-    # NUOVA LOGICA: Accetta SEMPRE messaggi da gruppi/canali
-    # Non controlla più se il bot è admin, perché nei gruppi di discussione
-    # collegati ai canali, il bot risulta "member" ma i messaggi arrivano comunque
-    logger.info(f"✅ Procedo con l'analisi del messaggio (no controllo admin)")
+    # Analizza SEMPRE i messaggi (no controllo admin)
+    logger.info(f"✅ Procedo con l'analisi del messaggio")
 
     # Controlla se sembra un ordine
     if not looks_like_order(message.text):
@@ -616,7 +603,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     logger.info("🔍 Messaggio sembra un ordine, controllo metodo pagamento...")
 
-    # LOGICA: Se NON ha metodo pagamento, mostra pulsanti
+    # Se ha metodo pagamento, tutto OK
     if has_payment_method(message.text):
         logger.info("✅ Metodo pagamento presente - ordine OK, nessun avviso")
         return
@@ -636,18 +623,19 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
-        # CORREZIONE: Specifica message_thread_id per gruppi di discussione
+        # CORREZIONE TOPIC: Specifica message_thread_id se presente
         reply_kwargs = {
-            "text": "🤔 <b>Questo sembra un ordine ma non vedo il metodo di pagamento</b>\n\nHai specificato come pagherai?",
-            "reply_markup": reply_markup,
-            "parse_mode": 'HTML'
+            'text': "🤔 <b>Questo sembra un ordine ma non vedo il metodo di pagamento</b>\n\n"
+                   "Hai specificato come pagherai?",
+            'reply_markup': reply_markup,
+            'parse_mode': 'HTML'
         }
-        
-        # Se il messaggio ha un message_thread_id (gruppo di discussione), lo specifichiamo
-        if hasattr(message, 'message_thread_id') and message.message_thread_id:
+
+        # Se il messaggio ha un thread_id (gruppo con topic), lo specifichiamo
+        if message.message_thread_id:
             reply_kwargs['message_thread_id'] = message.message_thread_id
-            logger.info(f"📌 Rispondo nel thread: {message.message_thread_id}")
-        
+            logger.info(f"📌 Rispondo nel topic {message.message_thread_id}")
+
         await message.reply_text(**reply_kwargs)
         logger.info("✅ Pulsanti avviso inviati con successo")
     except Exception as e:
@@ -774,7 +762,7 @@ def initialize_bot_sync():
             logger.info(f"   • Metodi pagamento: {len(PAYMENT_KEYWORDS)} keywords")
             logger.info(f"   • Admin chat ID: {ADMIN_CHAT_ID}")
             logger.info("   • LOGICA: Avvisa solo se ordine SENZA metodo pagamento")
-            logger.info("   • Il bot supervisionerà TUTTI i messaggi in canali/gruppi (no controllo admin)")
+            logger.info("   • Supporto TOPIC attivato per gruppi con argomenti")
 
             return application
 
@@ -861,18 +849,3 @@ logger.info("🌐 Flask app pronta")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
-
-# Salva il file
-with open('main.py', 'w', encoding='utf-8') as f:
-    f.write(code)
-
-print("✅ File main.py CORRETTO generato!")
-print("")
-print("🔧 CORREZIONI APPLICATE:")
-print("   1. ✅ Oggetto Flask 'app' presente")
-print("   2. ✅ Gestione message_thread_id per gruppi di discussione")
-print("")
-print("📋 Come funziona:")
-print("   • Nei gruppi di discussione, il bot specifica il thread corretto")
-print("   • Risolve l'errore 'Channel direct messages topic must be specified'")
-print("   • Mantiene tutte le funzionalità precedenti")
