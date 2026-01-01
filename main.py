@@ -608,19 +608,16 @@ def health():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    global bot_initialized, bot_application
+    global bot_initialized, bot_application, BOT_LOOP
     if not bot_initialized:
         initialize_bot_sync()
-    if not bot_application:
+    if not bot_application or not BOT_LOOP:
         return "Bot not ready", 503
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, bot_application.bot)
-        loop = BOT_LOOP or asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-        fut = asyncio.run_coroutine_threadsafe(bot_application.process_update(update), loop)
-        fut.result(timeout=15)
+        fut = asyncio.run_coroutine_threadsafe(bot_application.process_update(update), BOT_LOOP)
+        fut.result(timeout=30)
         return "OK", 200
     except Exception:
         logger.exception("Errore webhook processing")
