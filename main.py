@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # main.py - Bot Telegram con ricerca FAQ fuzzy e ricerca "lista" da justpaste.it
-# Ottimizzato: inizializzazione idempotente, webhook robusto, pronto per Gunicorn+wsgi.py
+# Versione aggiornata con lista metodi pagamento personalizzata e stabilità
 
 import os
 import json
@@ -58,10 +58,9 @@ LISTA_FILE = "lista.txt"
 # threshold for fuzzy match (0..1)
 FUZZY_THRESHOLD = 0.60
 
+# Lista aggiornata metodi di pagamento come da tua richiesta
 PAYMENT_KEYWORDS = [
-    "contanti", "carta", "bancomat", "bonifico", "paypal", "satispay",
-    "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto",
-    "bitcoin", "bit", "btc", "eth", "usdc",
+    "bonifico bancario", "usdt", "xmr", "btc", "eth", "usdc"
 ]
 
 # Flask app (webhook)
