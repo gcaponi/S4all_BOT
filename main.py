@@ -72,7 +72,11 @@ def update_lista_from_web():
     try:
         r = requests.get(LISTA_URL, timeout=10)
         r.raise_for_status()
-        text = r.text.strip()
+        soup = BeautifulSoup(r.text, "html.parser")
+        content = soup.select_one("#articleContent")
+        if content is None:
+            raise RuntimeError("Contenuto lista non trovato")
+        text = content.get_text("\n").strip()
         with open(LISTA_FILE, "w", encoding="utf-8") as f:
             f.write(text)
         logger.info("Lista aggiornata correttamente")
