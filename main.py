@@ -702,15 +702,20 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         thread_id = getattr(message, "message_thread_id", None)
 
+        # Per i canali con commenti, se thread_id è None, usiamo il message_id
+        # Questo è necessario perché Telegram richiede sempre un thread nei canali
+        if thread_id is None and chat.type == "supergroup":
+            # Potrebbe essere un canale con commenti mascherato da supergroup
+            # Proviamo a usare il message_id come thread_id
+            thread_id = message.message_id
+            logger.info(f"📌 Canale/supergroup senza thread_id: uso message_id come thread: {thread_id}")
+
         if thread_id is not None:
-            # Se abbiamo un thread, rispondiamo dentro il thread e in reply al messaggio
             send_kwargs["message_thread_id"] = thread_id
             send_kwargs["reply_to_message_id"] = message.message_id
-            logger.info(f"📌 message_thread_id valido: {thread_id}")
+            logger.info(f"📌 Invio con message_thread_id: {thread_id}")
         else:
-            # Se NON abbiamo thread, NON passiamo né message_thread_id né reply_to_message_id
-            # (così Telegram non richiede il topic)
-            logger.info("📌 Nessun thread id: invio senza message_thread_id e senza reply_to_message_id")
+            logger.info("📌 Invio senza thread_id")
 
         await context.bot.send_message(**send_kwargs)
         logger.info("✅ Pulsanti avviso inviati con successo.")
