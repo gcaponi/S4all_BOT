@@ -579,8 +579,8 @@ def initialize_bot_sync():
         bot_application = loop.run_until_complete(setup_and_start())
         bot_initialized = True
 
-        signal.signal(signal.SIGINT, signal_handler)
-        signal.signal(signal.SIGTERM, signal_handler)
+      ##  signal.signal(signal.SIGINT, signal_handler)
+      ##  signal.signal(signal.SIGTERM, signal_handler)
 
         logger.info("Inizializzazione completata")
         try:
