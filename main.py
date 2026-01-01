@@ -261,19 +261,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if ADMIN_CHAT_ID:
                     admin_msg = (
-                        f"✅ <b>Nuovo utente autorizzato tramite link!</b>\n\n"
-                        f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\n"
-                        f"🆔 Username: @{user.username or 'N/A'}\n"
-                        f"🔢 Chat ID: <code>{user_id}</code>"
+                    f"✅ <b>Nuovo utente autorizzato tramite link!</b>\n\n"
+                    f"👤 Nome: {user.first_name or ''} {user.last_name or ''}\n"
+                    f"🆔 Username: @{user.username or 'N/A'}\n"
+                    f"🔢 Chat ID: <code>{user_id}</code>"
                     )
                     try:
-                        await context.bot.send_message(
-                            chat_id=ADMIN_CHAT_ID,
-                            text=admin_msg,
-                            parse_mode='HTML'
-                        )
+                    await context.bot.send_message(
+                    chat_id=ADMIN_CHAT_ID,
+                    text=admin_msg,
+                    parse_mode='HTML'
+                    )
                     except Exception as e:
-                        logger.error(f"Errore invio notifica admin: {e}")
+                    logger.error(f"Errore invio notifica admin: {e}")
             else:
                 await update.message.reply_text(
                     "✅ Sei già autorizzato!\n\n"
@@ -468,6 +468,8 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "• /cambia_codice — cambia il codice di accesso\n"
         "• /lista_autorizzati — lista utenti autorizzati\n"
         "• /revoca &lt;chat_id&gt; — rimuove un utente\n\n"
+        "📚 <b>Gestione FAQ</b>\n"
+        "• /aggiorna_faq — aggiorna FAQ da JustPaste\n\n"
         "👤 <b>Comandi Utente</b>\n"
         "• /start\n"
         "• /help\n\n"
@@ -478,6 +480,37 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
     
     await update.message.reply_text(message, parse_mode='HTML')
+
+async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando admin per aggiornare le FAQ da JustPaste."""
+    user_id = update.effective_user.id
+    if user_id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo l'amministratore può usare questo comando.")
+        return
+    
+    await update.message.reply_text("⏳ Aggiorno le FAQ da JustPaste, attendi qualche secondo...")
+    
+    if update_faq_from_web():
+        faq_data = load_faq()
+        faq_list = faq_data.get("faq", []) if faq_data else []
+        await update.message.reply_text(
+            f"✅ <b>FAQ aggiornate con successo!</b>\n\n"
+            f"📊 Totale domande: {len(faq_list)}\n"
+            f"🔗 Fonte: {PASTE_URL}",
+            parse_mode="HTML"
+        )
+        logger.info(f"✅ FAQ aggiornate manualmente dall'admin. Totale: {len(faq_list)}")
+    else:
+        await update.message.reply_text(
+            "❌ <b>Errore durante l'aggiornamento delle FAQ</b>\n\n"
+            "Possibili cause:\n"
+            "• Link JustPaste non raggiungibile\n"
+            "• Formato del contenuto non valido\n"
+            "• Problema di connessione\n\n"
+            "Controlla i log per maggiori dettagli.",
+            parse_mode="HTML"
+        )
+        logger.error("❌ Errore aggiornamento FAQ da comando admin")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -581,6 +614,7 @@ def initialize_bot_sync():
             application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
             application.add_handler(CommandHandler("revoca", revoca_command))
             application.add_handler(CommandHandler("admin_help", admin_help_command))
+            application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
             application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
             
             # Setup webhook
