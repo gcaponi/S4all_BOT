@@ -446,11 +446,20 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     if is_requesting_lista(text):
         lista_text = load_lista()
         if not lista_text:
-            await message.reply_text("❌ Lista non disponibile")
+            await context.bot.send_message(chat_id=chat_id, text="❌ Lista non disponibile")
             return
         max_len = 4000
+        thread_id = getattr(message, "message_thread_id", None)
         for i in range(0, len(lista_text), max_len):
-            await message.reply_text(lista_text[i:i+max_len])
+            kwargs = {
+                "chat_id": chat_id,
+                "text": lista_text[i:i+max_len],
+                "parse_mode": "HTML"
+            }
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+                kwargs["reply_to_message_id"] = message.message_id
+            await context.bot.send_message(**kwargs)
         return
     
     # 1) Controllo ordine (PRIMA di tutto)
