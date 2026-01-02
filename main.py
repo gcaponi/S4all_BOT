@@ -174,14 +174,24 @@ def save_authorized_users(users):
     """Salva il database degli utenti autorizzati"""
     save_json_file(AUTHORIZED_USERS_FILE, users)
 
-def load_access_code():
-    """Recupera il codice segreto per il link /start"""
-    data = load_json_file(ACCESS_CODE_FILE, default={})
-    if not data.get('code'):
-        code = secrets.token_urlsafe(12)
-        save_json_file(ACCESS_CODE_FILE, {'code': code})
-        return code
-    return data['code']
+def load_authorized_users():
+    """Carica il database degli utenti e corregge eventuali formati lista errati"""
+    data = load_json_file(AUTHORIZED_USERS_FILE, default={})
+    
+    # CORREZIONE ERRORE: Se i dati sono una lista, trasformali in dizionario
+    if isinstance(data, list):
+        logger.warning("Rilevato formato lista in authorized_users.json, conversione in dizionario...")
+        new_data = {}
+        for item in data:
+            if isinstance(item, dict) and "id" in item:
+                new_data[str(item["id"])] = item
+            elif isinstance(item, (int, str)):
+                # Caso di emergenza per soli ID
+                new_data[str(item)] = {"id": int(item), "name": "Utente", "username": None}
+        save_authorized_users(new_data)
+        return new_data
+        
+    return data
 
 def is_user_authorized(user_id):
     """Verifica se l'ID Telegram è presente tra gli autorizzati"""
