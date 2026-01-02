@@ -27,7 +27,7 @@ LISTA_FILE = "lista.txt"
 PASTE_URL = "https://justpaste.it/faq_4all"
 FUZZY_THRESHOLD = 0.6
 
-PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc"]
+PAYMENT_KEYWORDS = ["bonifico", "bancario", "usdt", "crypto", "cripto", "bitcoin", "xmr", "btc", "eth", "usdc"]
 
 app = Flask(__name__)
 bot_application = None
@@ -398,6 +398,31 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if not message or not message.text:
         return
 
+    # FUNZIONE 1: Cerca nelle FAQ
+    faq = load_faq()
+    if faq and faq.get("faq"):
+        result = fuzzy_search_faq(message.text, faq.get("faq", []))
+        if result['match'] and result['score'] > 0.75:  # Solo risposte con buona confidenza
+            item = result['item']
+            emoji = "🎯" if result['score'] > 0.9 else "✅"
+            resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
+            
+            try:
+                kwargs = {
+                    "chat_id": message.chat.id,
+                    "text": resp,
+                    "parse_mode": "HTML"
+                }
+                thread_id = getattr(message, "message_thread_id", None)
+                if thread_id:
+                    kwargs["message_thread_id"] = thread_id
+                    kwargs["reply_to_message_id"] = message.message_id
+                await context.bot.send_message(**kwargs)
+                return  # FAQ trovata, non controllare pagamenti
+            except Exception as e:
+                logger.error(f"Errore invio FAQ gruppo: {e}")
+
+    # FUNZIONE 2: Controlla pagamenti mancanti negli ordini
     if not looks_like_order(message.text):
         return
 
@@ -530,4 +555,4 @@ def health():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
 
-# END main.py
+#End main.py
