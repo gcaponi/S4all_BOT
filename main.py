@@ -74,14 +74,45 @@ initialization_lock = False
 # ---------------------------------------------------------
 
 def load_json_file(filename, default=None):
-    """Carica in sicurezza file JSON evitando crash se il file è assente"""
+    """Carica in sicurezza file JSON e forza il formato dizionario se necessario"""
     if os.path.exists(filename):
         try:
             with open(filename, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                content = f.read().strip()
+                if not content:
+                    return default if default is not None else {}
+                data = json.loads(content)
+                return data
         except Exception as e:
             logger.error(f"Errore lettura file JSON {filename}: {e}")
     return default if default is not None else {}
+
+def load_authorized_users():
+    """Carica gli utenti e corregge istantaneamente il formato se è una lista"""
+    data = load_json_file(AUTHORIZED_USERS_FILE, default={})
+    
+    # Se per qualche motivo il file contiene una lista [], la trasformiamo in {}
+    if isinstance(data, list):
+        logger.warning("Conversione forzata: authorized_users era una lista, trasformata in dizionario.")
+        return {} 
+    return data
+
+def authorize_user(user_id, first_name=None, last_name=None, username=None):
+    """Registra un nuovo utente assicurandosi che il database sia un dizionario"""
+    users = load_authorized_users() # Ora siamo sicuri che restituisca un dict
+    user_id_str = str(user_id)
+    
+    if user_id_str not in users:
+        full_name = f"{first_name or ''} {last_name or ''}".strip() or "Sconosciuto"
+        users[user_id_str] = {
+            "id": user_id, 
+            "name": full_name, 
+            "username": username
+        }
+        save_authorized_users(users)
+        logger.info(f"Utente {user_id_str} salvato correttamente.")
+        return True
+    return False
 
 def save_json_file(filename, data):
     """Salva i dati in formato JSON indentato per facilitare la lettura"""
@@ -506,5 +537,11 @@ def webhook():
 @app.route('/')
 def index(): return "Bot Active", 200
 
+@app.route('/health')
+def health_check():
+    return "OK", 200
+    
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT)
+
+#End main.py
