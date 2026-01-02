@@ -1,19 +1,13 @@
-# wsgi.py - entrypoint per Gunicorn
-# Importa start_bot_thread e avvia il thread del bot una sola volta per processo.
-from main import app, start_bot_thread
 import logging
 import os
+from main import app
 
-logger = logging.getLogger("wsgi")
-logger.setLevel(logging.INFO)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Avvia il bot in background thread (idempotente)
-try:
-    start_bot_thread()
-    logger.info("wsgi: start_bot_thread chiamato (pid=%s)", os.getpid())
-except Exception:
-    logger.exception("wsgi: errore start_bot_thread")
+logger.info(f"wsgi: Avvio applicazione (pid={os.getpid()})")
+
+# Non serve più start_bot_thread - il bot si inizializza al primo webhook
 
 if __name__ == "__main__":
-    # Esecuzione locale (sviluppo)
-    app.run(host="0.0.0.0", port=8000, debug=False)
+    app.run()
