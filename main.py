@@ -415,13 +415,18 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     msg = (
         "👑 <b>PANNELLO DI CONTROLLO ADMIN</b>\n\n"
+        "<b>🔐 Comandi Admin:</b>\n"
         "• /genera_link - Crea il link per autorizzare nuovi utenti\n"
         "• /cambia_codice - Rigenera il token di sicurezza\n"
         "• /lista_autorizzati - Vedi chi può usare il bot\n"
         "• /revoca ID - Rimuovi un utente dal database\n"
         "• /aggiorna_faq - Scarica le FAQ da JustPaste\n"
         "• /aggiorna_lista - Scarica il listino da JustPaste\n"
-        "• /ordini - Visualizza ordini confermati oggi"
+        "• /ordini - Visualizza ordini confermati oggi\n\n"
+        "<b>👤 Comandi Utente:</b>\n"
+        "• /start - Avvia il bot\n"
+        "• /help - Visualizza FAQ e regolamento\n"
+        "• /lista - Mostra il listino prodotti"
     )
     await update.message.reply_text(msg, parse_mode='HTML')
 
@@ -497,11 +502,8 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ora = ordine.get('ora', 'N/A')
         message = ordine.get('message', 'N/A')
         chat_id = ordine.get('chat_id', 'N/A')
-        
-        msg += f"<b>{i}.</b> {user_name} (@{username})\n"
-        msg += f"   🆔 ID: <code>{user_id}</code>\n"
-        msg += f"   🕐 Ora: {ora}\n"
-        msg += f"   💬 Chat: <code>{chat_id}</code>\n"
+        msg += f"<b>{i}. {user_name}</b> (@{username})    🆔 ID: <code>{user_id}</code>\n"
+        msg += f"   🕐 Ora: {ora}    💬 Chat: <code>{chat_id}</code>\n"
         msg += f"   📝 Messaggio:\n   <code>{message[:100]}...</code>\n\n"
     
     if len(msg) > 4000:
