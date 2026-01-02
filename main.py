@@ -3,7 +3,7 @@ import json
 import logging
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ChatMemberHandler, filters, ContextTypes
 import secrets
 import re
 import requests
@@ -27,7 +27,7 @@ LISTA_FILE = "lista.txt"
 PASTE_URL = "https://justpaste.it/faq_4all"
 FUZZY_THRESHOLD = 0.6
 
-PAYMENT_KEYWORDS = ["bonifico", "bancario", "usdt", "crypto", "cripto", "bitcoin", "xmr", "btc", "eth", "usdc"]
+PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc"]
 
 app = Flask(__name__)
 bot_application = None
@@ -458,6 +458,66 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     elif query.data.startswith("payment_no_"):
         await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
 
+async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce quando un utente diventa online/attivo"""
+    if not update.message or not update.message.new_chat_members:
+        return
+    
+    for member in update.message.new_chat_members:
+        # Invia messaggio di benvenuto
+        welcome_text = (
+            "🗒️ Ciao! Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
+            "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
+            "tempi di spedizione, metodi di pagamento come ordinare ecc. 🗒️\n\n"
+            "📋 <b>Comandi disponibili:</b>\n"
+            "• /help - Visualizza tutte le FAQ\n"
+            "• /lista - Visualizza la lista prodotti"
+        )
+        
+        try:
+            # Invia nel gruppo
+            kwargs = {
+                "chat_id": update.message.chat.id,
+                "text": welcome_text,
+                "parse_mode": "HTML"
+            }
+            thread_id = getattr(update.message, "message_thread_id", None)
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+            
+            await context.bot.send_message(**kwargs)
+        except Exception as e:
+            logger.error(f"Errore invio benvenuto: {e}")
+
+async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce aggiornamenti di stato membri (online/offline)"""
+    # Questo handler intercetta quando qualcuno entra in chat o diventa attivo
+    if update.chat_member:
+        old_status = update.chat_member.old_chat_member.status if update.chat_member.old_chat_member else None
+        new_status = update.chat_member.new_chat_member.status if update.chat_member.new_chat_member else None
+        
+        # Se l'utente è appena entrato nel gruppo
+        if old_status in [None, "left", "kicked"] and new_status in ["member", "administrator", "creator"]:
+            user = update.chat_member.new_chat_member.user
+            welcome_text = (
+                f"👋 Benvenuto {user.first_name}!\n\n"
+                "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
+                "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
+                "tempi di spedizione, metodi di pagamento come ordinare ecc. 🗒️\n\n"
+                "📋 <b>Comandi disponibili:</b>\n"
+                "• /help - Visualizza tutte le FAQ\n"
+                "• /lista - Visualizza la lista prodotti"
+            )
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=update.chat_member.chat.id,
+                    text=welcome_text,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"Errore benvenuto chat_member: {e}")
+
 async def setup_bot():
     """Setup bot once with proper error handling"""
     global bot_application, initialization_lock
@@ -494,6 +554,11 @@ async def setup_bot():
         application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
         application.add_handler(CommandHandler("lista", lista_command))
         application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
+        
+        # Status handlers - benvenuto nuovi membri
+        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
+        application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+        
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message))
         application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_group_message))
@@ -555,4 +620,4 @@ def health():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=PORT, debug=False)
 
-#End main.py
+# END main.py
