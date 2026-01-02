@@ -43,9 +43,7 @@ FUZZY_THRESHOLD = 0.6
 
 # Parole chiave per intercettare i metodi di pagamento negli ordini
 PAYMENT_KEYWORDS = [
-    "contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", 
-    "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", 
-    "cripto", "bitcoin", "bit", "btc", "eth", "usdc"
+    "bonifico", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc", "xmr"
 ]
 
 # Lista estesa di parole chiave per richiedere il listino completo
@@ -524,7 +522,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("pay_ok_"):
         await query.edit_message_text("✅ Ottimo, procederò appena possibile!")
     elif query.data.startswith("pay_no_"):
-        await query.edit_message_text("💡 Per favore, indica il metodo (es. PayPal, Bonifico, Crypto).")
+        await query.edit_message_text("💡 Per favore, indica il metodo (Bonifico, Crypto).")
 
 # ---------------------------------------------------------
 # INIZIALIZZAZIONE SERVER E WEBHOOK
