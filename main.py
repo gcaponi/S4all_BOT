@@ -395,15 +395,30 @@ def index():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     global bot_application, bot_initialized
-    if not bot_initialized:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        bot_application = loop.run_until_complete(setup_bot())
-        bot_initialized = True
     
-    update = Update.de_json(request.get_json(force=True), bot_application.bot)
-    asyncio.run_coroutine_thread_safe(bot_application.process_update(update), asyncio.get_event_loop())
-    return "OK", 200
+    # Inizializza il bot alla prima chiamata del webhook se non è ancora pronto
+    if not bot_initialized:
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            bot_application = loop.run_until_complete(setup_bot())
+            bot_initialized = True
+        except Exception as e:
+            logger.error(f"Errore inizializzazione Webhook: {e}")
+            return "Init error", 503
+    
+    if not bot_application:
+        return "Bot not ready", 503
+    
+    try:
+        # Trasforma il JSON ricevuto da Telegram in un oggetto Update
+        update = Update.de_json(request.get_json(force=True), bot_application.bot)
+        asyncio.run_coroutine_threadsafe(bot_application.process_update(update), asyncio.get_event_loop())
+        
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"Errore processamento update: {e}")
+        return "Error", 500
 
 if __name__ == '__main__':
     app.run(port=PORT)
