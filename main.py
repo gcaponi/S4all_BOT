@@ -231,6 +231,21 @@ def looks_like_order(text: str) -> bool:
     # Semplice euristica: presenza di numeri + lunghezza minima
     return bool(re.search(r'\d', text)) and len(text.strip()) >= 5
 
+def is_requesting_lista(text: str) -> bool:
+    if not text:
+        return False
+    t = normalize_text(text)
+    keywords = [
+        "lista", "prodotti", "hai la lista", "che prodotti hai", "mostrami la lista", "fammi vedere la lista", "hai lista", "voglio la lista", 
+        "mandami la lista", "inviami la lista", "lista prodotti", "elenco prodotti", "quali prodotti ci sono", "cosa vendi", "cosa hai", "mostra prodotti", 
+        "fammi vedere i prodotti", "lista aggiornata", "lista completa", "lista prezzi", "lista disponibile", "lista articoli", "elenco articoli", 
+        "elenco disponibile", "prodotti disponibili", "prodotti in vendita", "catalogo prodotti", "catalogo", "catalogo aggiornato", 
+        "catalogo prezzi", "puoi mandarmi la lista", "puoi mostrarmi la lista", "puoi inviarmi la lista", "voglio vedere la lista", "voglio vedere i prodotti"
+    ]
+    # normalizziamo le keyword per confrontare coerentemente
+    kws = [normalize_text(k) for k in keywords]
+    return any(kw in t for kw in kws)
+    
 # -----------------------
 # Handlers: commands & messages
 # -----------------------
@@ -427,6 +442,17 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
 
     text = message.text.strip()
 
+    # Se l'utente chiede la lista esplicitamente, rispondi subito
+    if is_requesting_lista(text):
+        lista_text = load_lista()
+        if not lista_text:
+            await message.reply_text("❌ Lista non disponibile")
+            return
+        max_len = 4000
+        for i in range(0, len(lista_text), max_len):
+            await message.reply_text(lista_text[i:i+max_len])
+        return
+    
     # 1) Controllo ordine (PRIMA di tutto)
     if looks_like_order(text) and not has_payment_method(text):
         keyboard = [[
@@ -518,7 +544,27 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 logger.info(f"Benvenuto inviato a {user.first_name} ({user_id}) nel gruppo {chat_id}")
             except Exception as e:
                 logger.error(f"Errore invio benvenuto: {e}")
-
+    
+    # Se l'utente chiede la lista esplicitamente, rispondi subito
+    if is_requesting_lista(text):
+    lista_text = load_lista()
+    if not lista_text:
+        await context.bot.send_message(chat_id=chat_id, text="❌ Lista non disponibile")
+        return
+    max_len = 4000
+    thread_id = getattr(message, "message_thread_id", None)
+    for i in range(0, len(lista_text), max_len):
+        kwargs = {
+            "chat_id": chat_id,
+            "text": lista_text[i:i+max_len],
+            "parse_mode": "HTML"
+        }
+        if thread_id:
+            kwargs["message_thread_id"] = thread_id
+            kwargs["reply_to_message_id"] = message.message_id
+        await context.bot.send_message(**kwargs)
+    return
+    
     # CONTROLLO ORDINE PRIMA DI FAQ/LISTA
     if looks_like_order(text) and not has_payment_method(text):
         keyboard = [[
