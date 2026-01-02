@@ -10,7 +10,6 @@ import requests
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 import asyncio
-from datetime import datetime
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -256,10 +255,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Non autorizzato")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Rimuovi controllo autorizzazione - disponibile a tutti come /lista
-    # if not is_user_authorized(update.effective_user.id):
-    #     await update.message.reply_text("❌ Non autorizzato")
-    #     return
+    if not is_user_authorized(update.effective_user.id):
+        await update.message.reply_text("❌ Non autorizzato")
+        return
 
     faq_data = load_faq()
     faq_list = faq_data.get("faq", []) if faq_data else []
@@ -412,11 +410,10 @@ async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ Errore aggiornamento")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Rimuovi controllo autorizzazione - disponibile a tutti
-    # user = update.effective_user
-    # if user is None or not is_user_authorized(user.id):
-    #     await update.message.reply_text("❌ Non autorizzato")
-    #     return
+    user = update.effective_user
+    if user is None or not is_user_authorized(user.id):
+        await update.message.reply_text("❌ Non autorizzato")
+        return
 
     faq = load_faq()
     if not faq:
