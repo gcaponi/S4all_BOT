@@ -182,44 +182,6 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
         return {'match': True, 'item': best_match, 'score': best_score, 'method': match_method}
     return {'match': False, 'item': None, 'score': best_score, 'method': None}
 
-def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
-    """Cerca prodotti nella lista testuale"""
-    if not lista_text:
-        return {'match': False, 'snippet': None, 'score': 0}
-    
-    user_normalized = normalize_text(user_message)
-    user_keywords = extract_keywords(user_message)
-    
-    if not user_keywords:
-        return {'match': False, 'snippet': None, 'score': 0}
-    
-    # Dividi la lista in righe
-    lines = lista_text.split('\n')
-    best_lines = []
-    best_score = 0
-    
-    for line in lines:
-        if not line.strip():
-            continue
-        
-        line_normalized = normalize_text(line)
-        
-        # Controlla se qualche keyword è nella riga
-        matches = sum(1 for kw in user_keywords if kw in line_normalized)
-        if matches > 0:
-            score = matches / len(user_keywords)
-            if score > best_score:
-                best_score = score
-                best_lines = [line.strip()]
-            elif score == best_score:
-                best_lines.append(line.strip())
-    
-    if best_score >= 0.3:  # Soglia più bassa per la lista
-        snippet = '\n'.join(best_lines[:5])  # Massimo 5 righe
-        return {'match': True, 'snippet': snippet, 'score': best_score}
-    
-    return {'match': False, 'snippet': None, 'score': best_score}
-
 def has_payment_method(text: str) -> bool:
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
@@ -436,42 +398,49 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if not message or not message.text:
         return
 
-    # FUNZIONE 0: Benvenuto ad ogni messaggio dell'utente
+    # FUNZIONE 0: Benvenuto al primo messaggio dell'utente
     user_id = message.from_user.id if message.from_user else None
     chat_id = message.chat.id
     
-    if user_id and message.from_user:
-        welcome_text = (
-            f"👋 Ciao {message.from_user.first_name}!\n\n"
-            "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
-            "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
-            "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
-            "📋 <b>Comandi disponibili:</b>\n"
-            "• /help - Visualizza tutte le FAQ\n"
-            "• /lista - Visualizza la lista prodotti"
-        )
+    if user_id:
+        # Crea una chiave univoca per tracciare gli utenti già salutati in questo gruppo
+        greeted_key = f"greeted_{chat_id}_{user_id}"
         
-        try:
-            kwargs = {
-                "chat_id": chat_id,
-                "text": welcome_text,
-                "parse_mode": "HTML"
-            }
-            thread_id = getattr(message, "message_thread_id", None)
-            if thread_id:
-                kwargs["message_thread_id"] = thread_id
-                kwargs["reply_to_message_id"] = message.message_id
+        # Controlla se l'utente è già stato salutato in questo gruppo
+        if not context.bot_data.get(greeted_key):
+            context.bot_data[greeted_key] = True
             
-            await context.bot.send_message(**kwargs)
-            logger.info(f"Benvenuto inviato a {message.from_user.first_name} ({user_id})")
-        except Exception as e:
-            logger.error(f"Errore invio benvenuto: {e}")
+            welcome_text = (
+                f"👋 Benvenuto {message.from_user.first_name}!\n\n"
+                "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
+                "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
+                "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
+                "📋 <b>Comandi disponibili:</b>\n"
+                "• /help - Visualizza tutte le FAQ\n"
+                "• /lista - Visualizza la lista prodotti"
+            )
+            
+            try:
+                kwargs = {
+                    "chat_id": chat_id,
+                    "text": welcome_text,
+                    "parse_mode": "HTML"
+                }
+                thread_id = getattr(message, "message_thread_id", None)
+                if thread_id:
+                    kwargs["message_thread_id"] = thread_id
+                    kwargs["reply_to_message_id"] = message.message_id
+                
+                await context.bot.send_message(**kwargs)
+                logger.info(f"Benvenuto inviato a {message.from_user.first_name} ({user_id}) nel gruppo {chat_id}")
+            except Exception as e:
+                logger.error(f"Errore invio benvenuto: {e}")
 
     # FUNZIONE 1: Cerca nelle FAQ
     faq = load_faq()
     if faq and faq.get("faq"):
         result = fuzzy_search_faq(message.text, faq.get("faq", []))
-        if result['match'] and result['score'] > 0.75:
+        if result['match'] and result['score'] > 0.75:  # Solo risposte con buona confidenza
             item = result['item']
             emoji = "🎯" if result['score'] > 0.9 else "✅"
             resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
@@ -487,34 +456,11 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     kwargs["message_thread_id"] = thread_id
                     kwargs["reply_to_message_id"] = message.message_id
                 await context.bot.send_message(**kwargs)
-                return
+                return  # FAQ trovata, non controllare pagamenti
             except Exception as e:
                 logger.error(f"Errore invio FAQ gruppo: {e}")
 
-    # FUNZIONE 2: Cerca nella LISTA prodotti
-    lista_text = load_lista()
-    if lista_text:
-        result = fuzzy_search_lista(message.text, lista_text)
-        if result['match'] and result['score'] > 0.3:
-            emoji = "🎯" if result['score'] > 0.7 else "📦"
-            resp = f"{emoji} <b>Prodotti trovati:</b>\n\n{result['snippet']}"
-            
-            try:
-                kwargs = {
-                    "chat_id": message.chat.id,
-                    "text": resp,
-                    "parse_mode": "HTML"
-                }
-                thread_id = getattr(message, "message_thread_id", None)
-                if thread_id:
-                    kwargs["message_thread_id"] = thread_id
-                    kwargs["reply_to_message_id"] = message.message_id
-                await context.bot.send_message(**kwargs)
-                return
-            except Exception as e:
-                logger.error(f"Errore invio lista gruppo: {e}")
-
-    # FUNZIONE 3: Controlla pagamenti mancanti negli ordini
+    # FUNZIONE 2: Controlla pagamenti mancanti negli ordini
     if not looks_like_order(message.text):
         return
 
