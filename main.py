@@ -27,7 +27,7 @@ LISTA_FILE = "lista.txt"
 PASTE_URL = "https://justpaste.it/faq_4all"
 FUZZY_THRESHOLD = 0.6
 
-PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc"]
+PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", "cripto", "bitcoin", "xmr", "btc", "eth", "usdc"]
 
 app = Flask(__name__)
 bot_application = None
@@ -443,9 +443,6 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if user_id and message.from_user:
         welcome_text = (
             f"👋 Ciao {message.from_user.first_name}!\n\n"
-            "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
-            "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
-            "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
             "📋 <b>Comandi disponibili:</b>\n"
             "• /help - Visualizza tutte le FAQ\n"
             "• /lista - Visualizza la lista prodotti"
