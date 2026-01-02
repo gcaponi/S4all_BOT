@@ -34,9 +34,9 @@ bot_application = None
 bot_initialized = False
 initialization_lock = False
 
-# -----------------------
+# ----
 # Utils: web fetch, parsing, I/O
-# -----------------------
+# ----
 def fetch_markdown_from_html(url: str) -> str:
     r = requests.get(url, timeout=10)
     r.raise_for_status()
@@ -246,9 +246,9 @@ def is_requesting_lista(text: str) -> bool:
     kws = [normalize_text(k) for k in keywords]
     return any(kw in t for kw in kws)
     
-# -----------------------
+# ----
 # Handlers: commands & messages
-# -----------------------
+# ----
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -262,9 +262,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("✅ Autorizzato! Usa /help")
                 if ADMIN_CHAT_ID:
                     try:
-                        await context.bot.send_message(ADMIN_CHAT_ID, f"✅ Nuovo: {user.first_name}")
+                    await context.bot.send_message(ADMIN_CHAT_ID, f"✅ Nuovo: {user.first_name}")
                     except Exception:
-                        logger.exception("Invio notifica admin fallito")
+                    logger.exception("Invio notifica admin fallito")
             else:
                 await update.message.reply_text("✅ Già autorizzato!")
             return
@@ -432,9 +432,9 @@ async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await update.message.reply_text("❌ Errore aggiornamento")
 
-# -----------------------
+# ----
 # Prioritized message handling
-# -----------------------
+# ----
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not getattr(message, "text", None):
@@ -556,23 +556,23 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Se l'utente chiede la lista esplicitamente, rispondi subito
     if is_requesting_lista(text):
-    lista_text = load_lista()
-    if not lista_text:
-        await context.bot.send_message(chat_id=chat_id, text="❌ Lista non disponibile")
+        lista_text = load_lista()
+        if not lista_text:
+            await context.bot.send_message(chat_id=chat_id, text="❌ Lista non disponibile")
+            return
+        max_len = 4000
+        thread_id = getattr(message, "message_thread_id", None)
+        for i in range(0, len(lista_text), max_len):
+            kwargs = {
+                "chat_id": chat_id,
+                "text": lista_text[i:i+max_len],
+                "parse_mode": "HTML"
+            }
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+                kwargs["reply_to_message_id"] = message.message_id
+            await context.bot.send_message(**kwargs)
         return
-    max_len = 4000
-    thread_id = getattr(message, "message_thread_id", None)
-    for i in range(0, len(lista_text), max_len):
-        kwargs = {
-            "chat_id": chat_id,
-            "text": lista_text[i:i+max_len],
-            "parse_mode": "HTML"
-        }
-        if thread_id:
-            kwargs["message_thread_id"] = thread_id
-            kwargs["reply_to_message_id"] = message.message_id
-        await context.bot.send_message(**kwargs)
-    return
     
     # CONTROLLO ORDINE PRIMA DI FAQ/LISTA
     if looks_like_order(text) and not has_payment_method(text):
@@ -697,9 +697,9 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
     # Placeholder se vuoi gestire eventi di chat member in futuro
     pass
 
-# -----------------------
+# ----
 # Setup / inizializzazione bot
-# -----------------------
+# ----
 async def setup_bot():
     global bot_application, initialization_lock
     
@@ -762,9 +762,9 @@ async def setup_bot():
         initialization_lock = False
         raise
 
-# -----------------------
+# ----
 # Flask endpoints (webhook)
-# -----------------------
+# ----
 @app.route('/')
 def index():
     return "🤖 Bot attivo! ✅", 200
