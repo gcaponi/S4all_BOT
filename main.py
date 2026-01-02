@@ -12,7 +12,7 @@ from difflib import SequenceMatcher
 import asyncio
 
 # ---------------------------------------------------------
-# CONFIGURAZIONE LOGGING
+# CONFIGURAZIONE LOGGING (DETTAGLIATO)
 # ---------------------------------------------------------
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -28,20 +28,27 @@ ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 10000))
 
+# Nomi dei file per la persistenza dei dati
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
 ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
-LISTA_URL = "https://justpaste.it/lista_4all"
 LISTA_FILE = "lista.txt"
+
+# Link JustPaste.it per aggiornamento dinamico
+LISTA_URL = "https://justpaste.it/lista_4all"
 PASTE_URL = "https://justpaste.it/faq_4all"
+
+# Soglia di precisione per la ricerca approssimativa (Fuzzy)
 FUZZY_THRESHOLD = 0.6
 
+# Parole chiave per intercettare i metodi di pagamento negli ordini
 PAYMENT_KEYWORDS = [
     "contanti", "carta", "bancomat", "bonifico", "paypal", "satispay", 
     "postepay", "pos", "wallet", "ricarica", "usdt", "crypto", 
     "cripto", "bitcoin", "bit", "btc", "eth", "usdc"
 ]
 
+# Lista estesa di parole chiave per richiedere il listino completo
 LISTA_KEYWORDS_FULL = [
     "lista", "listino", "prodotti", "catalogo", "hai la lista", "che prodotti hai", 
     "mostrami la lista", "fammi vedere la lista", "hai lista", "voglio la lista", 
@@ -55,17 +62,18 @@ LISTA_KEYWORDS_FULL = [
     "voglio vedere i prodotti"
 ]
 
+# Inizializzazione Flask e variabili globali Bot
 app = Flask(__name__)
 bot_application = None
 bot_initialized = False
 initialization_lock = False
 
 # ---------------------------------------------------------
-# UTILS: WEB FETCH, PARSING, I/O
+# UTILS: WEB FETCH, PARSING, I/O (SISTEMA DI AGGIORNAMENTO)
 # ---------------------------------------------------------
 
 def fetch_markdown_from_html(url: str) -> str:
-    """Scarica il contenuto HTML da JustPaste e lo converte in testo"""
+    """Scarica il contenuto HTML da JustPaste e lo converte in testo pulito"""
     try:
         r = requests.get(url, timeout=10)
         r.raise_for_status()
@@ -75,11 +83,12 @@ def fetch_markdown_from_html(url: str) -> str:
             raise RuntimeError("Contenuto non trovato nel selettore #articleContent")
         return content.get_text("\n").strip()
     except Exception as e:
-        logger.error(f"Errore fetch: {e}")
+        logger.error(f"Errore durante il fetch da {url}: {e}")
         return ""
 
 def parse_faq(markdown: str) -> list:
-    """Parsa le FAQ basandosi sui titoli ## del markdown"""
+    """Parsa le FAQ basandosi sui titoli ## del markdown del JustPaste"""
+    # Regex per catturare Titolo (Domanda) e il blocco di testo successivo (Risposta)
     pattern = r"^##\s+(.*?)\n(.*?)(?=\n##\s+|\Z)"
     matches = re.findall(pattern, markdown, flags=re.S | re.M)
     if not matches:
@@ -87,23 +96,23 @@ def parse_faq(markdown: str) -> list:
     return [{"domanda": d.strip(), "risposta": r.strip()} for d, r in matches]
 
 def write_faq_json(faq: list, filename: str):
-    """Salva le FAQ in un file JSON"""
+    """Salva le FAQ strutturate in un file JSON locale"""
     with open(filename, "w", encoding="utf-8") as f:
         json.dump({"faq": faq}, f, ensure_ascii=False, indent=2)
 
 def update_faq_from_web():
-    """Aggiorna le FAQ scaricandole dal link JustPaste"""
+    """Sincronizza le FAQ scaricandole dal link JustPaste configurato"""
     markdown = fetch_markdown_from_html(PASTE_URL)
     if markdown:
         faq = parse_faq(markdown)
         if faq:
             write_faq_json(faq, FAQ_FILE)
-            logger.info(f"FAQ aggiornate: {len(faq)} elementi")
+            logger.info(f"FAQ sincronizzate: {len(faq)} elementi salvati.")
             return True
     return False
 
 def update_lista_from_web():
-    """Aggiorna il file lista.txt scaricandolo dal web"""
+    """Scarica il listino prodotti e lo salva nel file locale lista.txt"""
     try:
         r = requests.get(LISTA_URL, timeout=10)
         r.raise_for_status()
@@ -113,48 +122,52 @@ def update_lista_from_web():
             text = content.get_text("\n").strip()
             with open(LISTA_FILE, "w", encoding="utf-8") as f:
                 f.write(text)
-            logger.info("Listino prodotti aggiornato correttamente")
+            logger.info("Listino prodotti aggiornato con successo.")
             return True
     except Exception as e:
-        logger.error(f"Errore aggiornamento lista: {e}")
+        logger.error(f"Errore aggiornamento listino: {e}")
     return False
 
 def load_lista():
-    """Carica il testo del listino dal file locale"""
+    """Carica il contenuto testuale del listino dal file locale"""
     if os.path.exists(LISTA_FILE):
         with open(LISTA_FILE, "r", encoding="utf-8") as f:
             return f.read()
     return ""
 
 def load_json_file(filename, default=None):
-    """Carica un file JSON in modo sicuro"""
+    """Carica in sicurezza file JSON evitando crash se il file è corrotto o assente"""
     if os.path.exists(filename):
         try:
             with open(filename, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
-            logger.error(f"Errore lettura {filename}: {e}")
+            logger.error(f"Errore lettura file JSON {filename}: {e}")
     return default if default is not None else {}
 
 def save_json_file(filename, data):
-    """Salva dati in un file JSON"""
+    """Salva i dati in formato JSON indentato per facilitare la lettura umana"""
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+# ---------------------------------------------------------
+# GESTIONE AUTORIZZAZIONI E UTENTI
+# ---------------------------------------------------------
+
 def load_authorized_users():
-    """Carica la mappa degli utenti autorizzati"""
+    """Carica il database degli utenti che hanno usato il link segreto"""
     data = load_json_file(AUTHORIZED_USERS_FILE, default={})
     if isinstance(data, list):
-        # Gestione compatibilità vecchio formato lista
+        # Migrazione da vecchio formato lista a formato dizionario
         return {str(uid): {"id": uid, "name": "Utente", "username": None} for uid in data}
     return data
 
 def save_authorized_users(users):
-    """Salva la mappa degli utenti autorizzati"""
+    """Salva il database aggiornato degli utenti autorizzati"""
     save_json_file(AUTHORIZED_USERS_FILE, users)
 
 def load_access_code():
-    """Carica o genera il codice segreto per il link /start"""
+    """Recupera il codice segreto o ne crea uno nuovo al primo avvio"""
     data = load_json_file(ACCESS_CODE_FILE, default={})
     if not data.get('code'):
         code = secrets.token_urlsafe(12)
@@ -163,19 +176,19 @@ def load_access_code():
     return data['code']
 
 def save_access_code(code):
-    """Aggiorna il codice di accesso nel file"""
+    """Aggiorna manualmente il codice di accesso"""
     save_json_file(ACCESS_CODE_FILE, {'code': code})
 
 def load_faq():
-    """Carica le FAQ dal file JSON locale"""
+    """Carica le FAQ dal database locale JSON"""
     return load_json_file(FAQ_FILE, default={"faq": []})
 
 def is_user_authorized(user_id):
-    """Controlla se un ID utente è presente negli autorizzati"""
+    """Verifica se l'ID Telegram è presente tra gli autorizzati"""
     return str(user_id) in load_authorized_users()
 
 def authorize_user(user_id, first_name=None, last_name=None, username=None):
-    """Aggiunge un nuovo utente alla lista autorizzati"""
+    """Registra un nuovo utente nel database degli autorizzati"""
     users = load_authorized_users()
     user_id_str = str(user_id)
     if user_id_str not in users:
@@ -190,34 +203,34 @@ def authorize_user(user_id, first_name=None, last_name=None, username=None):
     return False
 
 def get_bot_username():
-    """Restituisce lo username del bot salvato in memoria"""
+    """Utility per ottenere lo username del bot per comporre link dinamici"""
     return getattr(get_bot_username, 'username', 'tuobot')
 
 # ---------------------------------------------------------
-# LOGICHE DI RICERCA (LISTA + FAQ INTELLIGENTE)
+# LOGICHE DI RICERCA INTELLIGENTE (CORE)
 # ---------------------------------------------------------
 
 def calculate_similarity(text1: str, text2: str) -> float:
-    """Calcola la somiglianza tra due stringhe (0.0 a 1.0)"""
+    """Calcola l'indice di somiglianza tra due stringhe (utilizzato per i refusi)"""
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
 
 def normalize_text(text: str) -> str:
-    """Pulisce il testo da simboli e spazi extra"""
+    """Rimuove simboli, punteggiatura e spazi eccessivi per facilitare il confronto"""
     text = re.sub(r'[^\w\s]', '', text)
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def is_requesting_lista_full(text: str) -> bool:
-    """Determina se l'utente sta chiedendo esplicitamente il listino completo"""
+    """Analizza se l'utente desidera ricevere l'intero listino prodotti"""
     if not text:
         return False
     
     normalized_msg = normalize_text(text)
     
-    # 1. Controllo corrispondenza parole chiave
+    # Livello 1: Controllo frasi dirette
     if any(kw in normalized_msg for kw in LISTA_KEYWORDS_FULL):
         return True
     
-    # 2. Controllo Fuzzy sulle radici (per errori tipo "listno")
+    # Livello 2: Controllo Fuzzy su radici fondamentali (gestisce 'listno', 'lstino', ecc.)
     words = normalized_msg.split()
     smart_roots = ["listino", "catalogo", "prodotti", "prezzi", "articoli", "lista"]
     for word in words:
@@ -228,38 +241,40 @@ def is_requesting_lista_full(text: str) -> bool:
     return False
 
 def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
-    """Ricerca avanzata nelle FAQ usando parole chiave e somiglianza"""
+    """Cerca la risposta più pertinente nelle FAQ basandosi su parole chiave e somiglianza"""
     user_normalized = normalize_text(user_message)
     
-    # LIVELLO 1: Mappatura Sinonimi Critici (Tracking, Spedizioni, ecc.)
+    # SISTEMA SINONIMI: Collega parole brevi dell'utente a concetti nelle FAQ
     keywords_map = {
-        "spedizione": ["spedito", "spedisci", "spedite", "corriere", "pacco", "invio", "mandato"],
-        "tracking": ["track", "codice", "tracciabilità", "tracciamento", "tracking"],
-        "tempi": ["quando arriva", "quanto tempo", "giorni", "ricevo", "consegna"],
+        "spedizione": ["spedito", "spedisci", "spedite", "corriere", "pacco", "invio", "mandato", "spedizioni"],
+        "tracking": ["track", "codice", "tracciabilità", "tracciamento", "tracking", "traccia"],
+        "tempi": ["quando arriva", "quanto tempo", "giorni", "ricevo", "consegna", "tempistiche"],
         "pagamento": ["pagare", "metodi", "bonifico", "ricarica", "paypal", "crypto", "pagamenti"]
     }
 
+    # Controllo per Parole Chiave Critiche (Priorità Alta)
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         risposta_norm = normalize_text(item["risposta"])
         
         for root, synonyms in keywords_map.items():
             if any(syn in user_normalized for syn in synonyms):
-                # Se l'utente usa un sinonimo di "tracking", cerchiamo se la FAQ contiene la radice "tracking"
+                # Se l'utente usa un sinonimo di "tracking", cerchiamo se la FAQ contiene la parola radice
                 if root in domanda_norm or root in risposta_norm:
-                    logger.info(f"FAQ Match trovata tramite keyword: {root}")
+                    logger.info(f"Corrispondenza FAQ trovata per keyword: {root}")
                     return {'match': True, 'item': item, 'score': 1.0}
 
-    # LIVELLO 2: Somiglianza classica sulla domanda
+    # Controllo per Somiglianza Diretta (Priorità Media)
     best_match = None
     best_score = 0
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         
-        # Caso: il messaggio è contenuto esattamente nella domanda
+        # Match perfetto contenuto nel testo
         if user_normalized in domanda_norm or domanda_norm in user_normalized:
             return {'match': True, 'item': item, 'score': 1.0}
         
+        # Calcolo punteggio Fuzzy
         score = calculate_similarity(user_normalized, domanda_norm)
         if score > best_score:
             best_score = score
@@ -271,11 +286,12 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     return {'match': False}
 
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
-    """Cerca righe specifiche nel listino prodotti"""
+    """Cerca righe specifiche nel listino per rispondere a domande su singoli prodotti"""
     if not lista_text:
         return {'match': False}
         
     user_normalized = normalize_text(user_message)
+    # Prendiamo solo parole significative (>3 lettere)
     words = [w for w in user_normalized.split() if len(w) > 3]
     
     if not words:
@@ -289,24 +305,25 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             best_lines.append(line.strip())
             
     if best_lines:
+        # Restituisce le prime 5 righe trovate come anteprima
         return {'match': True, 'snippet': '\n'.join(best_lines[:5])}
         
     return {'match': False}
 
 def has_payment_method(text: str) -> bool:
-    """Controlla se l'utente ha menzionato un metodo di pagamento"""
+    """Verifica se il messaggio contiene un metodo di pagamento noto"""
     if not text:
         return False
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
 def looks_like_order(text: str) -> bool:
-    """Verifica se il messaggio somiglia a un ordine (presenza numeri e lunghezza)"""
+    """Verifica se il messaggio ha la struttura di un potenziale ordine (numeri + lunghezza)"""
     if not text:
         return False
     return bool(re.search(r'\d', text)) and len(text.strip()) >= 5
 
 # ---------------------------------------------------------
-# HANDLERS: COMANDI UTENTE E ADMIN
+# HANDLERS: COMANDI (START, HELP, LISTA)
 # ---------------------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -314,20 +331,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user is None:
         return
         
-    # Controllo se c'è un codice di autorizzazione nel comando /start
+    # Gestione accesso tramite link con parametro (es. /start codicesegreto)
     if context.args and context.args[0] == load_access_code():
         authorize_user(user.id, user.first_name, user.last_name, user.username)
-        await update.message.reply_text("✅ Accesso autorizzato con successo! Ora puoi usare il bot.")
+        await update.message.reply_text("✅ Accesso autorizzato! Ora puoi interagire con il bot e visualizzare i prodotti.")
         if ADMIN_CHAT_ID:
-            await context.bot.send_message(ADMIN_CHAT_ID, f"🆕 Nuovo utente autorizzato: {user.first_name} (@{user.username})")
+            await context.bot.send_message(ADMIN_CHAT_ID, f"🆕 Utente autorizzato: {user.first_name} (@{user.username})")
         return
 
     if is_user_authorized(user.id):
-        await update.message.reply_text(f"👋 Bentornato {user.first_name}! Come posso aiutarti oggi?")
+        await update.message.reply_text(f"👋 Ciao {user.first_name}! Sono il tuo assistente. Scrivi 'lista' per vedere i prodotti o chiedimi informazioni su spedizioni e pagamenti.")
     else:
-        await update.message.reply_text("❌ Non sei autorizzato. Contatta l'amministratore per il link di accesso.")
+        await update.message.reply_text("❌ Accesso negato. Devi utilizzare il link di invito ufficiale per abilitare il bot.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mostra l'intero regolamento e le FAQ caricate"""
     if not is_user_authorized(update.effective_user.id):
         return
         
@@ -335,14 +353,14 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     faq_list = faq_data.get("faq", [])
     
     if not faq_list:
-        await update.message.reply_text("⚠️ Al momento non ci sono FAQ caricate.")
+        await update.message.reply_text("⚠️ Il regolamento non è ancora stato configurato.")
         return
         
-    full_text = "🗒️ <b>INFO E REGOLAMENTO COMPLETO</b>\n\n"
+    full_text = "🗒️ <b>REGOLAMENTO E INFORMAZIONI</b>\n\n"
     for item in faq_list:
         full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
         
-    # Gestione messaggi lunghi di Telegram
+    # Invio a blocchi per superare il limite caratteri di Telegram
     if len(full_text) > 4000:
         for i in range(0, len(full_text), 4000):
             await update.message.reply_text(full_text[i:i+4000], parse_mode='HTML')
@@ -350,6 +368,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(full_text, parse_mode='HTML')
 
 async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando manuale per visualizzare il listino prodotti"""
     if not is_user_authorized(update.effective_user.id):
         return
         
@@ -357,204 +376,178 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lista_text = load_lista()
     
     if not lista_text:
-        await update.message.reply_text("❌ Listino non disponibile al momento.")
+        await update.message.reply_text("❌ Listino non disponibile. Riprova più tardi.")
         return
         
     for i in range(0, len(lista_text), 4000):
         await update.message.reply_text(lista_text[i:i+4000])
 
+# ---------------------------------------------------------
+# HANDLERS: AMMINISTRAZIONE (SOLO ADMIN_CHAT_ID)
+# ---------------------------------------------------------
+
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
     msg = (
-        "👑 <b>PANNELLO AMMINISTRATORE</b>\n\n"
-        "• /genera_link - Crea link autorizzazione\n"
-        "• /cambia_codice - Rigenera codice segreto\n"
-        "• /lista_autorizzati - Elenco utenti\n"
-        "• /revoca ID - Rimuovi autorizzazione\n"
-        "• /aggiorna_faq - Forza sincronizzazione FAQ\n"
-        "• /aggiorna_lista - Forza sincronizzazione listino"
+        "👑 <b>PANNELLO DI CONTROLLO ADMIN</b>\n\n"
+        "• /genera_link - Crea il link per autorizzare nuovi utenti\n"
+        "• /cambia_codice - Rigenera il token di sicurezza\n"
+        "• /lista_autorizzati - Vedi chi può usare il bot\n"
+        "• /revoca ID - Rimuovi un utente dal database\n"
+        "• /aggiorna_faq - Scarica le FAQ da JustPaste\n"
+        "• /aggiorna_lista - Scarica il listino da JustPaste"
     )
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        return
+    if update.effective_user.id != ADMIN_CHAT_ID: return
     if update_faq_from_web():
-        await update.message.reply_text("✅ FAQ sincronizzate correttamente da JustPaste.")
+        await update.message.reply_text("✅ FAQ sincronizzate con successo.")
     else:
-        await update.message.reply_text("❌ Errore durante la sincronizzazione FAQ.")
+        await update.message.reply_text("❌ Errore durante l'aggiornamento FAQ.")
 
 async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        return
+    if update.effective_user.id != ADMIN_CHAT_ID: return
     if update_lista_from_web():
-        await update.message.reply_text("✅ Listino prodotti aggiornato correttamente.")
+        await update.message.reply_text("✅ Listino prodotti aggiornato.")
     else:
-        await update.message.reply_text("❌ Errore durante l'aggiornamento del listino.")
+        await update.message.reply_text("❌ Errore aggiornamento listino.")
 
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        return
+    if update.effective_user.id != ADMIN_CHAT_ID: return
     link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
-    await update.message.reply_text(f"🔗 <b>Link di autorizzazione:</b>\n<code>{link}</code>", parse_mode='HTML')
+    await update.message.reply_text(f"🔗 <b>Link Autorizzazione:</b>\n<code>{link}</code>", parse_mode='HTML')
 
 async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID:
-        return
+    if update.effective_user.id != ADMIN_CHAT_ID: return
     users = load_authorized_users()
     if not users:
-        await update.message.reply_text("Nessun utente autorizzato.")
+        await update.message.reply_text("Nessun utente registrato.")
         return
-        
-    msg = "👥 <b>UTENTI AUTORIZZATI:</b>\n\n"
+    msg = "👥 <b>UTENTI ABILITATI:</b>\n\n"
     for uid, info in users.items():
         msg += f"- {info['name']} (@{info['username']}) [<code>{uid}</code>]\n"
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_CHAT_ID or not context.args:
-        return
+    if update.effective_user.id != ADMIN_CHAT_ID or not context.args: return
     users = load_authorized_users()
-    target_id = context.args[0]
-    if target_id in users:
-        del users[target_id]
+    target = context.args[0]
+    if target in users:
+        del users[target]
         save_authorized_users(users)
-        await update.message.reply_text(f"✅ Autorizzazione revocata per l'utente {target_id}.")
+        await update.message.reply_text(f"✅ Utente {target} rimosso.")
     else:
-        await update.message.reply_text("❌ Utente non trovato.")
+        await update.message.reply_text("❌ ID non trovato.")
 
 # ---------------------------------------------------------
-# GESTIONE MESSAGGI PRIVATI E GRUPPI
+# GESTIONE MESSAGGI: LOGICA UNIFICATA (PRIVATI E GRUPPI)
 # ---------------------------------------------------------
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestione messaggi intelligenti in chat 1:1"""
     message = update.message
-    if not message or not message.text:
-        return
-        
+    if not message or not message.text: return
     text = message.text.strip()
 
-    # 1. PRIORITÀ: Richiesta lista completa
+    # 1. Richiesta LISTINO
     if is_requesting_lista_full(text):
         lista = load_lista()
         if lista:
-            for i in range(0, len(lista), 4000):
-                await message.reply_text(lista[i:i+4000])
+            for i in range(0, len(lista), 4000): await message.reply_text(lista[i:i+4000])
             return
 
-    # 2. Controllo ordine senza metodo di pagamento
+    # 2. Controllo ORDINE (mancanza pagamento)
     if looks_like_order(text) and not has_payment_method(text):
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Sì, l'ho scritto", callback_data=f"pay_ok_{message.message_id}"),
-                InlineKeyboardButton("❌ No, scusa", callback_data=f"pay_no_{message.message_id}")
-            ]
-        ]
-        await message.reply_text(
-            "🤔 <b>Sembra un ordine!</b>\nHai specificato il metodo di pagamento scelto?", 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="HTML"
-        )
+        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
+        await message.reply_text("🤔 <b>Sembra un ordine!</b> Hai specificato il metodo di pagamento?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
 
-    # 3. Ricerca nelle FAQ (Domanda + Risposta)
+    # 3. Ricerca FAQ (con sinonimi)
     faq_data = load_faq()
     res = fuzzy_search_faq(text, faq_data.get("faq", []))
     if res['match']:
-        await message.reply_text(
-            f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", 
-            parse_mode="HTML"
-        )
+        await message.reply_text(f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML")
         return
 
-    # 4. Ricerca nel listino (Singoli prodotti)
+    # 4. Ricerca SNIPPET LISTINO (singolo prodotto)
     l_res = fuzzy_search_lista(text, load_lista())
     if l_res['match']:
-        await message.reply_text(
-            f"📦 <b>Ho trovato questo nel listino:</b>\n\n{l_res['snippet']}", 
-            parse_mode="HTML"
-        )
+        await message.reply_text(f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
         return
 
-    # 5. Fallback
-    await message.reply_text("❓ Non sono sicuro di aver capito. Prova a consultare /help o scrivi 'lista'.")
+    await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestione messaggi intelligenti in Gruppi, Supergruppi e Canali"""
     message = update.message or update.channel_post
-    if not message or not message.text:
-        return
-        
+    if not message or not message.text: return
+    
+    # Evita che il bot risponda a se stesso o ad altri bot
+    if message.from_user and message.from_user.is_bot: return
+    
     text = message.text.strip()
     
-    # In gruppo rispondiamo solo se troviamo un match forte
+    # Logica speculare alla privata (senza fallback per non intasare il gruppo)
+    
+    # 1. LISTINO COMPLETO
     if is_requesting_lista_full(text):
         lista = load_lista()
         if lista:
             for i in range(0, len(lista), 4000):
-                await context.bot.send_message(
-                    chat_id=message.chat.id, 
-                    text=lista[i:i+4000], 
-                    reply_to_message_id=message.message_id
-                )
+                await context.bot.send_message(chat_id=message.chat.id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
             return
 
+    # 2. ORDINE SENZA PAGAMENTO
     if looks_like_order(text) and not has_payment_method(text):
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
-                InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-            ]
-        ]
-        await context.bot.send_message(
-            chat_id=message.chat.id, 
-            text="🤔 <b>Ordine rilevato:</b> hai indicato il metodo di pagamento?", 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="HTML",
-            reply_to_message_id=message.message_id
-        )
+        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
+        await context.bot.send_message(chat_id=message.chat.id, text="🤔 <b>Pagamento specificato?</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", reply_to_message_id=message.message_id)
         return
 
-    res = fuzzy_search_faq(text, load_faq().get("faq", []))
+    # 3. FAQ INTELLIGENTI (Tracking, Spedizioni, ecc.)
+    faq_data = load_faq()
+    res = fuzzy_search_faq(text, faq_data.get("faq", []))
     if res['match']:
-        await context.bot.send_message(
-            chat_id=message.chat.id, 
-            text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", 
-            parse_mode="HTML", 
-            reply_to_message_id=message.message_id
-        )
+        await context.bot.send_message(chat_id=message.chat.id, text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML", reply_to_message_id=message.message_id)
+        return
+
+    # 4. SNIPPET PRODOTTO
+    l_res = fuzzy_search_lista(text, load_lista())
+    if l_res['match']:
+        await context.bot.send_message(chat_id=message.chat.id, text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", parse_mode="HTML", reply_to_message_id=message.message_id)
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce i bottoni Inline per la conferma del pagamento"""
     query = update.callback_query
     await query.answer()
-    
     if query.data.startswith("pay_ok_"):
-        await query.edit_message_text("✅ Perfetto! Elaborerò il tuo ordine il prima possibile.")
+        await query.edit_message_text("✅ Ottimo, procederò appena possibile!")
     elif query.data.startswith("pay_no_"):
-        await query.edit_message_text("💡 Nessun problema. Per favore specifica come desideri pagare (es. PayPal, Crypto, etc.)")
+        await query.edit_message_text("💡 Per favore, indica il metodo (es. PayPal, Bonifico, Crypto).")
 
 # ---------------------------------------------------------
-# INIZIALIZZAZIONE E CICLO WEBHOOK
+# INIZIALIZZAZIONE SERVER E WEBHOOK
 # ---------------------------------------------------------
 
 async def setup_bot():
+    """Configura l'applicazione Telegram e carica i dati iniziali"""
     global bot_application, initialization_lock
-    if initialization_lock:
-        return None
+    if initialization_lock: return None
     initialization_lock = True
     
-    # Sincronizzazione iniziale dati
+    # Primo aggiornamento dati all'avvio
     update_faq_from_web()
     update_lista_from_web()
     
     application = Application.builder().token(BOT_TOKEN).updater(None).build()
     
-    # Salviamo lo username del bot per i link
+    # Identificazione Bot
     bot_info = await application.bot.get_me()
     get_bot_username.username = bot_info.username
-    logger.info(f"Avvio bot: @{bot_info.username}")
+    logger.info(f"Bot Online: @{bot_info.username}")
     
-    # Registrazione handler comandi
+    # Configurazione Handler
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("lista", lista_command))
@@ -564,19 +557,17 @@ async def setup_bot():
     application.add_handler(CommandHandler("genera_link", genera_link_command))
     application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
     application.add_handler(CommandHandler("revoca", revoca_command))
-    
-    # Registrazione handler messaggi e callback
     application.add_handler(CallbackQueryHandler(handle_callback_query))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
     
-    # Filtro per gruppi e canali
-    group_filter = (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & group_filter, handle_group_message))
+    # Handler Messaggi Testuali
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
+    group_filters = (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & group_filters, handle_group_message))
 
-    # Configurazione Webhook
+    # Webhook
     if WEBHOOK_URL:
         await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-        logger.info(f"Webhook impostato su: {WEBHOOK_URL}/webhook")
+        logger.info(f"Webhook configurato su {WEBHOOK_URL}")
         
     await application.initialize()
     await application.start()
@@ -584,6 +575,7 @@ async def setup_bot():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    """Endpoint per la ricezione degli aggiornamenti da Telegram"""
     global bot_application, bot_initialized
     if not bot_initialized:
         loop = asyncio.new_event_loop()
@@ -597,7 +589,10 @@ def webhook():
 
 @app.route('/')
 def index():
-    return "Bot Online", 200
+    return "Bot is running...", 200
 
 if __name__ == '__main__':
+    # Avvio del server Flask
     app.run(host='0.0.0.0', port=PORT)
+
+#End main.py
