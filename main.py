@@ -34,14 +34,10 @@ PAYMENT_KEYWORDS = ["contanti", "carta", "bancomat", "bonifico", "paypal", "sati
 
 # Nuova lista estesa di parole chiave per la lista completa
 LISTA_KEYWORDS_FULL = [
-    "lista", "prodotti", "hai la lista", "che prodotti hai", "mostrami la lista", 
-    "fammi vedere la lista", "hai lista", "voglio la lista", "mandami la lista", 
-    "inviami la lista", "lista prodotti", "elenco prodotti", "quali prodotti ci sono", 
-    "cosa vendi", "cosa hai", "mostra prodotti", "fammi vedere i prodotti", 
-    "lista aggiornata", "lista completa", "lista prezzi", "lista disponibile", 
-    "lista articoli", "elenco articoli", "elenco disponibile", "prodotti disponibili", 
-    "prodotti in vendita", "catalogo prodotti", "catalogo", "catalogo aggiornato", 
-    "catalogo prezzi", "puoi mandarmi la lista", "puoi mostrarmi la lista", 
+    "lista", "prodotti", "hai la lista", "che prodotti hai", "mostrami la lista", "fammi vedere la lista", "hai lista", "voglio la lista", "mandami la lista", 
+    "inviami la lista", "lista prodotti", "elenco prodotti", "quali prodotti ci sono", "cosa vendi", "cosa hai", "mostra prodotti", "fammi vedere i prodotti", 
+    "lista aggiornata", "lista completa", "lista prezzi", "lista disponibile", "lista articoli", "elenco articoli", "elenco disponibile", "prodotti disponibili", 
+    "prodotti in vendita", "catalogo prodotti", "catalogo", "catalogo aggiornato", "catalogo prezzi", "puoi mandarmi la lista", "puoi mostrarmi la lista", "listino",  
     "puoi inviarmi la lista", "voglio vedere la lista", "voglio vedere i prodotti"
 ]
 
