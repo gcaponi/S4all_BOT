@@ -34,6 +34,9 @@ bot_application = None
 bot_initialized = False
 initialization_lock = False
 
+# -----------------------
+# Utils: web fetch, parsing, I/O
+# -----------------------
 def fetch_markdown_from_html(url: str) -> str:
     r = requests.get(url, timeout=10)
     r.raise_for_status()
@@ -193,7 +196,6 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     if not user_keywords:
         return {'match': False, 'snippet': None, 'score': 0}
     
-    # Dividi la lista in righe
     lines = lista_text.split('\n')
     best_lines = []
     best_score = 0
@@ -203,8 +205,6 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             continue
         
         line_normalized = normalize_text(line)
-        
-        # Controlla se qualche keyword è nella riga
         matches = sum(1 for kw in user_keywords if kw in line_normalized)
         if matches > 0:
             score = matches / len(user_keywords)
@@ -214,18 +214,26 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             elif score == best_score:
                 best_lines.append(line.strip())
     
-    if best_score >= 0.3:  # Soglia più bassa per la lista
-        snippet = '\n'.join(best_lines[:5])  # Massimo 5 righe
+    if best_score >= 0.3:
+        snippet = '\n'.join(best_lines[:5])
         return {'match': True, 'snippet': snippet, 'score': best_score}
     
     return {'match': False, 'snippet': None, 'score': best_score}
     
 def has_payment_method(text: str) -> bool:
+    if not text:
+        return False
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
 def looks_like_order(text: str) -> bool:
-    return bool(re.search(r'\d', text)) and len(text) >= 5
+    if not text:
+        return False
+    # Semplice euristica: presenza di numeri + lunghezza minima
+    return bool(re.search(r'\d', text)) and len(text.strip()) >= 5
 
+# -----------------------
+# Handlers: commands & messages
+# -----------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -255,7 +263,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Non autorizzato")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_user_authorized(update.effective_user.id):
+    if update.effective_user is None or not is_user_authorized(update.effective_user.id):
         await update.message.reply_text("❌ Non autorizzato")
         return
 
@@ -409,47 +417,86 @@ async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYP
     else:
         await update.message.reply_text("❌ Errore aggiornamento")
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if user is None or not is_user_authorized(user.id):
-        await update.message.reply_text("❌ Non autorizzato")
+# -----------------------
+# Prioritized message handling
+# -----------------------
+async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message
+    if not message or not getattr(message, "text", None):
         return
 
+    text = message.text.strip()
+
+    # 1) Controllo ordine (PRIMA di tutto)
+    if looks_like_order(text) and not has_payment_method(text):
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"payment_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"payment_no_{message.message_id}")
+        ]]
+        try:
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text="🤔 <b>Ordine senza pagamento?</b>\n\nHai specificato come pagherai?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"Errore invio pulsanti (privato): {e}")
+        return
+
+    # 2) Cerca nelle FAQ
     faq = load_faq()
-    if not faq:
-        await update.message.reply_text("❌ Nessuna FAQ")
-        return
+    if faq and faq.get("faq"):
+        result = fuzzy_search_faq(text, faq.get("faq", []))
+        if result['match'] and result['score'] > 0.75:
+            item = result['item']
+            emoji = "🎯" if result['score'] > 0.9 else "✅"
+            resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
+            if result['score'] < 0.9:
+                resp += f"\n\n<i>Confidenza: {result['score']:.0%}</i>"
+            try:
+                await message.reply_text(resp, parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"Errore invio FAQ (privato): {e}")
+            return
 
-    result = fuzzy_search_faq(update.message.text, faq.get("faq", []))
-    if result['match']:
-        item = result['item']
-        emoji = "🎯" if result['score'] > 0.9 else "✅" if result['score'] > 0.75 else "💡"
-        resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
-        if result['score'] < 0.9:
-            resp += f"\n\n<i>Confidenza: {result['score']:.0%}</i>"
-        await update.message.reply_text(resp, parse_mode='HTML')
-    else:
-        await update.message.reply_text("❓ Nessuna risposta. Usa /help", parse_mode='HTML')
+    # 3) Cerca nella Lista
+    lista_text = load_lista()
+    if lista_text:
+        result = fuzzy_search_lista(text, lista_text)
+        if result['match'] and result['score'] > 0.3:
+            emoji = "🎯" if result['score'] > 0.7 else "📦"
+            resp = f"{emoji} <b>Prodotti trovati:</b>\n\n{result['snippet']}"
+            try:
+                await message.reply_text(resp, parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"Errore invio lista (privato): {e}")
+            return
+
+    # 4) Nessuna risposta
+    try:
+        await message.reply_text("❓ Nessuna risposta. Usa /help", parse_mode='HTML')
+    except Exception as e:
+        logger.error(f"Errore invio fallback (privato): {e}")
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Gestisce messaggi in group/supergroup e channel_post
     message = update.message or update.channel_post
-    if not message or not message.text:
+    if not message or not getattr(message, "text", None):
         return
 
-    # FUNZIONE 0: Benvenuto al primo messaggio dell'utente
-    user_id = message.from_user.id if message.from_user else None
-    chat_id = message.chat.id
-    
-    if user_id:
-        # Crea una chiave univoca per tracciare gli utenti già salutati in questo gruppo
+    text = message.text.strip()
+    chat_id = getattr(message, "chat", None).id if getattr(message, "chat", None) else None
+    user = getattr(message, "from_user", None)
+    user_id = user.id if user else None
+
+    # FUNZIONE 0: Benvenuto al primo messaggio dell'utente (se esiste from_user)
+    if user_id and chat_id:
         greeted_key = f"greeted_{chat_id}_{user_id}"
-        
-        # Controlla se l'utente è già stato salutato in questo gruppo
         if not context.bot_data.get(greeted_key):
             context.bot_data[greeted_key] = True
-            
             welcome_text = (
-                f"👋 Benvenuto {message.from_user.first_name}!\n\n"
+                f"👋 Benvenuto {user.first_name}!\n\n"
                 "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
                 "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
                 "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
@@ -457,7 +504,6 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 "• /help - Visualizza tutte le FAQ\n"
                 "• /lista - Visualizza la lista prodotti"
             )
-            
             try:
                 kwargs = {
                     "chat_id": chat_id,
@@ -468,24 +514,44 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 if thread_id:
                     kwargs["message_thread_id"] = thread_id
                     kwargs["reply_to_message_id"] = message.message_id
-                
                 await context.bot.send_message(**kwargs)
-                logger.info(f"Benvenuto inviato a {message.from_user.first_name} ({user_id}) nel gruppo {chat_id}")
+                logger.info(f"Benvenuto inviato a {user.first_name} ({user_id}) nel gruppo {chat_id}")
             except Exception as e:
                 logger.error(f"Errore invio benvenuto: {e}")
 
-    # FUNZIONE 1: Cerca nelle FAQ
+    # CONTROLLO ORDINE PRIMA DI FAQ/LISTA
+    if looks_like_order(text) and not has_payment_method(text):
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"payment_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"payment_no_{message.message_id}")
+        ]]
+        try:
+            kwargs = {
+                "chat_id": chat_id,
+                "text": "🤔 <b>Ordine senza pagamento?</b>\n\nHai specificato come pagherai?",
+                "reply_markup": InlineKeyboardMarkup(keyboard),
+                "parse_mode": "HTML"
+            }
+            thread_id = getattr(message, "message_thread_id", None)
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+                kwargs["reply_to_message_id"] = message.message_id
+            await context.bot.send_message(**kwargs)
+        except Exception as e:
+            logger.error(f"Errore pulsanti (gruppo/canale): {e}")
+        return
+
+    # 1) Cerca nelle FAQ (solo se non era un ordine)
     faq = load_faq()
     if faq and faq.get("faq"):
-        result = fuzzy_search_faq(message.text, faq.get("faq", []))
-        if result['match'] and result['score'] > 0.75:  # Solo risposte con buona confidenza
+        result = fuzzy_search_faq(text, faq.get("faq", []))
+        if result['match'] and result['score'] > 0.75:
             item = result['item']
             emoji = "🎯" if result['score'] > 0.9 else "✅"
             resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
-            
             try:
                 kwargs = {
-                    "chat_id": message.chat.id,
+                    "chat_id": chat_id,
                     "text": resp,
                     "parse_mode": "HTML"
                 }
@@ -494,21 +560,20 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     kwargs["message_thread_id"] = thread_id
                     kwargs["reply_to_message_id"] = message.message_id
                 await context.bot.send_message(**kwargs)
-                return  # FAQ trovata, non controllare pagamenti
             except Exception as e:
                 logger.error(f"Errore invio FAQ gruppo: {e}")
-                
-    # FUNZIONE 2: Cerca nella LISTA prodotti
+            return
+
+    # 2) Cerca nella LISTA
     lista_text = load_lista()
     if lista_text:
-        result = fuzzy_search_lista(message.text, lista_text)
+        result = fuzzy_search_lista(text, lista_text)
         if result['match'] and result['score'] > 0.3:
             emoji = "🎯" if result['score'] > 0.7 else "📦"
             resp = f"{emoji} <b>Prodotti trovati:</b>\n\n{result['snippet']}"
-            
             try:
                 kwargs = {
-                    "chat_id": message.chat.id,
+                    "chat_id": chat_id,
                     "text": resp,
                     "parse_mode": "HTML"
                 }
@@ -517,53 +582,39 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     kwargs["message_thread_id"] = thread_id
                     kwargs["reply_to_message_id"] = message.message_id
                 await context.bot.send_message(**kwargs)
-                return
             except Exception as e:
                 logger.error(f"Errore invio lista gruppo: {e}")
-                
-    # FUNZIONE 3: Controlla pagamenti mancanti negli ordini
-    if not looks_like_order(message.text):
-        return
+            return
 
-    if has_payment_method(message.text):
-        return
-
-    keyboard = [[
-        InlineKeyboardButton("✅ Sì", callback_data=f"payment_ok_{message.message_id}"),
-        InlineKeyboardButton("❌ No", callback_data=f"payment_no_{message.message_id}")
-    ]]
-
-    try:
-        kwargs = {
-            "chat_id": message.chat.id,
-            "text": "🤔 <b>Ordine senza pagamento?</b>\n\nHai specificato come pagherai?",
-            "reply_markup": InlineKeyboardMarkup(keyboard),
-            "parse_mode": "HTML"
-        }
-        thread_id = getattr(message, "message_thread_id", None)
-        if thread_id:
-            kwargs["message_thread_id"] = thread_id
-            kwargs["reply_to_message_id"] = message.message_id
-        await context.bot.send_message(**kwargs)
-    except Exception as e:
-        logger.error(f"Errore pulsanti: {e}")
+    # Se non è ordine e non trova FAQ/Lista, non rispondere (evita spam)
+    return
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    if not query or not query.data:
+        return
+    try:
+        await query.answer()
+    except Exception:
+        pass
 
     if query.data.startswith("payment_ok_"):
-        await query.edit_message_text(f"✅ Confermato da {query.from_user.first_name}!", parse_mode="HTML")
+        try:
+            await query.edit_message_text(f"✅ Confermato da {query.from_user.first_name}!", parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Errore edit message (payment_ok): {e}")
     elif query.data.startswith("payment_no_"):
-        await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
+        try:
+            await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Errore edit message (payment_no): {e}")
 
+# Benvenuto per nuovi membri (status)
 async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce quando un utente diventa online/attivo"""
     if not update.message or not update.message.new_chat_members:
         return
     
     for member in update.message.new_chat_members:
-        # Invia messaggio di benvenuto quando qualcuno viene aggiunto al gruppo
         welcome_text = (
             f"👋 Benvenuto {member.first_name}!\n\n"
             "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
@@ -573,9 +624,7 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "• /help - Visualizza tutte le FAQ\n"
             "• /lista - Visualizza la lista prodotti"
         )
-        
         try:
-            # Invia nel gruppo
             kwargs = {
                 "chat_id": update.message.chat.id,
                 "text": welcome_text,
@@ -584,18 +633,19 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
             thread_id = getattr(update.message, "message_thread_id", None)
             if thread_id:
                 kwargs["message_thread_id"] = thread_id
-            
             await context.bot.send_message(**kwargs)
             logger.info(f"Benvenuto inviato a {member.first_name} (nuovo membro)")
         except Exception as e:
             logger.error(f"Errore invio benvenuto: {e}")
 
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce aggiornamenti di stato membri - DEPRECATO, usa handle_group_message"""
+    # Placeholder se vuoi gestire eventi di chat member in futuro
     pass
 
+# -----------------------
+# Setup / inizializzazione bot
+# -----------------------
 async def setup_bot():
-    """Setup bot once with proper error handling"""
     global bot_application, initialization_lock
     
     if initialization_lock:
@@ -619,7 +669,7 @@ async def setup_bot():
         get_bot_username.username = bot.username
         logger.info(f"Bot: @{bot.username}")
 
-        # Add handlers
+        # Command handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("genera_link", genera_link_command))
@@ -635,10 +685,12 @@ async def setup_bot():
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
         application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
         
+        # Callbacks & messages
         application.add_handler(CallbackQueryHandler(handle_callback_query))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP), handle_group_message))
-        application.add_handler(MessageHandler(filters.TEXT & filters.ChatType.CHANNEL, handle_group_message))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_message))
+        # GROUPS / SUPERGROUPS / CHANNELS
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
+        # PRIVATE
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
 
         # Set webhook only if URL provided
         if WEBHOOK_URL:
@@ -655,6 +707,9 @@ async def setup_bot():
         initialization_lock = False
         raise
 
+# -----------------------
+# Flask endpoints (webhook)
+# -----------------------
 @app.route('/')
 def index():
     return "🤖 Bot attivo! ✅", 200
