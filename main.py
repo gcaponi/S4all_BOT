@@ -1,35 +1,24 @@
 import os
 import json
 import logging
-import asyncio
-import re
-import secrets
-import requests
 from flask import Flask, request
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ChatMemberHandler, filters, ContextTypes
+import secrets
+import re
+import requests
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, 
-    CommandHandler, 
-    MessageHandler, 
-    CallbackQueryHandler, 
-    ChatMemberHandler, 
-    filters, 
-    ContextTypes
-)
+import asyncio
 
-# ---- Configurazione Logging ----
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ---- Variabili di Ambiente ----
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 10000))
 
-# ---- Costanti e File ----
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
 ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
@@ -45,7 +34,9 @@ bot_application = None
 bot_initialized = False
 initialization_lock = False
 
-# ---- Utils: web fetch, parsing, I/O ----
+# -----------------------
+# Utils: web fetch, parsing, I/O
+# -----------------------
 def fetch_markdown_from_html(url: str) -> str:
     r = requests.get(url, timeout=10)
     r.raise_for_status()
@@ -151,7 +142,6 @@ def authorize_user(user_id, first_name=None, last_name=None, username=None):
 def get_bot_username():
     return getattr(get_bot_username, 'username', 'tuobot')
 
-# ---- Logica di Ricerca (Fuzzy) ----
 def calculate_similarity(text1: str, text2: str) -> float:
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
 
@@ -196,6 +186,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     return {'match': False, 'item': None, 'score': best_score, 'method': None}
 
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
+    """Cerca prodotti nella lista testuale"""
     if not lista_text:
         return {'match': False, 'snippet': None, 'score': 0}
     
@@ -237,16 +228,12 @@ def has_payment_method(text: str) -> bool:
 def looks_like_order(text: str) -> bool:
     if not text:
         return False
+    # Semplice euristica: presenza di numeri + lunghezza minima
     return bool(re.search(r'\d', text)) and len(text.strip()) >= 5
 
-def is_requesting_lista(text: str) -> bool:
-    if not text:
-        return False
-    t = normalize_text(text)
-    keywords = ["lista", "prodotti", "mostrami la lista", "catalogo", "cosa vendi"]
-    return any(kw in t for kw in keywords)
-    
-# ---- Handlers ----
+# -----------------------
+# Handlers: commands & messages
+# -----------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -260,7 +247,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("✅ Autorizzato! Usa /help")
                 if ADMIN_CHAT_ID:
                     try:
-                        await context.bot.send_message(ADMIN_CHAT_ID, f"✅ Nuovo utente: {user.first_name}")
+                        await context.bot.send_message(ADMIN_CHAT_ID, f"✅ Nuovo: {user.first_name}")
                     except Exception:
                         logger.exception("Invio notifica admin fallito")
             else:
@@ -283,25 +270,47 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     faq_data = load_faq()
     faq_list = faq_data.get("faq", []) if faq_data else []
     if not faq_list:
-        await update.message.reply_text("❌ Nessuna FAQ caricata.")
+        await update.message.reply_text("❌ Nessuna FAQ")
         return
 
-    full_text = "🗒️ Benvenuto! Leggi le FAQ qui sotto:\n\n"
+    full_text = "🗒️Ciao! Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: tempi di spedizione, metodi di pagamento come ordinare ecc. 🗒️\n\n"
+    full_text += "📍NOTA BENE: la qualità è la priorità principale, i vari brand sono selezionati direttamente tra i migliori sul mercato, se cerchi prodotti scadenti ed economici non acquistare qui!\n\n"
+    full_text += "🔴🔴Se vuoi puoi lasciarmi la tua Email per essere avvertito in caso di cambio contatto Telegram {tra qualche mese mi sposto su una nuova piattaforma per la sicurezza di tutti} e per essere avvertito all' arrivo dei prodotti terminati o prodotti nuovi e promozioni🔴🔴\n\n"
+
     for item in faq_list:
         full_text += f"## {item['domanda']}\n{item['risposta']}\n\n"
+
+    full_text += "💡 Scrivi anche con errori!"
 
     max_length = 4000
     if len(full_text) <= max_length:
         await update.message.reply_text(full_text)
     else:
-        for i in range(0, len(full_text), max_length):
-            await update.message.reply_text(full_text[i:i+max_length])
+        parts = []
+        current = ""
+        for line in full_text.split("\n"):
+            if len(current) + len(line) + 1 > max_length:
+                parts.append(current)
+                current = line + "\n"
+            else:
+                current += line + "\n"
+        if current:
+            parts.append(current)
+
+        for part in parts:
+            await update.message.reply_text(part)
 
 async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        update_lista_from_web()
+    except Exception:
+        logger.exception("Errore aggiornamento lista (ignorato)")
+
     lista_text = load_lista()
     if not lista_text:
         await update.message.reply_text("❌ Lista non disponibile")
         return
+
     max_len = 4000
     for i in range(0, len(lista_text), max_len):
         await update.message.reply_text(lista_text[i:i+max_len])
@@ -310,93 +319,406 @@ async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_T
     if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
         await update.message.reply_text("❌ Solo admin")
         return
+
     await update.message.reply_text("⏳ Aggiorno lista...")
-    if update_lista_from_web():
+    ok = update_lista_from_web()
+    if ok:
         await update.message.reply_text("✅ Lista aggiornata!")
     else:
-        await update.message.reply_text("❌ Errore aggiornamento")
+        await update.message.reply_text("❌ Errore aggiornamento lista")
 
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo admin")
         return
-    link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
-    await update.message.reply_text(f"🔗 Link: <code>{link}</code>", parse_mode='HTML')
 
+    link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
+    await update.message.reply_text(f"🔗 <code>{link}</code>\n\n👥 Autorizzati: {len(load_authorized_users())}", parse_mode='HTML')
+
+async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo admin")
+        return
+
+    new_code = secrets.token_urlsafe(12)
+    save_access_code(new_code)
+    link = f"https://t.me/{get_bot_username.username}?start={new_code}"
+    await update.message.reply_text(f"✅ Nuovo link:\n<code>{link}</code>", parse_mode='HTML')
+
+async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo admin")
+        return
+
+    users = load_authorized_users()
+    if not users:
+        await update.message.reply_text("📋 Nessuno")
+        return
+
+    msg = f"👥 <b>Autorizzati ({len(users)}):</b>\n\n"
+    for i, (uid, data) in enumerate(users.items(), 1):
+        name = data.get('name', 'N/A')
+        username = data.get('username', 'N/A')
+        user_id_val = data.get('id', uid)
+        msg += f"{i}. {name} (@{username}) - {user_id_val}\n"
+    await update.message.reply_text(msg, parse_mode='HTML')
+
+async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo admin")
+        return
+
+    if not context.args:
+        await update.message.reply_text("❌ Uso: /revoca (ID)")
+        return
+
+    try:
+        target_id = str(int(context.args[0]))
+        users = load_authorized_users()
+        if target_id in users:
+            del users[target_id]
+            save_authorized_users(users)
+            await update.message.reply_text(f"✅ Rimosso {target_id}")
+        else:
+            await update.message.reply_text(f"❌ Non trovato {target_id}")
+    except:
+        await update.message.reply_text("❌ ID non valido")
+
+async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo admin")
+        return
+
+    msg = (
+        "👑 <b>Comandi Admin:</b>\n\n"
+        "🔐 Accessi:\n"
+        "• /genera_link\n"
+        "• /cambia_codice\n"
+        "• /lista_autorizzati\n"
+        "• /revoca (ID)\n"
+        "• /aggiorna_faq\n"
+        "• /aggiorna_lista\n\n"
+        "👤 Utente:\n"
+        "• /start\n"
+        "• /help\n"
+        "• /lista\n\n"
+    )
+    await update.message.reply_text(msg, parse_mode='HTML')
+
+async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user is None or update.effective_user.id != ADMIN_CHAT_ID:
+        await update.message.reply_text("❌ Solo admin")
+        return
+
+    await update.message.reply_text("⏳ Aggiorno FAQ...")
+    if update_faq_from_web():
+        faq_list = load_faq().get("faq", [])
+        await update.message.reply_text(f"✅ <b>FAQ aggiornate!</b>\n\n📊 Totale: {len(faq_list)}", parse_mode="HTML")
+    else:
+        await update.message.reply_text("❌ Errore aggiornamento")
+
+# -----------------------
+# Prioritized message handling
+# -----------------------
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
-    if not message or not message.text:
+    if not message or not getattr(message, "text", None):
         return
+
     text = message.text.strip()
 
-    if is_requesting_lista(text):
-        await lista_command(update, context)
-        return
-
+    # 1) Controllo ordine (PRIMA di tutto)
     if looks_like_order(text) and not has_payment_method(text):
         keyboard = [[
             InlineKeyboardButton("✅ Sì", callback_data=f"payment_ok_{message.message_id}"),
             InlineKeyboardButton("❌ No", callback_data=f"payment_no_{message.message_id}")
         ]]
-        await message.reply_text("🤔 <b>Ordine senza pagamento?</b>\nHai specificato il metodo?", 
-                                 reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        try:
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text="🤔 <b>Ordine senza pagamento?</b>\n\nHai specificato come pagherai?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"Errore invio pulsanti (privato): {e}")
         return
 
+    # 2) Cerca nelle FAQ
     faq = load_faq()
     if faq and faq.get("faq"):
         result = fuzzy_search_faq(text, faq.get("faq", []))
         if result['match'] and result['score'] > 0.75:
-            await message.reply_text(f"✅ <b>{result['item']['domanda']}</b>\n\n{result['item']['risposta']}", parse_mode='HTML')
+            item = result['item']
+            emoji = "🎯" if result['score'] > 0.9 else "✅"
+            resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
+            if result['score'] < 0.9:
+                resp += f"\n\n<i>Confidenza: {result['score']:.0%}</i>"
+            try:
+                await message.reply_text(resp, parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"Errore invio FAQ (privato): {e}")
             return
 
-    await message.reply_text("❓ Non ho capito. Usa /help", parse_mode='HTML')
+    # 3) Cerca nella Lista
+    lista_text = load_lista()
+    if lista_text:
+        result = fuzzy_search_lista(text, lista_text)
+        if result['match'] and result['score'] > 0.3:
+            emoji = "🎯" if result['score'] > 0.7 else "📦"
+            resp = f"{emoji} <b>Prodotti trovati:</b>\n\n{result['snippet']}"
+            try:
+                await message.reply_text(resp, parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"Errore invio lista (privato): {e}")
+            return
+
+    # 4) Nessuna risposta
+    try:
+        await message.reply_text("❓ Nessuna risposta. Usa /help", parse_mode='HTML')
+    except Exception as e:
+        logger.error(f"Errore invio fallback (privato): {e}")
+
+async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Gestisce messaggi in group/supergroup e channel_post
+    message = update.message or update.channel_post
+    if not message or not getattr(message, "text", None):
+        return
+
+    text = message.text.strip()
+    chat_id = getattr(message, "chat", None).id if getattr(message, "chat", None) else None
+    user = getattr(message, "from_user", None)
+    user_id = user.id if user else None
+
+    # FUNZIONE 0: Benvenuto al primo messaggio dell'utente (se esiste from_user)
+    if user_id and chat_id:
+        greeted_key = f"greeted_{chat_id}_{user_id}"
+        if not context.bot_data.get(greeted_key):
+            context.bot_data[greeted_key] = True
+            welcome_text = (
+                f"👋 Benvenuto {user.first_name}!\n\n"
+                "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
+                "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
+                "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
+                "📋 <b>Comandi disponibili:</b>\n"
+                "• /help - Visualizza tutte le FAQ\n"
+                "• /lista - Visualizza la lista prodotti"
+            )
+            try:
+                kwargs = {
+                    "chat_id": chat_id,
+                    "text": welcome_text,
+                    "parse_mode": "HTML"
+                }
+                thread_id = getattr(message, "message_thread_id", None)
+                if thread_id:
+                    kwargs["message_thread_id"] = thread_id
+                    kwargs["reply_to_message_id"] = message.message_id
+                await context.bot.send_message(**kwargs)
+                logger.info(f"Benvenuto inviato a {user.first_name} ({user_id}) nel gruppo {chat_id}")
+            except Exception as e:
+                logger.error(f"Errore invio benvenuto: {e}")
+
+    # CONTROLLO ORDINE PRIMA DI FAQ/LISTA
+    if looks_like_order(text) and not has_payment_method(text):
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"payment_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"payment_no_{message.message_id}")
+        ]]
+        try:
+            kwargs = {
+                "chat_id": chat_id,
+                "text": "🤔 <b>Ordine senza pagamento?</b>\n\nHai specificato come pagherai?",
+                "reply_markup": InlineKeyboardMarkup(keyboard),
+                "parse_mode": "HTML"
+            }
+            thread_id = getattr(message, "message_thread_id", None)
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+                kwargs["reply_to_message_id"] = message.message_id
+            await context.bot.send_message(**kwargs)
+        except Exception as e:
+            logger.error(f"Errore pulsanti (gruppo/canale): {e}")
+        return
+
+    # 1) Cerca nelle FAQ (solo se non era un ordine)
+    faq = load_faq()
+    if faq and faq.get("faq"):
+        result = fuzzy_search_faq(text, faq.get("faq", []))
+        if result['match'] and result['score'] > 0.75:
+            item = result['item']
+            emoji = "🎯" if result['score'] > 0.9 else "✅"
+            resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
+            try:
+                kwargs = {
+                    "chat_id": chat_id,
+                    "text": resp,
+                    "parse_mode": "HTML"
+                }
+                thread_id = getattr(message, "message_thread_id", None)
+                if thread_id:
+                    kwargs["message_thread_id"] = thread_id
+                    kwargs["reply_to_message_id"] = message.message_id
+                await context.bot.send_message(**kwargs)
+            except Exception as e:
+                logger.error(f"Errore invio FAQ gruppo: {e}")
+            return
+
+    # 2) Cerca nella LISTA
+    lista_text = load_lista()
+    if lista_text:
+        result = fuzzy_search_lista(text, lista_text)
+        if result['match'] and result['score'] > 0.3:
+            emoji = "🎯" if result['score'] > 0.7 else "📦"
+            resp = f"{emoji} <b>Prodotti trovati:</b>\n\n{result['snippet']}"
+            try:
+                kwargs = {
+                    "chat_id": chat_id,
+                    "text": resp,
+                    "parse_mode": "HTML"
+                }
+                thread_id = getattr(message, "message_thread_id", None)
+                if thread_id:
+                    kwargs["message_thread_id"] = thread_id
+                    kwargs["reply_to_message_id"] = message.message_id
+                await context.bot.send_message(**kwargs)
+            except Exception as e:
+                logger.error(f"Errore invio lista gruppo: {e}")
+            return
+
+    # Se non è ordine e non trova FAQ/Lista, non rispondere (evita spam)
+    return
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    if query.data.startswith("payment_ok_"):
-        await query.edit_message_text(f"✅ Confermato da {query.from_user.first_name}!")
-    elif query.data.startswith("payment_no_"):
-        await query.edit_message_text("💡 Per favore specifica il metodo di pagamento.")
+    if not query or not query.data:
+        return
+    try:
+        await query.answer()
+    except Exception:
+        pass
 
-# ---- Setup Bot ----
+    if query.data.startswith("payment_ok_"):
+        try:
+            await query.edit_message_text(f"✅ Confermato da {query.from_user.first_name}!", parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Errore edit message (payment_ok): {e}")
+    elif query.data.startswith("payment_no_"):
+        try:
+            await query.edit_message_text(f"💡 Specifica: {', '.join(PAYMENT_KEYWORDS[:8])}...", parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Errore edit message (payment_no): {e}")
+
+# Benvenuto per nuovi membri (status)
+async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.new_chat_members:
+        return
+    
+    for member in update.message.new_chat_members:
+        welcome_text = (
+            f"👋 Benvenuto {member.first_name}!\n\n"
+            "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
+            "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
+            "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
+            "📋 <b>Comandi disponibili:</b>\n"
+            "• /help - Visualizza tutte le FAQ\n"
+            "• /lista - Visualizza la lista prodotti"
+        )
+        try:
+            kwargs = {
+                "chat_id": update.message.chat.id,
+                "text": welcome_text,
+                "parse_mode": "HTML"
+            }
+            thread_id = getattr(update.message, "message_thread_id", None)
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
+            await context.bot.send_message(**kwargs)
+            logger.info(f"Benvenuto inviato a {member.first_name} (nuovo membro)")
+        except Exception as e:
+            logger.error(f"Errore invio benvenuto: {e}")
+
+async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Placeholder se vuoi gestire eventi di chat member in futuro
+    pass
+
+# -----------------------
+# Setup / inizializzazione bot
+# -----------------------
 async def setup_bot():
     global bot_application, initialization_lock
-    if initialization_lock: return None
+    
+    if initialization_lock:
+        logger.info("⏳ Inizializzazione già in corso...")
+        return None
+    
     initialization_lock = True
     
     try:
-        application = Application.builder().token(BOT_TOKEN).build()
-        bot_info = await application.bot.get_me()
-        get_bot_username.username = bot_info.username
+        logger.info("📡 Inizializzazione bot...")
         
+        # Prefetch FAQ e Lista (silently)
+        try:
+            update_faq_from_web()
+            update_lista_from_web()
+        except Exception as e:
+            logger.warning(f"Prefetch warning: {e}")
+        
+        application = Application.builder().token(BOT_TOKEN).updater(None).build()
+        bot = await application.bot.get_me()
+        get_bot_username.username = bot.username
+        logger.info(f"Bot: @{bot.username}")
+
+        # Command handlers
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("lista", lista_command))
         application.add_handler(CommandHandler("genera_link", genera_link_command))
+        application.add_handler(CommandHandler("cambia_codice", cambia_codice_command))
+        application.add_handler(CommandHandler("lista_autorizzati", lista_autorizzati_command))
+        application.add_handler(CommandHandler("revoca", revoca_command))
+        application.add_handler(CommandHandler("admin_help", admin_help_command))
+        application.add_handler(CommandHandler("aggiorna_faq", aggiorna_faq_command))
+        application.add_handler(CommandHandler("lista", lista_command))
         application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
+        
+        # Status handlers - benvenuto nuovi membri
+        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
+        application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+        
+        # Callbacks & messages
         application.add_handler(CallbackQueryHandler(handle_callback_query))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_private_message))
+        # GROUPS / SUPERGROUPS / CHANNELS
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
+        # PRIVATE
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
 
+        # Set webhook only if URL provided
         if WEBHOOK_URL:
             await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
-        
+            logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
+
         await application.initialize()
         await application.start()
+        logger.info("🤖 Bot pronto!")
+        
         return application
     except Exception as e:
-        logger.error(f"Setup error: {e}")
+        logger.error(f"❌ Setup error: {e}")
         initialization_lock = False
         raise
 
+# -----------------------
+# Flask endpoints (webhook)
+# -----------------------
 @app.route('/')
 def index():
-    return "Bot is running", 200
+    return "🤖 Bot attivo! ✅", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     global bot_application, bot_initialized
     
-    # Inizializza il bot alla prima chiamata del webhook se non è ancora pronto
+    # Initialize bot on first webhook call
     if not bot_initialized:
         try:
             loop = asyncio.new_event_loop()
@@ -404,21 +726,27 @@ def webhook():
             bot_application = loop.run_until_complete(setup_bot())
             bot_initialized = True
         except Exception as e:
-            logger.error(f"Errore inizializzazione Webhook: {e}")
+            logger.error(f"Webhook init error: {e}")
             return "Init error", 503
     
     if not bot_application:
         return "Bot not ready", 503
     
     try:
-        # Trasforma il JSON ricevuto da Telegram in un oggetto Update
         update = Update.de_json(request.get_json(force=True), bot_application.bot)
-        asyncio.run_coroutine_threadsafe(bot_application.process_update(update), asyncio.get_event_loop())
-        
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot_application.process_update(update))
         return "OK", 200
     except Exception as e:
-        logger.error(f"Errore processamento update: {e}")
-        return "Error", 500
+        logger.error(f"Webhook error: {e}")
+        return "ERROR", 500
+
+@app.route('/health')
+def health():
+    return "OK", 200
 
 if __name__ == '__main__':
-    app.run(port=PORT)
+    app.run(host='0.0.0.0', port=PORT, debug=False)
