@@ -169,8 +169,27 @@ def extract_keywords(text: str) -> list:
 
 # Nuova funzione di controllo per la stampa della lista completa
 def is_requesting_lista_full(text: str) -> bool:
-    normalized = text.lower().strip()
-    return any(kw in normalized for kw in LISTA_KEYWORDS_FULL)
+    if not text: return False
+    
+    # 1. Normalizzazione (toglie accenti, simboli e rende minuscolo)
+    normalized_msg = normalize_text(text)
+    
+    # 2. CONTROLLO DIRETTO: Cerca le tue frasi esatte nella LISTA_KEYWORDS_FULL
+    if any(kw in normalized_msg for kw in LISTA_KEYWORDS_FULL):
+        return True
+            
+    # 3. CONTROLLO INTELLIGENTE (Fuzzy): Gestisce errori e parole singole non in lista
+    # Analizziamo parola per parola il messaggio dell'utente
+    words = normalized_msg.split()
+    smart_roots = ["listino", "catalogo", "prodotti", "prezzi", "articoli", "lista"]
+    
+    for word in words:
+        for root in smart_roots:
+            # Se la parola scritta dall'utente è quasi uguale alla radice (es: "listno" vs "listino")
+            if calculate_similarity(word, root) > 0.85:
+                return True
+                
+    return False
 
 def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     user_normalized = normalize_text(user_message)
