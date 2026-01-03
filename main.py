@@ -343,10 +343,71 @@ def has_payment_method(text: str) -> bool:
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
 def looks_like_order(text: str) -> bool:
-    """Verifica se il messaggio ha la struttura di un potenziale ordine (numeri + lunghezza)"""
+    """Verifica se il messaggio ha la struttura di un potenziale ordine"""
     if not text:
         return False
-    return bool(re.search(r'\d', text)) and len(text.strip()) >= 5
+    
+    text_lower = text.lower()
+    
+    # Controlla lunghezza minima
+    if len(text.strip()) < 4:
+        return False
+    
+    # Deve contenere numeri (quantità o prezzo)
+    if not re.search(r'\d', text):
+        return False
+    
+    # Indicatori di ordine
+    order_indicators = 0
+    
+    # 1. Contiene simboli di valuta o prezzi
+    if re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
+        order_indicators += 2
+    
+    # 2. Contiene quantità chiare
+    if re.search(r'\d+\s*x\s*|\d+\s+[a-z]', text_lower):
+        order_indicators += 2
+    
+    # 3. Contiene virgole/separatori
+    if text.count(',') >= 1 or text.count(';') >= 1:
+        order_indicators += 1
+    
+    # 4. Contiene località/spedizione + province italiane
+    location_keywords = [
+        'via', 'indirizzo', 'spedizione', 'spedire', 'consegna',
+        'ag', 'al', 'an', 'ao', 'ap', 'aq', 'ar', 'at', 'av', 'ba', 'bg', 'bi', 'bl', 'bn', 'bo', 'br', 'bs', 'bt', 
+        'bz', 'ca', 'cb', 'ce', 'ch', 'cl', 'cn', 'co', 'cr', 'cs', 'ct', 'cz', 'en', 'fc', 'fe', 'fg', 'fi', 'fm', 
+        'fr', 'ge', 'go', 'gr', 'im', 'is', 'kr', 'lc', 'le', 'li', 'lo', 'lt', 'lu', 'mb', 'mc', 'me', 'mi', 'mn', 
+        'mo', 'ms', 'mt', 'na', 'no', 'nu', 'og', 'or', 'pa', 'pc', 'pd', 'pe', 'pg', 'pi', 'pn', 'po', 'pr', 'pt', 
+        'pu', 'pv', 'pz', 'ra', 'rc', 're', 'rg', 'ri', 'rm', 'rn', 'ro', 'sa', 'si', 'so', 'sp', 'sr', 'ss', 'su', 
+        'sv', 'ta', 'te', 'tn', 'to', 'tp', 'tr', 'ts', 'tv', 'ud', 'va', 'vb', 'vc', 've', 'vi', 'vr', 'vt', 'vv'
+    ]
+    if any(kw in text_lower for kw in location_keywords):
+        order_indicators += 1
+    
+    # 5. Contiene prodotti dalla lista (carica dal file)
+    lista_text = load_lista()  # <-- Questa chiamata è necessaria
+    if lista_text:
+        lista_lines = [line.strip().lower() for line in lista_text.split('\n') if line.strip()]
+        text_words = text_lower.split()
+        for word in text_words:
+            if len(word) > 3:
+                for line in lista_lines:
+                    if word in line:
+                        order_indicators += 1
+                        break
+                if order_indicators >= 5:  # Ottimizzazione: stop dopo aver trovato il prodotto
+                    break
+    
+    # Se ha almeno 2 indicatori, probabilmente è un ordine
+    if order_indicators >= 2:
+        return True
+    
+    # Se ha numeri E virgole/separatori, è probabilmente un ordine
+    if order_indicators >= 1 and (text.count(',') >= 1 or re.search(r'\d+\s*x', text_lower)):
+        return True
+    
+    return False
 
 # ---------------------------------------------------------
 # HANDLERS: COMANDI (START, HELP, LISTA)
