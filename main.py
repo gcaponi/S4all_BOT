@@ -584,7 +584,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     text = message.text.strip()
 
     # 1. Controllo ORDINE (mancanza pagamento)
-    if looks_like_order(text) and not has_payment_method(text):
+    if looks_like_order(text):
         keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
         await message.reply_text("🤔 <b>Sembra un ordine!</b> Hai specificato il metodo di pagamento?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
@@ -653,7 +653,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 logger.error(f"Errore benvenuto: {e}")
     
     # 1. ORDINE SENZA PAGAMENTO
-    if looks_like_order(text) and not has_payment_method(text):
+    if looks_like_order(text):
         keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
         await context.bot.send_message(chat_id=chat_id, text="🤔 <b>Pagamento specificato?</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", reply_to_message_id=message.message_id)
         return
