@@ -583,19 +583,19 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     if not message or not message.text: return
     text = message.text.strip()
 
-    # 1. Richiesta LISTINO
+    # 1. Controllo ORDINE (mancanza pagamento)
+    if looks_like_order(text) and not has_payment_method(text):
+        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
+        await message.reply_text("🤔 <b>Sembra un ordine!</b> Hai specificato il metodo di pagamento?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        return
+        
+    # 2. Richiesta LISTINO
     if is_requesting_lista_full(text):
         lista = load_lista()
         if lista:
             for i in range(0, len(lista), 4000): await message.reply_text(lista[i:i+4000])
             return
-
-    # 2. Controllo ORDINE (mancanza pagamento)
-    if looks_like_order(text) and not has_payment_method(text):
-        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
-        await message.reply_text("🤔 <b>Sembra un ordine!</b> Hai specificato il metodo di pagamento?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        return
-
+            
     # 3. Ricerca FAQ (con sinonimi)
     faq_data = load_faq()
     res = fuzzy_search_faq(text, faq_data.get("faq", []))
@@ -652,20 +652,20 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             except Exception as e:
                 logger.error(f"Errore benvenuto: {e}")
     
-    # 1. LISTINO COMPLETO
+    # 1. ORDINE SENZA PAGAMENTO
+    if looks_like_order(text) and not has_payment_method(text):
+        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
+        await context.bot.send_message(chat_id=chat_id, text="🤔 <b>Pagamento specificato?</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", reply_to_message_id=message.message_id)
+        return
+        
+    # 2. LISTINO COMPLETO
     if is_requesting_lista_full(text):
         lista = load_lista()
         if lista:
             for i in range(0, len(lista), 4000):
                 await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
             return
-
-    # 2. ORDINE SENZA PAGAMENTO
-    if looks_like_order(text) and not has_payment_method(text):
-        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
-        await context.bot.send_message(chat_id=chat_id, text="🤔 <b>Pagamento specificato?</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", reply_to_message_id=message.message_id)
-        return
-
+            
     # 3. FAQ INTELLIGENTI
     faq_data = load_faq()
     res = fuzzy_search_faq(text, faq_data.get("faq", []))
