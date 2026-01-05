@@ -67,6 +67,8 @@ app = Flask(__name__)
 bot_application = None
 bot_initialized = False
 initialization_lock = False
+FAQ_CONFIDENCE_THRESHOLD = 0.65
+LISTA_CONFIDENCE_THRESHOLD = 0.30
 
 # ---------------------------------------------------------
 # UTILS: WEB FETCH, PARSING, I/O (SISTEMA DI AGGIORNAMENTO)
@@ -275,16 +277,19 @@ def is_requesting_lista_full(text: str) -> bool:
     return False
 
 def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
-    """Cerca la risposta più pertinente nelle FAQ basandosi su parole chiave e somiglianza"""
+    """Cerca la risposta più pertinente nelle FAQ con score"""
     user_normalized = normalize_text(user_message)
     
+    # Sistema sinonimi esteso
     keywords_map = {
-        "spedizione": ["spedito", "spedisci", "spedite", "corriere", "pacco", "invio", "mandato", "spedizioni"],
-        "tracking": ["track", "codice", "tracciabilità", "tracciamento", "tracking", "traccia"],
-        "tempi": ["quando arriva", "quanto tempo", "giorni", "ricevo", "consegna", "tempistiche"],
-        "pagamento": ["pagare", "metodi", "bonifico", "ricarica", "paypal", "crypto", "pagamenti"]
+        "spedizione": ["spedito", "spedisci", "spedite", "corriere", "pacco", "invio", "mandato", "spedizioni", "arriva", "consegna"],
+        "tracking": ["track", "codice", "tracciabilità", "tracciamento", "tracking", "traccia", "seguire", "dove"],
+        "tempi": ["quando arriva", "quanto tempo", "giorni", "ricevo", "consegna", "tempistiche", "quanto ci vuole"],
+        "pagamento": ["pagare", "metodi", "bonifico", "ricarica", "paypal", "crypto", "pagamenti", "come pago", "pagamento"],
+        "ordinare": ["ordine", "ordinare", "fare ordine", "come ordino", "voglio ordinare", "fare un ordine", "posso ordinare", "come faccio", "procedura"]
     }
 
+    # PRIORITÀ ALTA: Match con keywords (score massimo)
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         risposta_norm = normalize_text(item["risposta"])
@@ -292,49 +297,87 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
         for root, synonyms in keywords_map.items():
             if any(syn in user_normalized for syn in synonyms):
                 if root in domanda_norm or root in risposta_norm:
-                    logger.info(f"Corrispondenza FAQ trovata per keyword: {root}")
-                    return {'match': True, 'item': item, 'score': 1.0}
+                    logger.info(f"✅ FAQ Match (keyword): {root} → score: 1.0")
+                    return {'match': True, 'item': item, 'score': 1.0, 'method': 'keyword'}
 
+    # PRIORITÀ MEDIA: Match per similarità
     best_match = None
     best_score = 0
+    
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         
+        # Match perfetto
         if user_normalized in domanda_norm or domanda_norm in user_normalized:
-            return {'match': True, 'item': item, 'score': 1.0}
+            logger.info(f"✅ FAQ Match (exact): score: 1.0")
+            return {'match': True, 'item': item, 'score': 1.0, 'method': 'exact'}
         
+        # Calcolo similarità
         score = calculate_similarity(user_normalized, domanda_norm)
         if score > best_score:
             best_score = score
             best_match = item
     
-    if best_score >= FUZZY_THRESHOLD:
-        return {'match': True, 'item': best_match, 'score': best_score}
-        
-    return {'match': False}
+    # Se supera la soglia
+    if best_score >= FAQ_CONFIDENCE_THRESHOLD:
+        logger.info(f"✅ FAQ Match (fuzzy): score: {best_score:.2f}")
+        return {'match': True, 'item': best_match, 'score': best_score, 'method': 'similarity'}
+    
+    logger.info(f"❌ FAQ: No match (best score: {best_score:.2f})")
+    return {'match': False, 'item': None, 'score': best_score, 'method': None}
 
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
-    """Cerca righe specifiche nel listino per rispondere a domande su singoli prodotti"""
+    """Cerca prodotti nella lista con filtro semantico + score"""
     if not lista_text:
-        return {'match': False}
-        
+        return {'match': False, 'snippet': None, 'score': 0}
+    
     user_normalized = normalize_text(user_message)
+    
+    # Estrai parole significative (>3 caratteri)
     words = [w for w in user_normalized.split() if len(w) > 3]
     
     if not words:
-        return {'match': False}
-        
+        return {'match': False, 'snippet': None, 'score': 0}
+    
+    # FILTRO SEMANTICO INTELLIGENTE: 
+    # Blocca SOLO se ci sono parole conversazionali E NON ci sono prodotti nella lista
+    conversational_stopwords = [
+        'come', 'volevo', 'vorrei', 'voglio', 'posso', 'devo', 'come faccio',
+        'buongiorno', 'buonasera', 'ciao', 'salve', 'informazioni', 'aiuto',
+        'fare', 'faccio', 'sapere', 'chiedere', 'domanda', 'spiegare'
+    ]
+    
+    has_conversational = any(stopword in user_normalized for stopword in conversational_stopwords)
+    
+    # Cerca nelle righe
     lines = lista_text.split('\n')
     best_lines = []
+    matches_count = 0
     
     for line in lines:
-        if any(w in normalize_text(line) for w in words):
-            best_lines.append(line.strip())
-            
-    if best_lines:
-        return {'match': True, 'snippet': '\n'.join(best_lines[:5])}
+        if not line.strip():
+            continue
+        line_normalized = normalize_text(line)
         
-    return {'match': False}
+        # Conta quante parole matchano
+        matched_words = sum(1 for w in words if w in line_normalized)
+        if matched_words > 0:
+            best_lines.append(line.strip())
+            matches_count += matched_words
+    
+    # Se ha trovato prodotti nella lista, IGNORA il filtro conversazionale
+    if best_lines:
+        score = matches_count / len(words) if words else 0
+        logger.info(f"✅ Lista: {len(best_lines)} righe, score: {score:.2f}")
+        return {'match': True, 'snippet': '\n'.join(best_lines[:5]), 'score': score}
+    
+    # Se NON ha trovato prodotti E ha parole conversazionali, probabilmente è una domanda generica
+    if has_conversational and not best_lines:
+        logger.info(f"⏭️ Lista: Blocked (conversational + no products)")
+        return {'match': False, 'snippet': None, 'score': 0}
+    
+    logger.info(f"❌ Lista: No match")
+    return {'match': False, 'snippet': None, 'score': 0}
 
 def has_payment_method(text: str) -> bool:
     """Verifica se il messaggio contiene un metodo di pagamento noto"""
@@ -687,14 +730,25 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     # STEP 4: Cerca FAQ
     faq_data = load_faq()
     res = fuzzy_search_faq(text, faq_data.get("faq", []))
-    if res['match']:
-        await message.reply_text(f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML")
+    logger.info(f"FAQ result: match={res.get('match')}, score={res.get('score', 0):.2f}")
+    
+    if res['match'] and res.get('score', 0) >= FAQ_CONFIDENCE_THRESHOLD:
+        item = res['item']
+        emoji = "🎯" if res['score'] > 0.9 else "✅"
+        resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
+        if res['score'] < 0.9:
+            resp += f"\n\n<i>Confidenza: {res['score']:.0%}</i>"
+        await message.reply_text(resp, parse_mode='HTML')
         return
 
     # STEP 5: Cerca prodotti nella lista
-    l_res = fuzzy_search_lista(text, load_lista())
-    if l_res['match']:
-        await message.reply_text(f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
+    lista_text = load_lista()
+    l_res = fuzzy_search_lista(text, lista_text)
+    logger.info(f"Lista result: match={l_res.get('match')}, score={l_res.get('score', 0):.2f}")
+    
+    if l_res['match'] and l_res.get('score', 0) >= LISTA_CONFIDENCE_THRESHOLD:
+        emoji = "🎯" if l_res['score'] > 0.7 else "📦"
+        await message.reply_text(f"{emoji} <b>Prodotti trovati:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
         return
 
     # STEP 6: Nessuna risposta
@@ -785,27 +839,29 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
             return
 
-    # STEP 4: FAQ
+    # STEP 4: Cerca FAQ
     faq_data = load_faq()
     res = fuzzy_search_faq(text, faq_data.get("faq", []))
-    if res['match']:
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", 
-            parse_mode="HTML", 
-            reply_to_message_id=message.message_id
-        )
+    logger.info(f"FAQ result: match={res.get('match')}, score={res.get('score', 0):.2f}")
+    
+    if res['match'] and res.get('score', 0) >= FAQ_CONFIDENCE_THRESHOLD:
+        item = res['item']
+        emoji = "🎯" if res['score'] > 0.9 else "✅"
+        resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
+        if res['score'] < 0.9:
+            resp += f"\n\n<i>Confidenza: {res['score']:.0%}</i>"
+        await message.reply_text(resp, parse_mode='HTML')
         return
 
-    # STEP 5: Prodotti
-    l_res = fuzzy_search_lista(text, load_lista())
-    if l_res['match']:
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", 
-            parse_mode="HTML", 
-            reply_to_message_id=message.message_id
-        )
+    # STEP 5: Cerca prodotti nella lista
+    lista_text = load_lista()
+    l_res = fuzzy_search_lista(text, lista_text)
+    logger.info(f"Lista result: match={l_res.get('match')}, score={l_res.get('score', 0):.2f}")
+    
+    if l_res['match'] and l_res.get('score', 0) >= LISTA_CONFIDENCE_THRESHOLD:
+        emoji = "🎯" if l_res['score'] > 0.7 else "📦"
+        await message.reply_text(f"{emoji} <b>Prodotti trovati:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
+        return
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce i bottoni Inline e salva gli ordini confermati"""
