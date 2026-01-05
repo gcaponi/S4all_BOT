@@ -712,10 +712,11 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
             InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
         ]]
         await message.reply_text(
-            "🤔 <b>Sembra un ordine!</b> Confermi?\n\n"
+            "🤔 <b>Sembra un ordine!</b> C'è il metodo di Pagamento?\n\n"
             "Se sì, verrà registrato nel sistema.", 
             reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_to_message_id=message.message_id
         )
         return
 
@@ -824,7 +825,8 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         ]]
         await context.bot.send_message(
             chat_id=chat_id, 
-            text="🤔 <b>Sembra un ordine!</b> Confermi?", 
+            "🤔 <b>Sembra un ordine!</b> C'è il metodo di Pagamento?\n\n"
+            "Se sì, verrà registrato nel sistema.", 
             reply_markup=InlineKeyboardMarkup(keyboard), 
             parse_mode="HTML", 
             reply_to_message_id=message.message_id
