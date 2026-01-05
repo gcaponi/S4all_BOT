@@ -350,7 +350,7 @@ def looks_like_order(text: str) -> bool:
     text_lower = text.lower()
     
     # Controlla lunghezza minima
-    if len(text.strip()) < 4:
+    if len(text.strip()) < 5:
         return False
     
     # Deve contenere numeri (quantità o prezzo)
