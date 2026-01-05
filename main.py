@@ -343,11 +343,24 @@ def has_payment_method(text: str) -> bool:
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
 def looks_like_order(text: str) -> bool:
-    """Verifica se il messaggio ha la struttura di un potenziale ordine"""
+    """Verifica se il messaggio è un VERO ordine (non una domanda sugli ordini)"""
     if not text:
         return False
     
     text_lower = text.lower()
+    
+    # ESCLUSIONI: Frasi conversazionali che NON sono ordini
+    conversational_phrases = [
+        'volevo', 'vorrei', 'voglio fare', 'posso fare', 'come faccio', 'come fare',
+        'buongiorno', 'buonasera', 'ciao', 'salve', 'come si', 'devo fare',
+        'fare un ordine', 'fare ordine', 'ordinare', 'per ordinare', 'come ordino',
+        'voglio ordinare', 'posso ordinare', 'come si ordina', 'aiuto',
+        'informazioni', 'domanda', 'chiedere', 'sapere se', 'mi dici', 'puoi dirmi'
+    ]
+    
+    # Se contiene frasi conversazionali, NON è un ordine diretto
+    if any(phrase in text_lower for phrase in conversational_phrases):
+        return False
     
     # Controlla lunghezza minima
     if len(text.strip()) < 5:
@@ -357,23 +370,26 @@ def looks_like_order(text: str) -> bool:
     if not re.search(r'\d', text):
         return False
     
-    # Indicatori di ordine
+    # INDICATORI DI ORDINE REALE
     order_indicators = 0
     
-    # 1. Contiene simboli di valuta o prezzi
+    # 1. Simboli di valuta o prezzi (FORTE indicatore)
     if re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
+        order_indicators += 3
+    
+    # 2. Quantità chiare con "x" o numero+prodotto
+    if re.search(r'\d+\s*x\s*|\d+\s+[a-z]{4,}', text_lower):
         order_indicators += 2
     
-    # 2. Contiene quantità chiare
-    if re.search(r'\d+\s*x\s*|\d+\s+[a-z]', text_lower):
+    # 3. Virgole/separatori (lista prodotti)
+    if text.count(',') >= 2 or text.count(';') >= 1:
         order_indicators += 2
-    
-    # 3. Contiene virgole/separatori
-    if text.count(',') >= 1 or text.count(';') >= 1:
+    elif text.count(',') == 1:
         order_indicators += 1
     
-    # 4. Contiene località/spedizione + province italiane
+    # 4. Località/spedizione + province
     location_keywords = [
+        'roma', 'milano', 'napoli', 'torino', 'bologna', 'firenze', 
         'via', 'indirizzo', 'spedizione', 'spedire', 'consegna',
         'ag', 'al', 'an', 'ao', 'ap', 'aq', 'ar', 'at', 'av', 'ba', 'bg', 'bi', 'bl', 'bn', 'bo', 'br', 'bs', 'bt', 
         'bz', 'ca', 'cb', 'ce', 'ch', 'cl', 'cn', 'co', 'cr', 'cs', 'ct', 'cz', 'en', 'fc', 'fe', 'fg', 'fi', 'fm', 
@@ -385,26 +401,62 @@ def looks_like_order(text: str) -> bool:
     if any(kw in text_lower for kw in location_keywords):
         order_indicators += 1
     
-    # 5. Contiene prodotti dalla lista (carica dal file)
-    lista_text = load_lista()  # <-- Questa chiamata è necessaria
+    # 5. Prodotti dalla lista
+    lista_text = load_lista()
     if lista_text:
-        lista_lines = [line.strip().lower() for line in lista_text.split('\n') if line.strip()]
-        text_words = text_lower.split()
+        lista_lines = [line.strip().lower() for line in lista_text.split('\n') if line.strip() and len(line.strip()) > 3]
+        text_words = [w for w in text_lower.split() if len(w) > 3]
+        
+        product_found = False
         for word in text_words:
-            if len(word) > 3:
-                for line in lista_lines:
-                    if word in line:
-                        order_indicators += 1
-                        break
-                if order_indicators >= 5:  # Ottimizzazione: stop dopo aver trovato il prodotto
+            for line in lista_lines:
+                if word in line:
+                    order_indicators += 2
+                    product_found = True
                     break
+            if product_found:
+                break
     
-    # Se ha almeno 2 indicatori, probabilmente è un ordine
-    if order_indicators >= 2:
+    # 6. Metodi di pagamento espliciti
+    payment_keywords_explicit = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'usdc', 'xmr']
+    if any(kw in text_lower for kw in payment_keywords_explicit):
+        order_indicators += 2
+    
+    # DECISIONE FINALE: Serve un punteggio alto per essere considerato ordine
+    # Almeno 4 punti (es: prezzo + prodotto, oppure quantità + località + pagamento)
+    if order_indicators >= 4:
         return True
     
-    # Se ha numeri E virgole/separatori, è probabilmente un ordine
-    if order_indicators >= 1 and (text.count(',') >= 1 or re.search(r'\d+\s*x', text_lower)):
+    return False
+
+def should_search_faq_first(text: str) -> bool:
+    """Determina se il messaggio è una DOMANDA che richiede ricerca FAQ"""
+    if not text:
+        return False
+    
+    text_lower = text.lower()
+    
+    # Parole interrogative
+    question_words = [
+        'come', 'quando', 'quanto', 'dove', 'perché', 'perche', 'cosa', 
+        'chi', 'quale', 'quali', 'posso', 'devo', 'serve', '?'
+    ]
+    
+    if any(word in text_lower for word in question_words):
+        return True
+    
+    # Frasi che indicano richiesta di informazioni
+    info_phrases = [
+        'volevo', 'vorrei', 'voglio sapere', 'mi serve', 'ho bisogno',
+        'informazioni', 'aiuto', 'puoi dirmi', 'mi dici', 'spiegami',
+        'buongiorno', 'buonasera', 'ciao', 'salve'
+    ]
+    
+    if any(phrase in text_lower for phrase in info_phrases):
+        return True
+    
+    # Se è corto (meno di 15 caratteri) e non ha numeri, probabilmente è una domanda
+    if len(text_lower) < 15 and not re.search(r'\d', text_lower):
         return True
     
     return False
@@ -583,32 +635,69 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     if not message or not message.text: return
     text = message.text.strip()
 
-    # 1. Controllo ORDINE (mancanza pagamento)
-    if looks_like_order(text):
-        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
-        await message.reply_text("🤔 <b>Sembra un ordine!</b> Hai specificato il metodo di pagamento?", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        return
+    # STEP 1: È una domanda/conversazione? → Cerca FAQ prima
+    if should_search_faq_first(text):
+        # Prima cerca FAQ
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res['match']:
+            await message.reply_text(f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML")
+            return
         
-    # 2. Richiesta LISTINO
+        # Se FAQ non trova nulla, cerca nella lista
+        if is_requesting_lista_full(text):
+            lista = load_lista()
+            if lista:
+                for i in range(0, len(lista), 4000): 
+                    await message.reply_text(lista[i:i+4000])
+                return
+        
+        # Cerca snippet prodotti
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res['match']:
+            await message.reply_text(f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
+            return
+        
+        # Nessuna risposta trovata
+        await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
+        return
+
+    # STEP 2: Sembra un ordine vero? → Chiedi conferma
+    if looks_like_order(text):
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), 
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await message.reply_text(
+            "🤔 <b>Sembra un ordine!</b> Confermi?\n\n"
+            "Se sì, verrà registrato nel sistema.", 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode="HTML"
+        )
+        return
+
+    # STEP 3: Richiesta listino completo
     if is_requesting_lista_full(text):
         lista = load_lista()
         if lista:
-            for i in range(0, len(lista), 4000): await message.reply_text(lista[i:i+4000])
+            for i in range(0, len(lista), 4000): 
+                await message.reply_text(lista[i:i+4000])
             return
-            
-    # 3. Ricerca FAQ (con sinonimi)
+
+    # STEP 4: Cerca FAQ
     faq_data = load_faq()
     res = fuzzy_search_faq(text, faq_data.get("faq", []))
     if res['match']:
         await message.reply_text(f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML")
         return
 
-    # 4. Ricerca SNIPPET LISTINO (singolo prodotto)
+    # STEP 5: Cerca prodotti nella lista
     l_res = fuzzy_search_lista(text, load_lista())
     if l_res['match']:
         await message.reply_text(f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
         return
 
+    # STEP 6: Nessuna risposta
     await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
 
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -630,53 +719,93 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             context.bot_data[greeted_key] = True
             welcome_text = (
                 f"👋 Benvenuto {user.first_name}!\n\n"
-                "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
-                "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
-                "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
-                "📋 <b>Comandi disponibili:</b>\n"
-                "• /help - Visualizza tutte le FAQ\n"
-                "• /lista - Visualizza la lista prodotti"
+                "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino.\n\n"
+                "📋 <b>Comandi:</b> /help - /lista"
             )
             try:
-                kwargs = {
-                    "chat_id": chat_id,
-                    "text": welcome_text,
-                    "parse_mode": "HTML"
-                }
+                kwargs = {"chat_id": chat_id, "text": welcome_text, "parse_mode": "HTML"}
                 thread_id = getattr(message, "message_thread_id", None)
                 if thread_id:
                     kwargs["message_thread_id"] = thread_id
                     kwargs["reply_to_message_id"] = message.message_id
                 await context.bot.send_message(**kwargs)
-                logger.info(f"Benvenuto inviato a {user.first_name} ({user_id})")
             except Exception as e:
                 logger.error(f"Errore benvenuto: {e}")
     
-    # 1. ORDINE SENZA PAGAMENTO
-    if looks_like_order(text):
-        keyboard = [[InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")]]
-        await context.bot.send_message(chat_id=chat_id, text="🤔 <b>Pagamento specificato?</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", reply_to_message_id=message.message_id)
-        return
+    # STEP 1: È una domanda? → FAQ prima
+    if should_search_faq_first(text):
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res['match']:
+            await context.bot.send_message(
+                chat_id=chat_id, 
+                text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", 
+                parse_mode="HTML", 
+                reply_to_message_id=message.message_id
+            )
+            return
         
-    # 2. LISTINO COMPLETO
+        if is_requesting_lista_full(text):
+            lista = load_lista()
+            if lista:
+                for i in range(0, len(lista), 4000):
+                    await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
+                return
+        
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res['match']:
+            await context.bot.send_message(
+                chat_id=chat_id, 
+                text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", 
+                parse_mode="HTML", 
+                reply_to_message_id=message.message_id
+            )
+        return
+
+    # STEP 2: Ordine vero? → Conferma
+    if looks_like_order(text):
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), 
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text="🤔 <b>Sembra un ordine!</b> Confermi?", 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode="HTML", 
+            reply_to_message_id=message.message_id
+        )
+        return
+
+    # STEP 3: Listino completo
     if is_requesting_lista_full(text):
         lista = load_lista()
         if lista:
             for i in range(0, len(lista), 4000):
                 await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
             return
-            
-    # 3. FAQ INTELLIGENTI
+
+    # STEP 4: FAQ
     faq_data = load_faq()
     res = fuzzy_search_faq(text, faq_data.get("faq", []))
     if res['match']:
-        await context.bot.send_message(chat_id=chat_id, text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML", reply_to_message_id=message.message_id)
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", 
+            parse_mode="HTML", 
+            reply_to_message_id=message.message_id
+        )
         return
 
-    # 4. SNIPPET PRODOTTO
+    # STEP 5: Prodotti
     l_res = fuzzy_search_lista(text, load_lista())
     if l_res['match']:
-        await context.bot.send_message(chat_id=chat_id, text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", parse_mode="HTML", reply_to_message_id=message.message_id)
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", 
+            parse_mode="HTML", 
+            reply_to_message_id=message.message_id
+        )
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce i bottoni Inline e salva gli ordini confermati"""
