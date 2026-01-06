@@ -825,10 +825,10 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         ]]
         await context.bot.send_message(
             chat_id=chat_id, 
-            "🤔 <b>Sembra un ordine!</b> C'è il metodo di Pagamento?\n\n"
-            "Se sì, verrà registrato nel sistema.", 
+            text="🤔 <b>Sembra un ordine!</b> C'è il metodo di Pagamento?\n\n"
+                 "Se sì, verrà registrato nel sistema.", 
             reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="HTML", 
+            parse_mode="HTML",
             reply_to_message_id=message.message_id
         )
         return
