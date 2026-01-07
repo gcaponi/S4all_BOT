@@ -122,7 +122,8 @@ def update_lista_from_web():
             return True
     except Exception as e:
         logger.error(f"Errore aggiornamento listino: {e}")
-
+    return False
+    
 # Variabile globale per parole chiave dinamiche estratte da lista.txt
 PAROLE_CHIAVE_LISTA = set()
 
