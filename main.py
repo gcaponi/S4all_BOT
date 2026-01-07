@@ -12,18 +12,18 @@ from difflib import SequenceMatcher
 import asyncio
 from datetime import datetime
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # CONFIGURAZIONE LOGGING (DETTAGLIATO)
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # VARIABILI DI AMBIENTE E COSTANTI
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
@@ -50,16 +50,11 @@ PAYMENT_KEYWORDS = [
 
 # Lista estesa di parole chiave per richiedere il listino completo
 LISTA_KEYWORDS_FULL = [
-    "lista", "listino", "prodotti", "catalogo", "hai la lista", "che prodotti hai", 
-    "mostrami la lista", "fammi vedere la lista", "hai lista", "voglio la lista", 
-    "mandami la lista", "inviami la lista", "lista prodotti", "elenco prodotti", 
-    "quali prodotti ci sono", "cosa vendi", "cosa hai", "mostra prodotti", 
-    "fammi vedere i prodotti", "lista aggiornata", "lista completa", "lista prezzi", 
-    "lista disponibile", "lista articoli", "elenco articoli", "elenco disponibile", 
-    "prodotti disponibili", "prodotti in vendita", "catalogo prodotti", 
-    "catalogo aggiornato", "catalogo prezzi", "puoi mandarmi la lista", 
-    "puoi mostrarmi la lista", "puoi inviarmi la lista", "voglio vedere la lista", 
-    "voglio vedere i prodotti"
+    "lista", "listino", "prodotti", "catalogo", "hai la lista", "che prodotti hai", "mostrami la lista", "fammi vedere la lista", "hai lista", "voglio la lista", 
+    "mandami la lista", "inviami la lista", "lista prodotti", "elenco prodotti", "quali prodotti ci sono", "cosa vendi", "cosa hai", "mostra prodotti", 
+    "fammi vedere i prodotti", "lista aggiornata", "lista completa", "lista prezzi", "lista disponibile", "lista articoli", "elenco articoli", "elenco disponibile", 
+    "prodotti disponibili", "prodotti in vendita", "catalogo prodotti", "catalogo aggiornato", "catalogo prezzi", "puoi mandarmi la lista", 
+    "puoi mostrarmi la lista", "puoi inviarmi la lista", "voglio vedere la lista", "voglio vedere i prodotti"
 ]
 
 # Inizializzazione Flask e variabili globali Bot
@@ -70,9 +65,9 @@ initialization_lock = False
 FAQ_CONFIDENCE_THRESHOLD = 0.65
 LISTA_CONFIDENCE_THRESHOLD = 0.30
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # UTILS: WEB FETCH, PARSING, I/O (SISTEMA DI AGGIORNAMENTO)
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 def fetch_markdown_from_html(url: str) -> str:
     """Scarica il contenuto HTML da JustPaste e lo converte in testo pulito"""
@@ -118,6 +113,81 @@ def update_lista_from_web():
         r = requests.get(LISTA_URL, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
+
+import re
+
+# Variabile globale per parole chiave dinamiche estratte da lista.txt
+PAROLE_CHIAVE_LISTA = set()
+
+def estrai_parole_chiave_lista():
+    testo = load_lista()
+    if not testo:
+        return set()
+    testo_norm = re.sub(r'[^\w\s]', ' ', testo.lower())
+    parole = set(testo_norm.split())
+    parole_filtrate = {p for p in parole if len(p) > 2}
+    return parole_filtrate
+
+# Dizionario parole chiave fisse con pesi per categoria
+KEYWORDS_WEIGHTS = {
+    "lista": {
+        "mandami": 5, "mi mandi": 5, "inviami": 5, "voglio": 4, "dammi": 5, "mostrami": 5, "fammi vedere": 5, "lista": 5, "listino": 5, "catalogo": 4, "prezzi": 3,
+    },
+    "faq": {
+        "come": 3, "ordinare": 4, "spedizione": 4, "pagamento": 3, "tempi": 3, "ordine": 3, "dove": 2, "quando": 2,
+    },
+    "ordine": {
+        "ordino": 5, "ordine": 4, "acquisto": 4, "quantità": 5, "marca": 4, "pagherò": 3, "pagamento": 3, "spedire": 3, "spedizione": 3, "confermo": 4,
+    }
+}
+
+def calcola_intenzione(text: str) -> str:
+    text_norm = re.sub(r'[^\w\s]', ' ', text.lower())
+    words = text_norm.split()
+    
+    scores = {
+        "lista": 0,
+        "faq": 0,
+        "ricerca_prodotti": 0,
+        "ordine": 0,
+    }
+    
+    # Calcola punteggi per parole chiave fisse
+    for categoria, kw_dict in KEYWORDS_WEIGHTS.items():
+        for kw, peso in kw_dict.items():
+            # Cerca keyword come frase o parola singola
+            if ' ' in kw:
+                if kw in text_norm:
+                    scores[categoria] += peso
+            else:
+                if kw in words:
+                    scores[categoria] += peso
+    
+    # Parole chiave dinamiche da lista.txt per ricerca_prodotti
+    global PAROLE_CHIAVE_LISTA
+    for w in words:
+        if w in PAROLE_CHIAVE_LISTA:
+            scores["ricerca_prodotti"] += 3
+    
+    # Logica ordine già esistente
+    if looks_like_order(text) and has_payment_method(text):
+        scores["ordine"] += 10
+    elif looks_like_order(text) and not has_payment_method(text):
+        # Potresti assegnare un peso minore o gestire a parte
+        scores["ordine"] += 5
+    
+    # Debug log
+    logger.info(f"Intenzioni punteggi: {scores} per testo: {text}")
+    
+    # Scegli categoria con punteggio massimo
+    categoria_vincente = max(scores, key=scores.get)
+    
+    # Soglia minima per decidere
+    SOGLIA_MINIMA = 5
+    if scores[categoria_vincente] < SOGLIA_MINIMA:
+        return "fallback"
+    
+    return categoria_vincente
         content = soup.select_one("#articleContent")
         if content:
             text = content.get_text("\n").strip()
@@ -151,9 +221,9 @@ def save_json_file(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # GESTIONE AUTORIZZAZIONI E UTENTI
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 def load_authorized_users():
     """Carica il database degli utenti che hanno usato il link segreto"""
@@ -206,9 +276,9 @@ def get_bot_username():
     """Utility per ottenere lo username del bot per comporre link dinamici"""
     return getattr(get_bot_username, 'username', 'tuobot')
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # GESTIONE ORDINI CONFERMATI
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 def load_ordini():
     """Carica il database degli ordini confermati"""
@@ -244,9 +314,9 @@ def get_ordini_oggi():
     oggi = datetime.now().strftime("%Y-%m-%d")
     return [o for o in ordini if o.get("data") == oggi]
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # LOGICHE DI RICERCA INTELLIGENTE (CORE)
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 def calculate_similarity(text1: str, text2: str) -> float:
     """Calcola l'indice di somiglianza tra due stringhe (utilizzato per i refusi)"""
@@ -394,10 +464,8 @@ def looks_like_order(text: str) -> bool:
     
     # ESCLUSIONI: Frasi conversazionali che NON sono ordini
     conversational_phrases = [
-        'volevo', 'vorrei', 'voglio fare', 'posso fare', 'come faccio', 'come fare',
-        'buongiorno', 'buonasera', 'ciao', 'salve', 'come si', 'devo fare',
-        'fare un ordine', 'fare ordine', 'ordinare', 'per ordinare', 'come ordino',
-        'voglio ordinare', 'posso ordinare', 'come si ordina', 'aiuto',
+        'volevo', 'vorrei', 'voglio fare', 'posso fare', 'come faccio', 'come fare', 'buongiorno', 'buonasera', 'ciao', 'salve', 'come si', 'devo fare',
+        'fare un ordine', 'fare ordine', 'ordinare', 'per ordinare', 'come ordino', 'voglio ordinare', 'posso ordinare', 'come si ordina', 'aiuto',
         'informazioni', 'domanda', 'chiedere', 'sapere se', 'mi dici', 'puoi dirmi'
     ]
     
@@ -504,9 +572,9 @@ def should_search_faq_first(text: str) -> bool:
     
     return False
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # HANDLERS: COMANDI (START, HELP, LISTA)
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -562,9 +630,9 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(lista_text), 4000):
         await update.message.reply_text(lista_text[i:i+4000])
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # HANDLERS: AMMINISTRAZIONE (SOLO ADMIN_CHAT_ID)
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
@@ -668,9 +736,9 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg, parse_mode='HTML')
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # GESTIONE MESSAGGI: LOGICA UNIFICATA (PRIVATI E GRUPPI)
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestione messaggi intelligenti in chat 1:1"""
@@ -889,10 +957,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             if ADMIN_CHAT_ID:
                 try:
                     notifica = (
-                        f"🔔 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
-                        f"👤 Utente: {user.first_name} (@{user.username})\n"
-                        f"🆔 ID: <code>{user.id}</code>\n"
-                        f"📝 Messaggio:\n<code>{original_msg.text[:200]}</code>"
+                    f"🔔 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
+                    f"👤 Utente: {user.first_name} (@{user.username})\n"
+                    f"🆔 ID: <code>{user.id}</code>\n"
+                    f"📝 Messaggio:\n<code>{original_msg.text[:200]}</code>"
                     )
                     await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
                 except Exception as e:
@@ -934,9 +1002,9 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 # Setup bot
-# ---------------------------------------------------------
+# --------------------------------------------------------------------
 
 async def setup_bot():
     global bot_application, initialization_lock
@@ -959,7 +1027,6 @@ async def setup_bot():
         bot = await application.bot.get_me()
         get_bot_username.username = bot.username
         logger.info(f"Bot: @{bot.username}")
-
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("genera_link", genera_link_command))
