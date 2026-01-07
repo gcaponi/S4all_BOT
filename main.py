@@ -736,7 +736,15 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     if not message or not message.text: return
     text = message.text.strip()
 
-    # STEP 1: È una domanda/conversazione? → Cerca FAQ prima
+    # STEP 1: SE in qualsiasi forma vouole la lista -> Stampa lista prima
+    if is_requesting_lista_full(text):
+        lista = load_lista()
+        if lista:
+            for i in range(0, len(lista), 4000): 
+                await message.reply_text(lista[i:i+4000])
+            return
+            
+    # Se non vuole lista -> cerca nelle FAQ        
     if should_search_faq_first(text):
         # Prima cerca FAQ
         faq_data = load_faq()
@@ -744,14 +752,6 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         if res['match']:
             await message.reply_text(f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML")
             return
-        
-        # Se FAQ non trova nulla, cerca nella lista
-        if is_requesting_lista_full(text):
-            lista = load_lista()
-            if lista:
-                for i in range(0, len(lista), 4000): 
-                    await message.reply_text(lista[i:i+4000])
-                return
         
         # Cerca snippet prodotti
         l_res = fuzzy_search_lista(text, load_lista())
@@ -846,6 +846,23 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 logger.error(f"Errore benvenuto: {e}")
     
     # STEP 1: È una domanda? → FAQ prima
+    if is_requesting_lista_full(text):
+            lista = load_lista()
+            if lista:
+                for i in range(0, len(lista), 4000):
+                    await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
+                return
+        
+    l_res = fuzzy_search_lista(text, load_lista())
+    if l_res['match']:
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", 
+            parse_mode="HTML", 
+            reply_to_message_id=message.message_id
+        )
+    return
+   
     if should_search_faq_first(text):
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
@@ -857,24 +874,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 reply_to_message_id=message.message_id
             )
             return
-        
-        if is_requesting_lista_full(text):
-            lista = load_lista()
-            if lista:
-                for i in range(0, len(lista), 4000):
-                    await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
-                return
-        
-        l_res = fuzzy_search_lista(text, load_lista())
-        if l_res['match']:
-            await context.bot.send_message(
-                chat_id=chat_id, 
-                text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", 
-                parse_mode="HTML", 
-                reply_to_message_id=message.message_id
-            )
-        return
-
+            
     # STEP 2: Ordine vero? → Conferma
     if looks_like_order(text):
         keyboard = [[
