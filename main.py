@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 import asyncio
 from datetime import datetime
+from intent_classifier import IntentClassifier, IntentType
 
 # --------------------------------------------------------------------
 # CONFIGURAZIONE LOGGING (DETTAGLIATO)
@@ -28,6 +29,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 10000))
+intent_classifier = None
 
 # Nomi dei file per la persistenza dei dati
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
@@ -46,15 +48,6 @@ FUZZY_THRESHOLD = 0.6
 # Parole chiave per intercettare i metodi di pagamento negli ordini
 PAYMENT_KEYWORDS = [
     "bonifico", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc", "xmr"
-]
-
-# Lista estesa di parole chiave per richiedere il listino completo
-LISTA_KEYWORDS_FULL = [
-    "lista", "listino", "prodotti", "catalogo", "hai la lista", "che prodotti hai", "mostrami la lista", "fammi vedere la lista", "hai lista", "voglio la lista", 
-    "mandami la lista", "inviami la lista", "lista prodotti", "elenco prodotti", "quali prodotti ci sono", "cosa vendi", "cosa hai", "mostra prodotti", 
-    "fammi vedere i prodotti", "lista aggiornata", "lista completa", "lista prezzi", "lista disponibile", "lista articoli", "elenco articoli", "elenco disponibile", 
-    "prodotti disponibili", "prodotti in vendita", "catalogo prodotti", "catalogo aggiornato", "catalogo prezzi", "puoi mandarmi la lista", 
-    "puoi mostrarmi la lista", "puoi inviarmi la lista", "voglio vedere la lista", "voglio vedere i prodotti"
 ]
 
 # Inizializzazione Flask e variabili globali Bot
@@ -128,66 +121,50 @@ def update_lista_from_web():
 PAROLE_CHIAVE_LISTA = set()
 
 def estrai_parole_chiave_lista():
+    global PAROLE_CHIAVE_LISTA, intent_classifier
+    
     testo = load_lista()
     if not testo:
         return set()
+    
     testo_norm = re.sub(r'[^\w\s]', ' ', testo.lower())
     parole = set(testo_norm.split())
     parole_filtrate = {p for p in parole if len(p) > 2}
+    
+    # Inizializza il classificatore con le parole chiave
+    intent_classifier = IntentClassifier(lista_keywords=parole_filtrate)
+    
     return parole_filtrate
 
-# Dizionario parole chiave fisse con pesi per categoria
-KEYWORDS_WEIGHTS = {
-    "lista": {
-        "mandami": 5, "mi mandi": 5, "inviami": 5, "voglio": 4, "dammi": 5, "mostrami": 5, "fammi vedere": 5, "lista": 5, "listino": 5, "catalogo": 4, "prezzi": 3,
-    },
-    "faq": {
-        "come": 3, "ordinare": 4, "spedizione": 4, "pagamento": 3, "tempi": 3, "ordine": 3, "dove": 2, "quando": 2,
-    },
-    "ordine": {
-        "ordino": 5, "ordine": 4, "acquisto": 4, "quantità": 5, "marca": 4, "pagherò": 3, "pagamento": 3, "spedire": 3, "spedizione": 3, "confermo": 4,
-    }
-}
-
 def calcola_intenzione(text: str) -> str:
-    text_norm = re.sub(r'[^\w\s]', ' ', text.lower())
-    words = text_norm.split() 
-    scores = {
-        "lista": 0,
-        "faq": 0,
-        "ricerca_prodotti": 0,
-        "ordine": 0,
+    """
+    NUOVA VERSIONE: Usa il classificatore intelligente
+    """
+    global intent_classifier
+    
+    # Se il classifier non è inizializzato, crealo
+    if intent_classifier is None:
+        PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
+    
+    # Classifica il messaggio
+    result = intent_classifier.classify(text)
+    
+    # Log per debugging
+    logger.info(f"🎯 Intento: {result.intent.value} (conf: {result.confidence:.2f})")
+    logger.info(f"💡 Ragione: {result.reason}")
+    logger.info(f"🔑 Match: {result.matched_keywords}")
+    
+    # Mappa IntentType ai tuoi valori attuali
+    intent_map = {
+        IntentType.RICHIESTA_LISTA: "lista",
+        IntentType.INVIO_ORDINE: "ordine",
+        IntentType.DOMANDA_FAQ: "faq",
+        IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
+        IntentType.SALUTO: "fallback",  # I saluti li gestisci come fallback
+        IntentType.FALLBACK: "fallback",
     }
-    # Calcola punteggi per parole chiave fisse
-    for categoria, kw_dict in KEYWORDS_WEIGHTS.items():
-        for kw, peso in kw_dict.items():
-            # Cerca keyword come frase o parola singola
-            if ' ' in kw:
-                if kw in text_norm:
-                    scores[categoria] += peso
-            else:
-                if kw in words:
-                    scores[categoria] += peso 
-    # Parole chiave dinamiche da lista.txt per ricerca_prodotti
-    global PAROLE_CHIAVE_LISTA
-    for w in words:
-        if w in PAROLE_CHIAVE_LISTA:
-            scores["ricerca_prodotti"] += 3
-    # Logica ordine già esistente
-    if looks_like_order(text) and has_payment_method(text):
-        scores["ordine"] += 10
-    elif looks_like_order(text) and not has_payment_method(text):
-        # Potresti assegnare un peso minore o gestire a parte
-        scores["ordine"] += 5
-        # Debug log
-    logger.info(f"Intenzioni punteggi: {scores} per testo: {text}")
-        # Scegli categoria con punteggio massimo
-    categoria_vincente = max(scores, key=scores.get)
-        # Soglia minima per decidere
-    SOGLIA_MINIMA = 5
-    if scores[categoria_vincente] < SOGLIA_MINIMA:
-        return "fallback"
-    return categoria_vincente
+    
+    return intent_map.get(result.intent, "fallback")
     
 def load_lista():
     """Carica il contenuto testuale del listino dal file locale"""
@@ -317,25 +294,6 @@ def normalize_text(text: str) -> str:
     text = re.sub(r'[^\w\s]', '', text)
     return re.sub(r'\s+', ' ', text).strip().lower()
 
-def is_requesting_lista_full(text: str) -> bool:
-    """Analizza se l'utente desidera ricevere l'intero listino prodotti"""
-    if not text:
-        return False
-    
-    normalized_msg = normalize_text(text)
-    
-    if any(kw in normalized_msg for kw in LISTA_KEYWORDS_FULL):
-        return True
-    
-    words = normalized_msg.split()
-    smart_roots = ["listino", "catalogo", "prodotti", "prezzi", "articoli", "lista"]
-    for word in words:
-        for root in smart_roots:
-            if calculate_similarity(word, root) > 0.85:
-                return True
-                
-    return False
-
 def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     """Cerca la risposta più pertinente nelle FAQ con score"""
     user_normalized = normalize_text(user_message)
@@ -444,123 +402,6 @@ def has_payment_method(text: str) -> bool:
     if not text:
         return False
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
-
-def looks_like_order(text: str) -> bool:
-    """Verifica se il messaggio è un VERO ordine (non una domanda sugli ordini)"""
-    if not text:
-        return False
-    
-    text_lower = text.lower()
-    
-    # ESCLUSIONI: Frasi conversazionali che NON sono ordini
-    conversational_phrases = [
-        'volevo', 'vorrei', 'voglio fare', 'posso fare', 'come faccio', 'come fare', 'buongiorno', 'buonasera', 'ciao', 'salve', 'come si', 'devo fare',
-        'fare un ordine', 'fare ordine', 'ordinare', 'per ordinare', 'come ordino', 'voglio ordinare', 'posso ordinare', 'come si ordina', 'aiuto',
-        'informazioni', 'domanda', 'chiedere', 'sapere se', 'mi dici', 'puoi dirmi'
-    ]
-    
-    # Se contiene frasi conversazionali, NON è un ordine diretto
-    if any(phrase in text_lower for phrase in conversational_phrases):
-        return False
-    
-    # Controlla lunghezza minima
-    if len(text.strip()) < 5:
-        return False
-    
-    # Deve contenere numeri (quantità o prezzo)
-    if not re.search(r'\d', text):
-        return False
-    
-    # INDICATORI DI ORDINE REALE
-    order_indicators = 0
-    
-    # 1. Simboli di valuta o prezzi (FORTE indicatore)
-    if re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
-        order_indicators += 3
-    
-    # 2. Quantità chiare con "x" o numero+prodotto
-    if re.search(r'\d+\s*x\s*|\d+\s+[a-z]{4,}', text_lower):
-        order_indicators += 2
-    
-    # 3. Virgole/separatori (lista prodotti)
-    if text.count(',') >= 2 or text.count(';') >= 1:
-        order_indicators += 2
-    elif text.count(',') == 1:
-        order_indicators += 1
-    
-    # 4. Località/spedizione + province
-    location_keywords = [
-        'roma', 'milano', 'napoli', 'torino', 'bologna', 'firenze', 
-        'via', 'indirizzo', 'spedizione', 'spedire', 'consegna',
-        'ag', 'al', 'an', 'ao', 'ap', 'aq', 'ar', 'at', 'av', 'ba', 'bg', 'bi', 'bl', 'bn', 'bo', 'br', 'bs', 'bt', 
-        'bz', 'ca', 'cb', 'ce', 'ch', 'cl', 'cn', 'co', 'cr', 'cs', 'ct', 'cz', 'en', 'fc', 'fe', 'fg', 'fi', 'fm', 
-        'fr', 'ge', 'go', 'gr', 'im', 'is', 'kr', 'lc', 'le', 'li', 'lo', 'lt', 'lu', 'mb', 'mc', 'me', 'mi', 'mn', 
-        'mo', 'ms', 'mt', 'na', 'no', 'nu', 'og', 'or', 'pa', 'pc', 'pd', 'pe', 'pg', 'pi', 'pn', 'po', 'pr', 'pt', 
-        'pu', 'pv', 'pz', 'ra', 'rc', 're', 'rg', 'ri', 'rm', 'rn', 'ro', 'sa', 'si', 'so', 'sp', 'sr', 'ss', 'su', 
-        'sv', 'ta', 'te', 'tn', 'to', 'tp', 'tr', 'ts', 'tv', 'ud', 'va', 'vb', 'vc', 've', 'vi', 'vr', 'vt', 'vv'
-    ]
-    if any(kw in text_lower for kw in location_keywords):
-        order_indicators += 1
-    
-    # 5. Prodotti dalla lista
-    lista_text = load_lista()
-    if lista_text:
-        lista_lines = [line.strip().lower() for line in lista_text.split('\n') if line.strip() and len(line.strip()) > 3]
-        text_words = [w for w in text_lower.split() if len(w) > 3]
-        
-        product_found = False
-        for word in text_words:
-            for line in lista_lines:
-                if word in line:
-                    order_indicators += 2
-                    product_found = True
-                    break
-            if product_found:
-                break
-    
-    # 6. Metodi di pagamento espliciti
-    payment_keywords_explicit = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'usdc', 'xmr']
-    if any(kw in text_lower for kw in payment_keywords_explicit):
-        order_indicators += 2
-    
-    # DECISIONE FINALE: Serve un punteggio alto per essere considerato ordine
-    # Almeno 4 punti (es: prezzo + prodotto, oppure quantità + località + pagamento)
-    if order_indicators >= 4:
-        return True
-    
-    return False
-
-def should_search_faq_first(text: str) -> bool:
-    """Determina se il messaggio è una DOMANDA che richiede ricerca FAQ"""
-    if not text:
-        return False
-    
-    text_lower = text.lower()
-    
-    # Parole interrogative
-    question_words = [
-        'come', 'quando', 'quanto', 'dove', 'perché', 'perche', 'cosa', 
-        'chi', 'quale', 'quali', 'posso', 'devo', 'serve', '?'
-    ]
-    
-    if any(word in text_lower for word in question_words):
-        return True
-    
-    # Frasi che indicano richiesta di informazioni
-    info_phrases = [
-        'volevo', 'vorrei', 'voglio sapere', 'mi serve', 'ho bisogno',
-        'informazioni', 'aiuto', 'puoi dirmi', 'mi dici', 'spiegami',
-        'buongiorno', 'buonasera', 'ciao', 'salve'
-    ]
-    
-    if any(phrase in text_lower for phrase in info_phrases):
-        return True
-    
-    # Se è corto (meno di 15 caratteri) e non ha numeri, probabilmente è una domanda
-    if len(text_lower) < 15 and not re.search(r'\d', text_lower):
-        return True
-    
-    return False
 
 # --------------------------------------------------------------------
 # HANDLERS: COMANDI (START, HELP, LISTA)
@@ -736,8 +577,13 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         return
 
     text = message.text.strip()
+    # OPZIONALE: Analisi dettagliata per debugging
+    if intent_classifier:
+        result = intent_classifier.classify(text)
+        logger.info(f"📊 Analisi dettagliata: {result}")
+    
     intent = calcola_intenzione(text)
-
+    
     # 1. ROUTER CENTRALE -> Lista
     if intent == "lista":
         lista = load_lista()
@@ -920,7 +766,7 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 # --------------------------------------------------------------------
 
 async def setup_bot():
-    global bot_application, initialization_lock
+    global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA
     
     if initialization_lock:
         return None
@@ -928,11 +774,13 @@ async def setup_bot():
     initialization_lock = True
     
     try:
-        logger.info("📡 Inizializzazione bot...")
+        logger.info("🔡 Inizializzazione bot...")
         
         try:
             update_faq_from_web()
             update_lista_from_web()
+            # AGGIUNGI QUESTA RIGA
+            PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
         except Exception as e:
             logger.warning(f"Prefetch warning: {e}")
         
