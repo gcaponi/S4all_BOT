@@ -30,8 +30,9 @@ class IntentResult:
 class IntentClassifier:
     """Classificatore intelligente con debug"""
     
-    def __init__(self, lista_keywords: set = None):
+    def __init__(self, lista_keywords: set = None, load_lista_func=None):
         self.lista_keywords = lista_keywords or set()
+        self.load_lista_func = load_lista_func  # Funzione per caricare la lista prodotti
         
         # PRIORITÀ 1: Richieste esplicite
         self.richiesta_lista_patterns = {
@@ -139,6 +140,7 @@ class IntentClassifier:
         logger.info(f"📦 Ordine result: {ordine_result.confidence:.2f} - {ordine_result.reason}")
         logger.info(f"📦 Ordine matched: {ordine_result.matched_keywords}")
         
+        # SOGLIA ABBASSATA: se >= 0.4 (4 punti su 10) è ordine
         if ordine_result.confidence >= 0.4:
             return ordine_result
         
@@ -206,87 +208,122 @@ class IntentClassifier:
         return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
     
     def _check_ordine_reale(self, text: str, text_lower: str) -> IntentResult:
-        """Controlla se è un ordine vero - CON DEBUG"""
-        score = 0.0
-        matched = []
+        """Controlla se è un ordine vero - USA LA LOGICA ORIGINALE"""
         
         logger.info(f"🔍 CHECK ORDINE - Text: '{text}'")
         
-        # Test 1: Ha numeri?
-        has_numbers = bool(re.search(r'\d', text))
-        logger.info(f"  ✓ Ha numeri: {has_numbers}")
-        
-        # Test 2: Ha quantità? (PATTERN MIGLIORATO)
-        quantita_patterns = [
-            r'\b\d+\s*x\s*\w+',          # "2x prodotto"
-            r'\b\d+\s+\w+',               # "1 testo"
-            r'\w+\s*x\s*\d+',             # "prodotto x2"
+        # ESCLUSIONI: Frasi conversazionali che NON sono ordini
+        conversational_phrases = [
+            'volevo', 'vorrei', 'voglio fare', 'posso fare', 'come faccio', 'come fare',
+            'buongiorno', 'buonasera', 'ciao', 'salve', 'come si', 'devo fare',
+            'fare un ordine', 'fare ordine', 'ordinare', 'per ordinare', 'come ordino',
+            'voglio ordinare', 'posso ordinare', 'come si ordina', 'aiuto',
+            'informazioni', 'domanda', 'chiedere', 'sapere se', 'mi dici', 'puoi dirmi'
         ]
-        ha_quantita = False
-        for pattern in quantita_patterns:
-            match = re.search(pattern, text, re.I)
-            if match:
-                ha_quantita = True
-                logger.info(f"  ✓ Quantità trovata: '{match.group()}' (pattern: {pattern})")
-                score += 1.0
-                matched.append('ha_quantita')
-                break
         
-        if not ha_quantita:
-            logger.info(f"  ✗ Nessuna quantità trovata")
+        # Se contiene frasi conversazionali, NON è un ordine
+        if any(phrase in text_lower for phrase in conversational_phrases):
+            logger.info(f"  ❌ ESCLUSO: Contiene frase conversazionale")
+            return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: conversazionale", [])
         
-        # Test 3: Ha prezzo?
-        prezzo_pattern = r'[€$£¥₿]|\d+\s*(euro|eur|usd|dollar)'
-        prezzo_match = re.search(prezzo_pattern, text, re.I)
-        if prezzo_match:
-            score += 1.0
-            matched.append('ha_prezzo')
-            logger.info(f"  ✓ Prezzo trovato: '{prezzo_match.group()}'")
-        else:
-            logger.info(f"  ✗ Nessun prezzo trovato")
+        # Controlla lunghezza minima
+        if len(text.strip()) < 5:
+            logger.info(f"  ❌ ESCLUSO: Troppo corto ({len(text.strip())} caratteri)")
+            return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: troppo corto", [])
         
-        # Test 4: Ha pagamento?
-        payment_keywords = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'paghero', 'pago con']
-        ha_pagamento = any(kw in text_lower for kw in payment_keywords)
-        if ha_pagamento:
-            score += 1.0
-            matched.append('ha_pagamento')
-            logger.info(f"  ✓ Pagamento trovato")
-        else:
-            logger.info(f"  ✗ Nessun pagamento trovato")
+        # Deve contenere numeri
+        if not re.search(r'\d', text):
+            logger.info(f"  ❌ ESCLUSO: Nessun numero")
+            return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: no numeri", [])
         
-        # Test 5: Ha indirizzo?
-        indirizzo_match = re.search(r'\b(via|piazza|corso|viale)\s+\w+', text, re.I)
-        if indirizzo_match:
-            score += 1.0
-            matched.append('ha_indirizzo')
-            logger.info(f"  ✓ Indirizzo trovato: '{indirizzo_match.group()}'")
-        else:
-            logger.info(f"  ✗ Nessun indirizzo trovato")
+        # INDICATORI DI ORDINE REALE
+        order_indicators = 0
+        matched = []
         
-        # Test 6: Formato ordine (righe multiple, virgole)
-        has_separators = text.count(',') >= 2 or text.count(';') >= 1
-        has_lines = text.count('\n') >= 2
-        if has_numbers and (has_separators or has_lines):
-            score += 1.0
-            matched.append('formato_ordine')
-            logger.info(f"  ✓ Formato ordine rilevato")
+        # 1. Simboli di valuta o prezzi (FORTE)
+        if re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
+            order_indicators += 3
+            matched.append('prezzo')
+            logger.info(f"  ✓ Prezzo trovato (+3 punti)")
         
-        max_score = 5
-        confidence = score / max_score
+        # 2. Quantità chiare
+        if re.search(r'\d+\s*x\s*|\d+\s+[a-z]{4,}', text_lower):
+            order_indicators += 2
+            matched.append('quantita')
+            logger.info(f"  ✓ Quantità trovata (+2 punti)")
         
-        logger.info(f"📊 ORDINE SCORE: {score}/{max_score} = {confidence:.2f}")
+        # 3. Virgole/separatori
+        if text.count(',') >= 2 or text.count(';') >= 1:
+            order_indicators += 2
+            matched.append('separatori_multipli')
+            logger.info(f"  ✓ Separatori multipli (+2 punti)")
+        elif text.count(',') == 1:
+            order_indicators += 1
+            matched.append('separatore_singolo')
+            logger.info(f"  ✓ Separatore singolo (+1 punto)")
+        
+        # 4. Località/spedizione
+        location_keywords = [
+            'roma', 'milano', 'napoli', 'torino', 'bologna', 'firenze', 
+            'via', 'indirizzo', 'spedizione', 'spedire', 'consegna',
+            'ag', 'al', 'an', 'ao', 'ap', 'aq', 'ar', 'at', 'av', 'ba', 'bg', 'bi', 'bl', 'bn', 'bo', 'br', 'bs', 'bt', 
+            'bz', 'ca', 'cb', 'ce', 'ch', 'cl', 'cn', 'co', 'cr', 'cs', 'ct', 'cz', 'en', 'fc', 'fe', 'fg', 'fi', 'fm', 
+            'fr', 'ge', 'go', 'gr', 'im', 'is', 'kr', 'lc', 'le', 'li', 'lo', 'lt', 'lu', 'mb', 'mc', 'me', 'mi', 'mn', 
+            'mo', 'ms', 'mt', 'na', 'no', 'nu', 'og', 'or', 'pa', 'pc', 'pd', 'pe', 'pg', 'pi', 'pn', 'po', 'pr', 'pt', 
+            'pu', 'pv', 'pz', 'ra', 'rc', 're', 'rg', 'ri', 'rm', 'rn', 'ro', 'sa', 'si', 'so', 'sp', 'sr', 'ss', 'su', 
+            'sv', 'ta', 'te', 'tn', 'to', 'tp', 'tr', 'ts', 'tv', 'ud', 'va', 'vb', 'vc', 've', 'vi', 'vr', 'vt', 'vv'
+        ]
+        if any(kw in text_lower for kw in location_keywords):
+            order_indicators += 1
+            matched.append('localita')
+            logger.info(f"  ✓ Località trovata (+1 punto)")
+        
+        # 5. Prodotti dalla lista
+        if self.load_lista_func:
+            try:
+                lista_text = self.load_lista_func()
+                if lista_text:
+                    lista_lines = [line.strip().lower() for line in lista_text.split('\n') if line.strip() and len(line.strip()) > 3]
+                    text_words = [w for w in text_lower.split() if len(w) > 3]
+                    
+                    product_found = False
+                    for word in text_words:
+                        for line in lista_lines:
+                            if word in line:
+                                order_indicators += 2
+                                matched.append('prodotto_lista')
+                                product_found = True
+                                logger.info(f"  ✓ Prodotto dalla lista trovato: '{word}' (+2 punti)")
+                                break
+                        if product_found:
+                            break
+            except Exception as e:
+                logger.warning(f"Errore caricamento lista: {e}")
+        
+        # 6. Metodi di pagamento espliciti
+        payment_keywords = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'usdc', 'xmr']
+        if any(kw in text_lower for kw in payment_keywords):
+            order_indicators += 2
+            matched.append('pagamento')
+            logger.info(f"  ✓ Metodo pagamento trovato (+2 punti)")
+        
+        logger.info(f"📊 ORDINE TOTALE: {order_indicators} punti")
         logger.info(f"📊 ORDINE MATCHED: {matched}")
         
-        if score >= 2:
+        # Soglia: almeno 4 punti
+        if order_indicators >= 4:
+            confidence = min(order_indicators / 10.0, 1.0)  # Max 1.0
+            logger.info(f"✅ ORDINE RICONOSCIUTO (>= 4 punti)")
             return IntentResult(
                 IntentType.INVIO_ORDINE,
                 confidence,
-                f"Ordine probabile: {score}/{max_score} indicatori",
+                f"Ordine riconosciuto: {order_indicators} punti",
                 matched
             )
         
-        return IntentResult(IntentType.INVIO_ORDINE, confidence, "Check ordine", matched)
+        logger.info(f"❌ NON ORDINE (< 4 punti)")
+        confidence = order_indicators / 10.0
+        return IntentResult(IntentType.INVIO_ORDINE, confidence, f"Score troppo basso: {order_indicators} punti", matched)
     
     def _check_faq(self, text_norm: str, text_lower: str) -> IntentResult:
         """Controlla FAQ"""
