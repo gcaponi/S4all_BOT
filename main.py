@@ -731,198 +731,121 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------------------------------------------------
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestione messaggi intelligenti in chat 1:1"""
     message = update.message
-    if not message or not message.text: return
+    if not message or not message.text:
+        return
+
     text = message.text.strip()
+    intent = calcola_intenzione(text)
 
-    # STEP 1: SE in qualsiasi forma vouole la lista -> Stampa lista prima
-    if is_requesting_lista_full(text):
-        lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000): 
-                await message.reply_text(lista[i:i+4000])
-            return
-            
-    # Se non vuole lista -> cerca nelle FAQ        
-    if should_search_faq_first(text):
-        # Prima cerca FAQ
-        faq_data = load_faq()
-        res = fuzzy_search_faq(text, faq_data.get("faq", []))
-        if res['match']:
-            await message.reply_text(f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", parse_mode="HTML")
-            return
-        
-        # Cerca snippet prodotti
-        l_res = fuzzy_search_lista(text, load_lista())
-        if l_res['match']:
-            await message.reply_text(f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
-            return
-        
-        # Nessuna risposta trovata
-        await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
-        return
-
-    # STEP 2: Sembra un ordine vero? → Chiedi conferma
-    if looks_like_order(text):
-        keyboard = [[
-            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), 
-            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-        ]]
-        await message.reply_text(
-            "🤔 <b>Sembra un ordine!</b> C'è il metodo di Pagamento?\n\n"
-            "Se sì, verrà registrato nel sistema.", 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="HTML",
-            reply_to_message_id=message.message_id
-        )
-        return
-
-    # STEP 3: Richiesta listino completo
-    if is_requesting_lista_full(text):
-        lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000): 
-                await message.reply_text(lista[i:i+4000])
-            return
-
-    # STEP 4: Cerca FAQ
-    faq_data = load_faq()
-    res = fuzzy_search_faq(text, faq_data.get("faq", []))
-    logger.info(f"FAQ result: match={res.get('match')}, score={res.get('score', 0):.2f}")
-    
-    if res['match'] and res.get('score', 0) >= FAQ_CONFIDENCE_THRESHOLD:
-        item = res['item']
-        emoji = "🎯" if res['score'] > 0.9 else "✅"
-        resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
-        if res['score'] < 0.9:
-            resp += f"\n\n<i>Confidenza: {res['score']:.0%}</i>"
-        await message.reply_text(resp, parse_mode='HTML')
-        return
-
-    # STEP 5: Cerca prodotti nella lista
-    lista_text = load_lista()
-    l_res = fuzzy_search_lista(text, lista_text)
-    logger.info(f"Lista result: match={l_res.get('match')}, score={l_res.get('score', 0):.2f}")
-    
-    if l_res['match'] and l_res.get('score', 0) >= LISTA_CONFIDENCE_THRESHOLD:
-        emoji = "🎯" if l_res['score'] > 0.7 else "📦"
-        await message.reply_text(f"{emoji} <b>Prodotti trovati:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
-        return
-
-    # STEP 6: Nessuna risposta
-    await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
-
-async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestione messaggi intelligenti in Gruppi, Supergruppi e Canali"""
-    message = update.message or update.channel_post
-    if not message or not message.text: return
-    
-    if message.from_user and message.from_user.is_bot: return
-    
-    text = message.text.strip()
-    chat_id = message.chat.id
-    user = message.from_user
-    user_id = user.id if user else None
-
-    # BENVENUTO al primo messaggio
-    if user_id:
-        greeted_key = f"greeted_{chat_id}_{user_id}"
-        if not context.bot_data.get(greeted_key):
-            context.bot_data[greeted_key] = True
-            welcome_text = (
-                f"👋 Benvenuto {user.first_name}!\n\n"
-                "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino.\n\n"
-                "📋 <b>Comandi:</b> /help - /lista"
-            )
-            try:
-                kwargs = {"chat_id": chat_id, "text": welcome_text, "parse_mode": "HTML"}
-                thread_id = getattr(message, "message_thread_id", None)
-                if thread_id:
-                    kwargs["message_thread_id"] = thread_id
-                    kwargs["reply_to_message_id"] = message.message_id
-                await context.bot.send_message(**kwargs)
-            except Exception as e:
-                logger.error(f"Errore benvenuto: {e}")
-    
-    # STEP 1: È una domanda? → FAQ prima
-    if is_requesting_lista_full(text):
-            lista = load_lista()
-            if lista:
-                for i in range(0, len(lista), 4000):
-                    await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
-                return
-        
-    l_res = fuzzy_search_lista(text, load_lista())
-    if l_res['match']:
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=f"📦 <b>Trovato:</b>\n\n{l_res['snippet']}", 
-            parse_mode="HTML", 
-            reply_to_message_id=message.message_id
-        )
-    return
-   
-    if should_search_faq_first(text):
-        faq_data = load_faq()
-        res = fuzzy_search_faq(text, faq_data.get("faq", []))
-        if res['match']:
-            await context.bot.send_message(
-                chat_id=chat_id, 
-                text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}", 
-                parse_mode="HTML", 
-                reply_to_message_id=message.message_id
-            )
-            return
-            
-    # STEP 2: Ordine vero? → Conferma
-    if looks_like_order(text):
-        keyboard = [[
-            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"), 
-            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-        ]]
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text="🤔 <b>Sembra un ordine!</b> C'è il metodo di Pagamento?\n\n"
-                 "Se sì, verrà registrato nel sistema.", 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="HTML",
-            reply_to_message_id=message.message_id
-        )
-        return
-
-    # STEP 3: Listino completo
-    if is_requesting_lista_full(text):
+    # 1. ROUTER CENTRALE -> Lista
+    if intent == "lista":
         lista = load_lista()
         if lista:
             for i in range(0, len(lista), 4000):
-                await context.bot.send_message(chat_id=chat_id, text=lista[i:i+4000], reply_to_message_id=message.message_id)
+                await message.reply_text(lista[i:i+4000])
+        return
+
+    # 2. ORDINE
+    if intent == "ordine":
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await message.reply_text(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+        return
+
+    # 3. FAQ (solo se conversazionale)
+    if intent == "faq":
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await message.reply_text(
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
+                parse_mode="HTML"
+            )
             return
 
-    # STEP 4: Cerca FAQ
-    faq_data = load_faq()
-    res = fuzzy_search_faq(text, faq_data.get("faq", []))
-    logger.info(f"FAQ result: match={res.get('match')}, score={res.get('score', 0):.2f}")
-    
-    if res['match'] and res.get('score', 0) >= FAQ_CONFIDENCE_THRESHOLD:
-        item = res['item']
-        emoji = "🎯" if res['score'] > 0.9 else "✅"
-        resp = f"{emoji} <b>{item['domanda']}</b>\n\n{item['risposta']}"
-        if res['score'] < 0.9:
-            resp += f"\n\n<i>Confidenza: {res['score']:.0%}</i>"
-        await message.reply_text(resp, parse_mode='HTML')
+    # 4. RICERCA PRODOTTI
+    if intent == "ricerca_prodotti":
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await message.reply_text(
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
+                parse_mode="HTML"
+            )
+            return
+
+    # 5. FALLBACK
+    await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
+
+async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message or update.channel_post
+    if not message or not message.text:
+        return
+    if message.from_user and message.from_user.is_bot:
         return
 
-    # STEP 5: Cerca prodotti nella lista
-    lista_text = load_lista()
-    l_res = fuzzy_search_lista(text, lista_text)
-    logger.info(f"Lista result: match={l_res.get('match')}, score={l_res.get('score', 0):.2f}")
-    
-    if l_res['match'] and l_res.get('score', 0) >= LISTA_CONFIDENCE_THRESHOLD:
-        emoji = "🎯" if l_res['score'] > 0.7 else "📦"
-        await message.reply_text(f"{emoji} <b>Prodotti trovati:</b>\n\n{l_res['snippet']}", parse_mode="HTML")
+    text = message.text.strip()
+    intent = calcola_intenzione(text)
+    chat_id = message.chat.id
+
+    # 1. LISTA COMPLETA
+    if intent == "lista":
+        lista = load_lista()
+        if lista:
+            for i in range(0, len(lista), 4000):
+                await context.bot.send_message(
+                    chat_id=message.chat.id,
+                    text=lista[i:i+4000],
+                    reply_to_message_id=message.message_id
+                )
         return
 
+    # 2. ORDINE
+    if intent == "ordine":
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            text="🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML",
+            reply_to_message_id=message.message_id
+        )
+        return
+
+    # 3. FAQ
+    if intent == "faq":
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
+                parse_mode="HTML",
+                reply_to_message_id=message.message_id
+            )
+        return
+
+    # 4. RICERCA PRODOTTI
+    if intent == "ricerca_prodotti":
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
+                parse_mode="HTML",
+                reply_to_message_id=message.message_id
+            )
+        return
+        
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce i bottoni Inline e salva gli ordini confermati"""
     query = update.callback_query
