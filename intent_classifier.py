@@ -115,7 +115,7 @@ class IntentClassifier:
         # PRIORITÀ 4: Ricerca prodotto specifico
         self.ricerca_indicators = [
             r'\bhai\s+\w+\b',
-            r'\bc[\'']è\s+\w+\b',
+            r"\bc['']è\s+\w+\b",  # Usa doppi apici per evitare escape
             r'\bcosto\s+(di|del|della)\s+\w+\b',
             r'\bprezzo\s+(di|del|della)\s+\w+\b',
             r'\bquanto\s+costa\s+\w+\b',
@@ -406,3 +406,5 @@ if __name__ == "__main__":
         print(f"📊 Confidenza: {result.confidence:.2f}")
         print(f"💡 Ragione: {result.reason}")
         print(f"🔑 Keywords: {result.matched_keywords}")
+
+# End intent_classifier.py
