@@ -113,8 +113,15 @@ def update_lista_from_web():
         r = requests.get(LISTA_URL, timeout=10)
         r.raise_for_status()
         soup = BeautifulSoup(r.text, "html.parser")
-
-import re
+        content = soup.select_one("#articleContent")
+        if content:
+            text = content.get_text("\n").strip()
+            with open(LISTA_FILE, "w", encoding="utf-8") as f:
+                f.write(text)
+            logger.info("Listino prodotti aggiornato con successo.")
+            return True
+    except Exception as e:
+        logger.error(f"Errore aggiornamento listino: {e}")
 
 # Variabile globale per parole chiave dinamiche estratte da lista.txt
 PAROLE_CHIAVE_LISTA = set()
