@@ -151,15 +151,13 @@ KEYWORDS_WEIGHTS = {
 
 def calcola_intenzione(text: str) -> str:
     text_norm = re.sub(r'[^\w\s]', ' ', text.lower())
-    words = text_norm.split()
-    
+    words = text_norm.split() 
     scores = {
         "lista": 0,
         "faq": 0,
         "ricerca_prodotti": 0,
         "ordine": 0,
     }
-    
     # Calcola punteggi per parole chiave fisse
     for categoria, kw_dict in KEYWORDS_WEIGHTS.items():
         for kw, peso in kw_dict.items():
@@ -169,44 +167,28 @@ def calcola_intenzione(text: str) -> str:
                     scores[categoria] += peso
             else:
                 if kw in words:
-                    scores[categoria] += peso
-    
+                    scores[categoria] += peso 
     # Parole chiave dinamiche da lista.txt per ricerca_prodotti
     global PAROLE_CHIAVE_LISTA
     for w in words:
         if w in PAROLE_CHIAVE_LISTA:
             scores["ricerca_prodotti"] += 3
-    
     # Logica ordine già esistente
     if looks_like_order(text) and has_payment_method(text):
         scores["ordine"] += 10
     elif looks_like_order(text) and not has_payment_method(text):
         # Potresti assegnare un peso minore o gestire a parte
         scores["ordine"] += 5
-    
-    # Debug log
+        # Debug log
     logger.info(f"Intenzioni punteggi: {scores} per testo: {text}")
-    
-    # Scegli categoria con punteggio massimo
+        # Scegli categoria con punteggio massimo
     categoria_vincente = max(scores, key=scores.get)
-    
-    # Soglia minima per decidere
+        # Soglia minima per decidere
     SOGLIA_MINIMA = 5
     if scores[categoria_vincente] < SOGLIA_MINIMA:
         return "fallback"
-    
     return categoria_vincente
-        content = soup.select_one("#articleContent")
-        if content:
-            text = content.get_text("\n").strip()
-            with open(LISTA_FILE, "w", encoding="utf-8") as f:
-                f.write(text)
-            logger.info("Listino prodotti aggiornato con successo.")
-            return True
-    except Exception as e:
-        logger.error(f"Errore aggiornamento listino: {e}")
-    return False
-
+    
 def load_lista():
     """Carica il contenuto testuale del listino dal file locale"""
     if os.path.exists(LISTA_FILE):
