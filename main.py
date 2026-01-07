@@ -360,8 +360,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     if not words:
         return {'match': False, 'snippet': None, 'score': 0}
     
-    # FILTRO SEMANTICO INTELLIGENTE: 
-    # Blocca SOLO se ci sono parole conversazionali E NON ci sono prodotti nella lista
+    # FILTRO SEMANTICO: Blocca conversazionale SOLO se non ci sono prodotti
     conversational_stopwords = [
         'come', 'volevo', 'vorrei', 'voglio', 'posso', 'devo', 'come faccio',
         'buongiorno', 'buonasera', 'ciao', 'salve', 'informazioni', 'aiuto',
@@ -380,11 +379,38 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             continue
         line_normalized = normalize_text(line)
         
-        # Conta quante parole matchano
-        matched_words = sum(1 for w in words if w in line_normalized)
+        # Conta quante parole matchano (ANCHE UNA SOLA BASTA!)
+        matched_words = 0
+        for w in words:
+            if w in line_normalized:
+                matched_words += 1
+        
+        # Se ha almeno UNA parola in comune, includila
         if matched_words > 0:
             best_lines.append(line.strip())
             matches_count += matched_words
+    
+    # Se ha trovato prodotti, IGNORA il filtro conversazionale
+    if best_lines:
+        score = matches_count / len(words) if words else 0
+        
+        # RIMUOVI IL LIMITE DI 5 RIGHE - mostra tutto
+        snippet = '\n'.join(best_lines)
+        
+        # Se il risultato è troppo lungo (>4000 caratteri), tronca con messaggio
+        if len(snippet) > 3900:
+            snippet = snippet[:3900] + "\n\n... (altri prodotti disponibili, scrivi una ricerca più specifica)"
+        
+        logger.info(f"✅ Lista: {len(best_lines)} righe trovate, score: {score:.2f}")
+        return {'match': True, 'snippet': snippet, 'score': score}
+    
+    # Se NON ha trovato prodotti E ha parole conversazionali
+    if has_conversational and not best_lines:
+        logger.info(f"⭐ Lista: Blocked (conversational + no products)")
+        return {'match': False, 'snippet': None, 'score': 0}
+    
+    logger.info(f"❌ Lista: No match")
+    return {'match': False, 'snippet': None, 'score': 0}
     
     # Se ha trovato prodotti nella lista, IGNORA il filtro conversazionale
     if best_lines:
