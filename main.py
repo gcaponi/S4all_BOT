@@ -131,8 +131,11 @@ def estrai_parole_chiave_lista():
     parole = set(testo_norm.split())
     parole_filtrate = {p for p in parole if len(p) > 2}
     
-    # Inizializza il classificatore con le parole chiave
-    intent_classifier = IntentClassifier(lista_keywords=parole_filtrate)
+    # IMPORTANTE: Passa anche la funzione load_lista al classifier
+    intent_classifier = IntentClassifier(
+        lista_keywords=parole_filtrate,
+        load_lista_func=load_lista  # <-- AGGIUNGI QUESTO
+    )
     
     return parole_filtrate
 
