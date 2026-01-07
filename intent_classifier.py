@@ -1,45 +1,40 @@
 """
-Sistema di Classificazione Intenti - Versione Umana
-Ragiona per priorità come farebbe un essere umano
+Sistema di Classificazione Intenti - Versione Debug
+Con log dettagliati per identificare problemi
 """
 import re
+import logging
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
+logger = logging.getLogger(__name__)
+
 class IntentType(Enum):
     """Tipi di intenzioni possibili"""
-    RICHIESTA_LISTA = "lista"           # Vuole vedere il catalogo
-    INVIO_ORDINE = "ordine"             # Sta inviando un ordine reale
-    DOMANDA_FAQ = "faq"                 # Ha una domanda generica
-    RICERCA_PRODOTTO = "ricerca"        # Cerca un prodotto specifico
-    SALUTO = "saluto"                   # Solo saluta
-    FALLBACK = "fallback"               # Non capito
+    RICHIESTA_LISTA = "lista"
+    INVIO_ORDINE = "ordine"
+    DOMANDA_FAQ = "faq"
+    RICERCA_PRODOTTO = "ricerca"
+    SALUTO = "saluto"
+    FALLBACK = "fallback"
 
 @dataclass
 class IntentResult:
     """Risultato dell'analisi dell'intento"""
     intent: IntentType
-    confidence: float  # 0.0 - 1.0
-    reason: str        # Perché è stata scelta questa intenzione
+    confidence: float
+    reason: str
     matched_keywords: List[str]
     
 class IntentClassifier:
-    """
-    Classificatore intelligente che ragiona per priorità umane
-    
-    LOGICA:
-    1. Prima controlla COSA VUOLE l'utente (richiesta esplicita)
-    2. Poi controlla COSA STA FACENDO (azione)
-    3. Infine controlla COSA CHIEDE (domanda)
-    """
+    """Classificatore intelligente con debug"""
     
     def __init__(self, lista_keywords: set = None):
         self.lista_keywords = lista_keywords or set()
         
-        # PRIORITÀ 1: Richieste esplicite (più forte)
+        # PRIORITÀ 1: Richieste esplicite
         self.richiesta_lista_patterns = {
-            # Frasi che CHIEDONO esplicitamente la lista
             'voglio_lista': [
                 r'\bvoglio\s+(la\s+)?lista\b',
                 r'\bvoglio\s+(il\s+)?listino\b',
@@ -70,19 +65,11 @@ class IntentClassifier:
             ]
         }
         
-        # PRIORITÀ 2: Indicatori di ordine REALE (non domande su ordini)
-        self.ordine_real_indicators = {
-            # L'utente sta INVIANDO un ordine
-            'formato_ordine': lambda text: self._has_order_format(text),
-            'ha_quantita': lambda text: bool(re.search(r'\d+\s*x\s+\w+', text, re.I)),
-            'ha_prezzo': lambda text: bool(re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd)', text, re.I)),
-            'ha_pagamento': lambda text: any(kw in text.lower() for kw in [
-                'bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'pagherò', 'pago con'
-            ]),
-            'ha_indirizzo': lambda text: bool(re.search(r'\b(via|piazza|corso|viale)\s+\w+', text, re.I)),
-        }
+        # PRIORITÀ 2: Indicatori di ordine REALE (SEMPLIFICATI)
+        # NON usare lambda per debug
+        pass
         
-        # ESCLUSIONI per ordine (frasi che NON sono ordini)
+        # ESCLUSIONI per ordine
         self.ordine_exclusions = [
             r'\bcome\s+(faccio|si\s+fa|posso)\s+.*ordine\b',
             r'\bvoglio\s+(fare|effettuare)\s+.*ordine\b',
@@ -92,10 +79,10 @@ class IntentClassifier:
             r'\bcome\s+si\s+ordina\b',
         ]
         
-        # PRIORITÀ 3: Domande FAQ (parole interrogative)
+        # PRIORITÀ 3: Domande FAQ
         self.faq_indicators = {
             'parole_interrogative': [
-                'come', 'quando', 'quanto', 'dove', 'perché', 'perchè', 
+                'come', 'quando', 'quanto', 'dove', 'perche', 'perche', 
                 'cosa', 'chi', 'quale', 'quali'
             ],
             'richieste_info': [
@@ -112,108 +99,91 @@ class IntentClassifier:
             }
         }
         
-        # PRIORITÀ 4: Ricerca prodotto specifico
+        # PRIORITÀ 4: Ricerca prodotto
         self.ricerca_indicators = [
-            r'\bhai\s+\w+\b',
-            r"\bc['']è\s+\w+\b",  # Usa doppi apici per evitare escape
+            r'\bhai\s+(la|il|dello|della)\s+\w+\b',
+            r'\bce\s+(la|il|dello|della)\s+\w+\b',
             r'\bcosto\s+(di|del|della)\s+\w+\b',
             r'\bprezzo\s+(di|del|della)\s+\w+\b',
             r'\bquanto\s+costa\s+\w+\b',
+            r'\bvendete\s+\w+\b',
+            r'\bavete\s+\w+\b',
         ]
 
     def classify(self, text: str) -> IntentResult:
-        """
-        Classifica l'intento seguendo la logica umana
-        
-        ORDINE DI PRIORITÀ:
-        1. Richiesta lista esplicita (manda/voglio/mostra lista)
-        2. Ordine reale (formato ordine + pagamento + quantità)
-        3. Domanda FAQ (come/quando/quanto + tema)
-        4. Ricerca prodotto (hai X? quanto costa Y?)
-        5. Saluto/Fallback
-        """
+        """Classifica l'intento con debug completo"""
         if not text or len(text.strip()) < 2:
             return IntentResult(IntentType.FALLBACK, 0.0, "Testo vuoto", [])
         
         text_lower = text.lower()
         text_norm = self._normalize(text)
         
-        # ========================================
-        # PRIORITÀ 1: RICHIESTA LISTA ESPLICITA
-        # ========================================
+        logger.info(f"🔍 DEBUG classify() - Input: '{text}'")
+        logger.info(f"🔍 DEBUG text_lower: '{text_lower}'")
+        logger.info(f"🔍 DEBUG text_norm: '{text_norm}'")
+        
+        # PRIORITÀ 1: RICHIESTA LISTA
         lista_result = self._check_richiesta_lista(text_norm, text_lower)
+        logger.info(f"📋 Lista result: {lista_result.confidence:.2f} - {lista_result.reason}")
         if lista_result.confidence >= 0.9:
             return lista_result
         
-        # ========================================
         # PRIORITÀ 2: ORDINE REALE
-        # ========================================
-        # PRIMA: Escludi domande sugli ordini
         if self._is_domanda_su_ordine(text_norm):
-            # È una domanda tipo "come faccio a ordinare?"
+            logger.info("⚠️ Rilevata domanda su ordine, controllo FAQ")
             faq_result = self._check_faq(text_norm, text_lower)
             if faq_result.confidence > 0.5:
                 return faq_result
         
-        # POI: Controlla se è un ordine vero
         ordine_result = self._check_ordine_reale(text, text_lower)
-        if ordine_result.confidence >= 0.7:
+        logger.info(f"📦 Ordine result: {ordine_result.confidence:.2f} - {ordine_result.reason}")
+        logger.info(f"📦 Ordine matched: {ordine_result.matched_keywords}")
+        
+        if ordine_result.confidence >= 0.4:
             return ordine_result
         
-        # ========================================
-        # PRIORITÀ 3: DOMANDA FAQ
-        # ========================================
+        # PRIORITÀ 3: FAQ
         faq_result = self._check_faq(text_norm, text_lower)
-        if faq_result.confidence >= 0.6:
+        logger.info(f"❓ FAQ result: {faq_result.confidence:.2f} - {faq_result.reason}")
+        if faq_result.confidence >= 0.5:
             return faq_result
         
-        # ========================================
-        # PRIORITÀ 4: RICERCA PRODOTTO
-        # ========================================
+        # PRIORITÀ 4: RICERCA
         ricerca_result = self._check_ricerca_prodotto(text_norm, text_lower)
+        logger.info(f"🔎 Ricerca result: {ricerca_result.confidence:.2f} - {ricerca_result.reason}")
+        
         if ricerca_result.confidence >= 0.5:
+            if self._has_strong_faq_signals(text_lower):
+                return faq_result if faq_result.confidence > 0.3 else IntentResult(
+                    IntentType.DOMANDA_FAQ, 0.5, "FAQ signal override", ['faq_override']
+                )
             return ricerca_result
         
-        # ========================================
-        # PRIORITÀ 5: SALUTO o FALLBACK
-        # ========================================
+        # PRIORITÀ 5: SALUTO
         if self._is_saluto(text_lower):
-            return IntentResult(
-                IntentType.SALUTO, 
-                0.95, 
-                "Rilevato saluto", 
-                ['saluto']
-            )
+            return IntentResult(IntentType.SALUTO, 0.95, "Rilevato saluto", ['saluto'])
         
-        # Fallback: scegli il migliore tra quelli trovati
+        # FALLBACK
         candidates = [lista_result, ordine_result, faq_result, ricerca_result]
         best = max(candidates, key=lambda x: x.confidence)
+        
+        logger.info(f"🔽 Fallback - best candidate: {best.intent.value} ({best.confidence:.2f})")
         
         if best.confidence > 0.3:
             return best
         
-        return IntentResult(
-            IntentType.FALLBACK, 
-            0.0, 
-            "Nessun intento riconosciuto con confidenza sufficiente", 
-            []
-        )
-    
-    # ========================================
-    # METODI DI ANALISI SPECIFICI
-    # ========================================
+        return IntentResult(IntentType.FALLBACK, 0.0, "Nessun intento riconosciuto", [])
     
     def _check_richiesta_lista(self, text_norm: str, text_lower: str) -> IntentResult:
-        """Controlla se l'utente chiede esplicitamente la lista"""
+        """Controlla richiesta lista"""
         matched = []
         score = 0.0
         
-        # Controlla tutti i pattern di richiesta lista
         for category, patterns in self.richiesta_lista_patterns.items():
             for pattern in patterns:
                 if re.search(pattern, text_norm, re.I):
                     matched.append(category)
-                    score = 1.0  # Massima confidenza
+                    score = 1.0
                     return IntentResult(
                         IntentType.RICHIESTA_LISTA,
                         score,
@@ -221,10 +191,8 @@ class IntentClassifier:
                         matched
                     )
         
-        # Controlla keyword "lista" anche da sola
         parole = text_lower.split()
         if any(kw in parole for kw in ['lista', 'listino', 'catalogo', 'prezzi']):
-            # Se c'è solo "lista" e poche altre parole, è una richiesta
             if len(parole) <= 5:
                 return IntentResult(
                     IntentType.RICHIESTA_LISTA,
@@ -232,179 +200,197 @@ class IntentClassifier:
                     "Keyword lista in frase breve",
                     ['lista_keyword']
                 )
-            # Altrimenti potrebbe essere parte di una frase più lunga
             score = 0.5
             matched.append('lista_keyword')
         
         return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
     
     def _check_ordine_reale(self, text: str, text_lower: str) -> IntentResult:
-        """Controlla se è un ordine vero (non una domanda sugli ordini)"""
+        """Controlla se è un ordine vero - CON DEBUG"""
         score = 0.0
         matched = []
         
-        # Calcola score basato su indicatori
-        max_score = len(self.ordine_real_indicators)
-        for name, check_func in self.ordine_real_indicators.items():
-            if check_func(text):
-                score += 1.0
-                matched.append(name)
+        logger.info(f"🔍 CHECK ORDINE - Text: '{text}'")
         
+        # Test 1: Ha numeri?
+        has_numbers = bool(re.search(r'\d', text))
+        logger.info(f"  ✓ Ha numeri: {has_numbers}")
+        
+        # Test 2: Ha quantità? (PATTERN MIGLIORATO)
+        quantita_patterns = [
+            r'\b\d+\s*x\s*\w+',          # "2x prodotto"
+            r'\b\d+\s+\w+',               # "1 testo"
+            r'\w+\s*x\s*\d+',             # "prodotto x2"
+        ]
+        ha_quantita = False
+        for pattern in quantita_patterns:
+            match = re.search(pattern, text, re.I)
+            if match:
+                ha_quantita = True
+                logger.info(f"  ✓ Quantità trovata: '{match.group()}' (pattern: {pattern})")
+                score += 1.0
+                matched.append('ha_quantita')
+                break
+        
+        if not ha_quantita:
+            logger.info(f"  ✗ Nessuna quantità trovata")
+        
+        # Test 3: Ha prezzo?
+        prezzo_pattern = r'[€$£¥₿]|\d+\s*(euro|eur|usd|dollar)'
+        prezzo_match = re.search(prezzo_pattern, text, re.I)
+        if prezzo_match:
+            score += 1.0
+            matched.append('ha_prezzo')
+            logger.info(f"  ✓ Prezzo trovato: '{prezzo_match.group()}'")
+        else:
+            logger.info(f"  ✗ Nessun prezzo trovato")
+        
+        # Test 4: Ha pagamento?
+        payment_keywords = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'paghero', 'pago con']
+        ha_pagamento = any(kw in text_lower for kw in payment_keywords)
+        if ha_pagamento:
+            score += 1.0
+            matched.append('ha_pagamento')
+            logger.info(f"  ✓ Pagamento trovato")
+        else:
+            logger.info(f"  ✗ Nessun pagamento trovato")
+        
+        # Test 5: Ha indirizzo?
+        indirizzo_match = re.search(r'\b(via|piazza|corso|viale)\s+\w+', text, re.I)
+        if indirizzo_match:
+            score += 1.0
+            matched.append('ha_indirizzo')
+            logger.info(f"  ✓ Indirizzo trovato: '{indirizzo_match.group()}'")
+        else:
+            logger.info(f"  ✗ Nessun indirizzo trovato")
+        
+        # Test 6: Formato ordine (righe multiple, virgole)
+        has_separators = text.count(',') >= 2 or text.count(';') >= 1
+        has_lines = text.count('\n') >= 2
+        if has_numbers and (has_separators or has_lines):
+            score += 1.0
+            matched.append('formato_ordine')
+            logger.info(f"  ✓ Formato ordine rilevato")
+        
+        max_score = 5
         confidence = score / max_score
         
-        # Se ha almeno 3 indicatori su 5, è probabilmente un ordine
-        if score >= 3:
+        logger.info(f"📊 ORDINE SCORE: {score}/{max_score} = {confidence:.2f}")
+        logger.info(f"📊 ORDINE MATCHED: {matched}")
+        
+        if score >= 2:
             return IntentResult(
                 IntentType.INVIO_ORDINE,
                 confidence,
-                f"Ordine reale: {score}/{max_score} indicatori",
+                f"Ordine probabile: {score}/{max_score} indicatori",
                 matched
             )
         
         return IntentResult(IntentType.INVIO_ORDINE, confidence, "Check ordine", matched)
     
     def _check_faq(self, text_norm: str, text_lower: str) -> IntentResult:
-        """Controlla se è una domanda FAQ"""
+        """Controlla FAQ"""
         score = 0.0
         matched = []
         
-        # 1. Parole interrogative (+0.3)
         parole = text_lower.split()
+        
         for interrogativa in self.faq_indicators['parole_interrogative']:
             if interrogativa in parole:
                 score += 0.3
                 matched.append(f"interrogativa:{interrogativa}")
                 break
         
-        # 2. Richieste info (+0.3)
         for frase in self.faq_indicators['richieste_info']:
             if frase in text_lower:
                 score += 0.3
                 matched.append(f"richiesta_info:{frase}")
                 break
         
-        # 3. Temi FAQ specifici (+0.4)
+        tema_trovato = False
         for tema, keywords in self.faq_indicators['temi_faq'].items():
             if any(kw in text_lower for kw in keywords):
-                score += 0.4
+                score += 0.5
                 matched.append(f"tema:{tema}")
+                tema_trovato = True
                 break
         
-        # 4. Presenza di "?" (+0.2)
         if '?' in text_norm:
             score += 0.2
             matched.append("punto_interrogativo")
         
+        faq_strong_patterns = [
+            r'\b(inviato|spedito|mandato|ricevuto)\b.*\b(ordine|pacco|prodotto)\b',
+            r'\b(ordine|pacco|prodotto)\b.*\b(inviato|spedito|mandato|ricevuto)\b',
+            r'\bgia\s+(inviato|spedito|mandato)\b',
+            r'\bquando\s+(arriva|parte|spedisci)\b',
+            r'\bdove\s+(e|è)\s+(il|mio|l)\b.*\b(ordine|pacco)\b',
+        ]
+        
+        for pattern in faq_strong_patterns:
+            if re.search(pattern, text_lower, re.I):
+                score += 0.6
+                matched.append("faq_strong_pattern")
+                break
+        
         confidence = min(score, 1.0)
         
-        return IntentResult(
-            IntentType.DOMANDA_FAQ,
-            confidence,
-            f"FAQ score: {confidence:.2f}",
-            matched
-        )
+        return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
     
     def _check_ricerca_prodotto(self, text_norm: str, text_lower: str) -> IntentResult:
-        """Controlla se sta cercando un prodotto specifico"""
+        """Controlla ricerca prodotto"""
         score = 0.0
         matched = []
         
-        # Pattern di ricerca
         for pattern in self.ricerca_indicators:
             if re.search(pattern, text_norm, re.I):
                 score += 0.4
-                matched.append(f"pattern:{pattern[:20]}")
+                matched.append(f"pattern")
         
-        # Parole chiave dalla lista prodotti
         parole = text_lower.split()
         prodotti_trovati = [p for p in parole if p in self.lista_keywords and len(p) > 3]
         if prodotti_trovati:
             score += 0.3 * min(len(prodotti_trovati), 2)
             matched.extend([f"prodotto:{p}" for p in prodotti_trovati[:3]])
         
+        if len(parole) == 1 and 3 <= len(text_lower) <= 20:
+            score += 0.5
+            matched.append("single_word_query")
+        
         confidence = min(score, 1.0)
         
-        return IntentResult(
-            IntentType.RICERCA_PRODOTTO,
-            confidence,
-            f"Ricerca prodotto score: {confidence:.2f}",
-            matched
-        )
+        return IntentResult(IntentType.RICERCA_PRODOTTO, confidence, f"Ricerca prodotto score: {confidence:.2f}", matched)
     
-    # ========================================
-    # HELPER METHODS
-    # ========================================
+    def _has_strong_faq_signals(self, text: str) -> bool:
+        """Controlla segnali FAQ forti"""
+        faq_blockers = [
+            'inviato', 'spedito', 'mandato', 'ricevuto', 'arriva', 
+            'quando', 'dove', 'gia', 'ancora', 'stato', 'ordine mio'
+        ]
+        
+        if 'hai' in text:
+            return any(blocker in text for blocker in faq_blockers)
+        
+        return False
     
     def _is_domanda_su_ordine(self, text: str) -> bool:
-        """Controlla se è una DOMANDA sugli ordini (non un ordine vero)"""
+        """Controlla se è domanda su ordini"""
         for pattern in self.ordine_exclusions:
             if re.search(pattern, text, re.I):
                 return True
         return False
     
-    def _has_order_format(self, text: str) -> bool:
-        """Controlla se ha un formato tipico di ordine"""
-        # Ha numeri + virgole/punti (lista prodotti)
-        has_numbers = bool(re.search(r'\d', text))
-        has_separators = text.count(',') >= 2 or text.count(';') >= 1
-        
-        # Ha righe multiple (ordine strutturato)
-        has_lines = text.count('\n') >= 2
-        
-        # Ha almeno 20 caratteri (non solo "voglio X")
-        is_substantial = len(text.strip()) >= 20
-        
-        return has_numbers and (has_separators or has_lines) and is_substantial
-    
     def _is_saluto(self, text: str) -> bool:
-        """Controlla se è solo un saluto"""
+        """Controlla se è saluto"""
         saluti = ['ciao', 'buongiorno', 'buonasera', 'salve', 'hey', 'hello', 'hi']
         parole = text.split()
         
-        # Se ha solo 1-3 parole e contiene un saluto
         if len(parole) <= 3 and any(s in text for s in saluti):
             return True
         return False
     
     def _normalize(self, text: str) -> str:
-        """Normalizza il testo mantenendo spazi"""
+        """Normalizza testo"""
         text = re.sub(r'[^\w\s?!.,]', '', text)
         text = re.sub(r'\s+', ' ', text)
         return text.strip().lower()
-
-
-# ========================================
-# ESEMPIO DI UTILIZZO
-# ========================================
-
-if __name__ == "__main__":
-    # Carica parole chiave dalla lista prodotti (simulato)
-    lista_keywords = {'integratori', 'proteine', 'creatina', 'vitamine', 'omega3'}
-    
-    classifier = IntentClassifier(lista_keywords)
-    
-    # Test cases
-    test_messages = [
-        "buonasera vorrei fare un ordine, inviami il listino",
-        "ho bisogno del tracking",
-        "2x proteine, 1x creatina, bonifico, via roma 10",
-        "come faccio a ordinare?",
-        "quanto costa la creatina?",
-        "lista",
-        "ciao",
-        "quando arriva il pacco?",
-    ]
-    
-    print("=" * 60)
-    print("TEST CLASSIFICATORE INTENTI")
-    print("=" * 60)
-    
-    for msg in test_messages:
-        result = classifier.classify(msg)
-        print(f"\n📝 Messaggio: '{msg}'")
-        print(f"🎯 Intento: {result.intent.value}")
-        print(f"📊 Confidenza: {result.confidence:.2f}")
-        print(f"💡 Ragione: {result.reason}")
-        print(f"🔑 Keywords: {result.matched_keywords}")
-
-# End intent_classifier.py
