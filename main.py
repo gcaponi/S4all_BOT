@@ -719,7 +719,25 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 parse_mode="HTML",
                 reply_to_message_id=message.message_id
             )
-        return
+            return
+    
+    # 5. FALLBACK - AGGIUNGI RISPOSTA ANCHE NEI GRUPPI
+    # ❌ PRIMA: Nessuna risposta (silenzio)
+    
+    # ✅ DOPO: Risposta solo se il messaggio sembra rivolto al bot
+    # (contiene parole come "ordine", "lista", "prodotto", ecc.)
+    trigger_words = [
+        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
+        'quanto costa', 'prezzo', 'disponibilita', 'ne hai', 'hai',
+        'spedizione', 'tracking', 'pacco'
+    ]
+    
+    if any(word in text.lower() for word in trigger_words):
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            text="❓ Non ho capito bene. Usa /lista per il catalogo o /help per le FAQ.",
+            reply_to_message_id=message.message_id
+        )
         
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce i bottoni Inline e salva gli ordini confermati"""
