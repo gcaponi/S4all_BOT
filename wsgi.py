@@ -1,6 +1,5 @@
 """
-WSGI Entry Point per Render.com - VERSIONE DEFINITIVA
-Gestisce l'inizializzazione del bot Telegram e gli endpoint Flask
+WSGI Entry Point per Render.com - VERSIONE DEFINITIVA -- Gestisce l'inizializzazione del bot Telegram e gli endpoint Flask
 """
 import asyncio
 import logging
