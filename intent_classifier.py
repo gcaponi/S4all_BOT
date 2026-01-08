@@ -1,12 +1,13 @@
 """
-Sistema di Classificazione Intenti - Versione Debug
-Con log dettagliati per identificare problemi
+Sistema di Classificazione Intenti - Versione Finale
+Con tutti i fix per ordini, quantità testuali e fuzzy matching
 """
 import re
 import logging
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from difflib import SequenceMatcher
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,17 @@ class IntentResult:
     confidence: float
     reason: str
     matched_keywords: List[str]
+
+def calculate_similarity(text1: str, text2: str) -> float:
+    """Calcola similarità tra due stringhe (per fuzzy matching)"""
+    return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
     
 class IntentClassifier:
-    """Classificatore intelligente con debug"""
+    """Classificatore intelligente con debug e fuzzy matching"""
     
     def __init__(self, lista_keywords: set = None, load_lista_func=None):
         self.lista_keywords = lista_keywords or set()
-        self.load_lista_func = load_lista_func  # Funzione per caricare la lista prodotti
+        self.load_lista_func = load_lista_func
         
         # PRIORITÀ 1: Richieste esplicite
         self.richiesta_lista_patterns = {
@@ -65,10 +70,6 @@ class IntentClassifier:
                 r'^\s*prezzi\s*[.!?]?\s*$',
             ]
         }
-        
-        # PRIORITÀ 2: Indicatori di ordine REALE (SEMPLIFICATI)
-        # NON usare lambda per debug
-        pass
         
         # ESCLUSIONI per ordine
         self.ordine_exclusions = [
@@ -140,8 +141,7 @@ class IntentClassifier:
         logger.info(f"📦 Ordine result: {ordine_result.confidence:.2f} - {ordine_result.reason}")
         logger.info(f"📦 Ordine matched: {ordine_result.matched_keywords}")
         
-        # SOGLIA ABBASSATA: se >= 0.4 (4 punti su 10) è ordine
-        if ordine_result.confidence >= 0.4:
+        if ordine_result.confidence >= 0.3:  # Soglia 3 punti su 10
             return ordine_result
         
         # PRIORITÀ 3: FAQ
@@ -171,7 +171,7 @@ class IntentClassifier:
         
         logger.info(f"🔽 Fallback - best candidate: {best.intent.value} ({best.confidence:.2f})")
         
-        if best.confidence > 0.3:
+        if best.confidence > 0.2:  # Soglia abbassata per fallback intelligente
             return best
         
         return IntentResult(IntentType.FALLBACK, 0.0, "Nessun intento riconosciuto", [])
@@ -208,7 +208,9 @@ class IntentClassifier:
         return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
     
     def _check_ordine_reale(self, text: str, text_lower: str) -> IntentResult:
-        """Controlla se è un ordine vero - USA LA LOGICA ORIGINALE MIGLIORATA"""
+        """
+        FIX 1 + FIX 2: Controlla ordine con quantità testuali e pattern intelligenti
+        """
         
         logger.info(f"🔍 CHECK ORDINE - Text: '{text}'")
         
@@ -217,55 +219,75 @@ class IntentClassifier:
             logger.info(f"  ❌ ESCLUSO: Troppo corto ({len(text.strip())} caratteri)")
             return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: troppo corto", [])
         
-        # Deve contenere numeri
-        if not re.search(r'\d', text):
-            logger.info(f"  ❌ ESCLUSO: Nessun numero")
-            return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: no numeri", [])
+        # FIX 2: Pattern "volevo fare un ordine DI prodotto" - Gestione intelligente
+        if re.search(r'\b(volevo|vorrei|voglio)\s+fare\s+un\s+ordine\b', text_lower):
+            # Se ha "di" seguito da una parola lunga (prodotto), è un ordine
+            if re.search(r'\bordine\s+di\s+un[ao]?\s+\w{4,}', text_lower):
+                logger.info(f"  ⚠️ 'volevo fare ordine di X' → Continuo check (possibile ordine)")
+            elif text_lower.endswith('?') or not re.search(r'\bdi\s+\w{4,}', text_lower):
+                # Finisce con ? O non ha prodotto specifico → È una domanda
+                logger.info(f"  ❌ ESCLUSO: 'volevo fare ordine' senza prodotto/con ?")
+                return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: domanda su ordini", [])
         
-        # ESCLUSIONI FORTI: Solo domande esplicite su "come ordinare"
-        # NON bloccare ordini che contengono quantità/prodotti
+        # ESCLUSIONI FORTI: Solo domande esplicite
         strong_exclusions = [
-            r'\bcome\s+(faccio|posso|si\s+fa)\s+(a\s+)?ordinar',  # "come faccio a ordinare"
-            r'\bcome\s+ordino\b',                                   # "come ordino"
-            r'\bcome\s+si\s+ordina\b',                              # "come si ordina"
-            r'\bprocedura\s+per\s+ordinar',                         # "procedura per ordinare"
-            r'\bper\s+ordinar.*\bcome\b',                           # "per ordinare come"
-            r'\baiuto.*\border',                                    # "aiuto per ordinare"
-            r'\b(volevo|vorrei|voglio)\s+fare\s+un\s+ordine\b.*[?]',  # "volevo fare un ordine?" (con ?)
-            r'\b(posso|devo)\s+fare\s+un\s+ordine\b.*[?]',          # "posso fare un ordine?"
+            r'\bcome\s+(faccio|posso|si\s+fa)\s+(a\s+)?ordinar',
+            r'\bcome\s+ordino\b',
+            r'\bcome\s+si\s+ordina\b',
+            r'\bprocedura\s+per\s+ordinar',
+            r'\bper\s+ordinar.*\bcome\b',
+            r'\baiuto.*\border',
         ]
         
         for pattern in strong_exclusions:
             if re.search(pattern, text_lower, re.I):
-                logger.info(f"  ❌ ESCLUSO: Pattern strong exclusion: {pattern}")
+                logger.info(f"  ❌ ESCLUSO: Pattern strong exclusion")
                 return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: domanda su ordini", [])
         
         # INDICATORI DI ORDINE REALE
         order_indicators = 0
         matched = []
         
-        # 1. Simboli di valuta o prezzi (FORTE)
+        # 1. Simboli di valuta o prezzi
         if re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
             order_indicators += 3
             matched.append('prezzo')
             logger.info(f"  ✓ Prezzo trovato (+3 punti)")
         
-        # 2. Quantità chiare (PATTERN MIGLIORATO)
+        # FIX 1: 2. Quantità chiare (NUMERICHE + TESTUALI)
         quantita_patterns = [
-            r'\d+\s*x\s*\w+',                    # "2x prodotto", "2 x prodotto"
-            r'\d+\s+[a-z]{3,}',                  # "2 testo", "3 npp" (almeno 3 lettere)
-            r'\b\d+\s*pezz[io]',                 # "2 pezzi"
-            r'\b\d+\s*confezioni',               # "3 confezioni"
+            r'\d+\s*x\s*\w+',                                      # "2x prodotto"
+            r'\d+\s+[a-z]{3,}',                                    # "2 testo", "10mg"
+            r'\b\d+\s*pezz[io]',                                   # "2 pezzi"
+            r'\b\d+\s*confezioni',                                 # "3 confezioni"
+            r'\bun[ao]?\s+(confezione|scatola|pezzo|flacone|boccetta|fiala)',  # "una confezione"
+            r'\bdue\s+(confezioni|scatole|pezzi|fiale)',           # "due confezioni"
+            r'\btre\s+(confezioni|scatole|pezzi|fiale)',           # "tre confezioni"
         ]
         
+        quantita_trovata = False
         for pattern in quantita_patterns:
             if re.search(pattern, text_lower):
                 order_indicators += 2
                 matched.append('quantita')
+                quantita_trovata = True
                 logger.info(f"  ✓ Quantità trovata (+2 punti)")
                 break
         
-        # 3. Virgole/separatori (lista prodotti)
+        # FIX 1: Pattern "un/una PRODOTTO" (quantità implicita = 1)
+        if not quantita_trovata and re.search(r'\bun[ao]?\s+\w{5,}', text_lower):
+            # Verifica che la parola dopo "un/una" non sia comune
+            match = re.search(r'\bun[ao]?\s+(\w{5,})', text_lower)
+            if match:
+                word = match.group(1)
+                # Escludi parole comuni come "ordine", "momento", "attimo"
+                common_words = ['ordine', 'momento', 'attimo', 'secondo', 'minuto']
+                if word not in common_words:
+                    order_indicators += 2
+                    matched.append('quantita_testuale_uno')
+                    logger.info(f"  ✓ Quantità testuale 'un/una {word}' (+2 punti)")
+        
+        # 3. Virgole/separatori
         if text.count(',') >= 2 or text.count(';') >= 1:
             order_indicators += 2
             matched.append('separatori_multipli')
@@ -275,7 +297,7 @@ class IntentClassifier:
             matched.append('separatore_singolo')
             logger.info(f"  ✓ Separatore singolo (+1 punto)")
         
-        # 3b. A capo multipli (ordine su righe separate)
+        # 3b. A capo multipli
         if text.count('\n') >= 2:
             order_indicators += 1
             matched.append('righe_multiple')
@@ -295,52 +317,70 @@ class IntentClassifier:
         if any(kw in text_lower for kw in location_keywords):
             order_indicators += 1
             matched.append('localita')
-            logger.info(f"  ✓ Località/spedizione trovata (+1 punto)")
+            logger.info(f"  ✓ Località/spedizione (+1 punto)")
         
         # 5. Parole chiave ordine diretto
         order_keywords = [
-            'ordino', 'ordine', 'nuovo ordine', 'voglio', 'prendo',
-            'disponibilita', 'ne hai', 'assicurazione', 'codice sconto'
+            'ordino', 'ordine', 'nuovo ordine', 'prendo',
+            'disponibilita', 'ne hai', 'assicurazione', 'codice sconto',
+            'avrei bisogno'  # AGGIUNTO
         ]
-        order_keyword_found = any(kw in text_lower for kw in order_keywords)
-        if order_keyword_found:
+        if any(kw in text_lower for kw in order_keywords):
             order_indicators += 1
             matched.append('keyword_ordine')
-            logger.info(f"  ✓ Keyword ordine trovata (+1 punto)")
+            logger.info(f"  ✓ Keyword ordine (+1 punto)")
         
-        # 6. Prodotti dalla lista
+        # FIX 3: 6. Prodotti dalla lista (CON FUZZY MATCHING)
         if self.load_lista_func:
             try:
                 lista_text = self.load_lista_func()
                 if lista_text:
-                    lista_lines = [line.strip().lower() for line in lista_text.split('\n') if line.strip() and len(line.strip()) > 3]
-                    text_words = [w for w in text_lower.split() if len(w) > 3]
+                    lista_lines = [line.strip().lower() for line in lista_text.split('\n') 
+                                   if line.strip() and len(line.strip()) > 3]
+                    text_words = [w for w in text_lower.split() if len(w) > 4]  # Parole >4 caratteri
                     
                     product_found = False
                     for word in text_words:
+                        # Match esatto
                         for line in lista_lines:
                             if word in line:
                                 order_indicators += 2
-                                matched.append('prodotto_lista')
+                                matched.append(f'prodotto_lista:{word}')
                                 product_found = True
-                                logger.info(f"  ✓ Prodotto dalla lista trovato: '{word}' (+2 punti)")
+                                logger.info(f"  ✓ Prodotto dalla lista (exact): '{word}' (+2 punti)")
                                 break
+                        
+                        # FIX 3: Fuzzy match se non trovato esatto
+                        if not product_found and len(word) > 6:  # Solo parole lunghe per fuzzy
+                            for line in lista_lines:
+                                for word_in_line in line.split():
+                                    if len(word_in_line) > 6:
+                                        similarity = calculate_similarity(word, word_in_line)
+                                        if similarity > 0.85:  # 85% simile
+                                            order_indicators += 2
+                                            matched.append(f'prodotto_fuzzy:{word}~{word_in_line}')
+                                            product_found = True
+                                            logger.info(f"  ✓ Prodotto fuzzy match: '{word}' ~ '{word_in_line}' ({similarity:.2f}) (+2 punti)")
+                                            break
+                                if product_found:
+                                    break
+                        
                         if product_found:
                             break
             except Exception as e:
                 logger.warning(f"Errore caricamento lista: {e}")
         
-        # 7. Metodi di pagamento espliciti
+        # 7. Metodi di pagamento
         payment_keywords = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'usdc', 'xmr']
         if any(kw in text_lower for kw in payment_keywords):
             order_indicators += 2
             matched.append('pagamento')
-            logger.info(f"  ✓ Metodo pagamento trovato (+2 punti)")
+            logger.info(f"  ✓ Metodo pagamento (+2 punti)")
         
         logger.info(f"📊 ORDINE TOTALE: {order_indicators} punti")
         logger.info(f"📊 ORDINE MATCHED: {matched}")
         
-        # Soglia abbassata: almeno 3 punti (prima era 4)
+        # Soglia: almeno 3 punti
         if order_indicators >= 3:
             confidence = min(order_indicators / 10.0, 1.0)
             logger.info(f"✅ ORDINE RICONOSCIUTO (>= 3 punti)")
@@ -353,7 +393,7 @@ class IntentClassifier:
         
         logger.info(f"❌ NON ORDINE (< 3 punti)")
         confidence = order_indicators / 10.0
-        return IntentResult(IntentType.INVIO_ORDINE, confidence, f"Score troppo basso: {order_indicators} punti", matched)
+        return IntentResult(IntentType.INVIO_ORDINE, confidence, f"Score: {order_indicators} punti", matched)
     
     def _check_faq(self, text_norm: str, text_lower: str) -> IntentResult:
         """Controlla FAQ"""
@@ -374,12 +414,10 @@ class IntentClassifier:
                 matched.append(f"richiesta_info:{frase}")
                 break
         
-        tema_trovato = False
         for tema, keywords in self.faq_indicators['temi_faq'].items():
             if any(kw in text_lower for kw in keywords):
                 score += 0.5
                 matched.append(f"tema:{tema}")
-                tema_trovato = True
                 break
         
         if '?' in text_norm:
@@ -461,3 +499,5 @@ class IntentClassifier:
         text = re.sub(r'[^\w\s?!.,]', '', text)
         text = re.sub(r'\s+', ' ', text)
         return text.strip().lower()
+
+# End intent_classifier.py
