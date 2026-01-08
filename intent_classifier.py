@@ -131,6 +131,13 @@ class IntentClassifier:
             return lista_result
         
         # PRIORITÀ 2: ORDINE REALE
+        # PRE-CHECK: Se è una DOMANDA chiara, salta direttamente a FAQ
+        if self._is_clear_question(text_lower):
+            logger.info("⚠️ Rilevata domanda chiara (interrogativa + ?), salto check ordine")
+            faq_result = self._check_faq(text_norm, text_lower)
+            if faq_result.confidence > 0.4:  # Soglia più bassa per domande chiare
+                return faq_result
+        
         if self._is_domanda_su_ordine(text_norm):
             logger.info("⚠️ Rilevata domanda su ordine, controllo FAQ")
             faq_result = self._check_faq(text_norm, text_lower)
@@ -320,12 +327,28 @@ class IntentClassifier:
             logger.info(f"  ✓ Località/spedizione (+1 punto)")
         
         # 5. Parole chiave ordine diretto
+        # IMPORTANTE: Esclude "ordine" se contesto è domanda
         order_keywords = [
-            'ordino', 'ordine', 'nuovo ordine', 'prendo',
+            'ordino', 'nuovo ordine', 'prendo',
             'disponibilita', 'ne hai', 'assicurazione', 'codice sconto',
-            'avrei bisogno'  # AGGIUNTO
+            'avrei bisogno'
         ]
+        
+        # NON dare punti per "ordine" se è una domanda chiara
+        has_order_keyword = False
         if any(kw in text_lower for kw in order_keywords):
+            has_order_keyword = True
+        
+        # "ordine" da solo è ambiguo - controlla contesto
+        if 'ordine' in text_lower and not has_order_keyword:
+            # Se non ha altri indicatori forti E inizia con parola interrogativa, probabilmente è FAQ
+            first_word = text_lower.split()[0] if text_lower.split() else ''
+            question_words = ['quando', 'dove', 'come', 'perche', 'perchè']
+            
+            if first_word not in question_words:
+                has_order_keyword = True
+        
+        if has_order_keyword:
             order_indicators += 1
             matched.append('keyword_ordine')
             logger.info(f"  ✓ Keyword ordine (+1 punto)")
@@ -475,6 +498,45 @@ class IntentClassifier:
         
         if 'hai' in text:
             return any(blocker in text for blocker in faq_blockers)
+        
+        return False
+    
+    def _is_clear_question(self, text: str) -> bool:
+        """
+        Controlla se è una DOMANDA CHIARA che non può essere un ordine
+        
+        Criteri:
+        - Ha parola interrogativa all'inizio
+        - Oppure finisce con ?
+        - Oppure ha pattern "dove è/quando arriva/come faccio"
+        """
+        # Parole interrogative all'inizio della frase
+        question_starters = ['quando', 'dove', 'come', 'perche', 'perchè', 'quanto', 'cosa', 'chi', 'quale']
+        first_word = text.split()[0] if text.split() else ''
+        
+        if first_word in question_starters:
+            logger.info(f"  🔍 Domanda chiara: inizia con '{first_word}'")
+            return True
+        
+        # Finisce con ?
+        if text.strip().endswith('?'):
+            logger.info(f"  🔍 Domanda chiara: finisce con ?")
+            return True
+        
+        # Pattern domande comuni
+        question_patterns = [
+            r'\bquando\s+(arriva|parte|spedisci|ricevo)',
+            r'\bdove\s+(è|e)\s+(il|mio|l)',
+            r'\bcome\s+(faccio|posso|si\s+fa)',
+            r'\bmi\s+puoi\s+dire',
+            r'\bpuoi\s+dirmi',
+            r'\bho\s+bisogno\s+di\s+sapere',
+        ]
+        
+        for pattern in question_patterns:
+            if re.search(pattern, text, re.I):
+                logger.info(f"  🔍 Domanda chiara: pattern '{pattern[:30]}'")
+                return True
         
         return False
     
