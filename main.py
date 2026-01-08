@@ -58,6 +58,24 @@ initialization_lock = False
 FAQ_CONFIDENCE_THRESHOLD = 0.65
 LISTA_CONFIDENCE_THRESHOLD = 0.30
 
+# ============================================================
+# FILTRO CUSTOM PER BUSINESS MESSAGES
+# ============================================================
+
+class BusinessMessageFilter(filters.MessageFilter):
+    """
+    Filtro custom per identificare messaggi Telegram Business.
+    Controlla se il messaggio ha business_connection_id.
+    """
+    def filter(self, message):
+        return (
+            hasattr(message, 'business_connection_id') and 
+            message.business_connection_id is not None
+        )
+
+# Istanza del filtro
+business_filter = BusinessMessageFilter()
+
 # --------------------------------------------------------------------
 # UTILS: WEB FETCH, PARSING, I/O (SISTEMA DI AGGIORNAMENTO)
 # --------------------------------------------------------------------
@@ -601,30 +619,36 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------------------------------------------------
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce messaggi ricevuti tramite Telegram Business"""
+    """
+    Gestisce messaggi ricevuti tramite Telegram Business.
     
-    # Estrai business_connection_id
-    business_connection_id = None
-    
-    if update.business_message:
-        business_connection_id = update.business_message.business_connection_id
-        message = update.business_message
-    elif update.edited_business_message:
-        business_connection_id = update.edited_business_message.business_connection_id
-        message = update.edited_business_message
-    else:
-        return
+    Questo handler viene chiamato SOLO per messaggi Business
+    grazie al filtro custom. I messaggi normali vanno in
+    handle_group_message o handle_private_message.
+    """
+    message = update.message or update.edited_message
     
     if not message or not message.text:
         return
     
-    logger.info(f"📱 Business message: {message.text[:50]}... (connection: {business_connection_id})")
+    business_connection_id = message.business_connection_id
+    
+    logger.info(f"📱 Business message ricevuto")
+    logger.info(f"   Connection ID: {business_connection_id}")
+    logger.info(f"   Chat ID: {message.chat.id}")
+    logger.info(f"   Testo: {message.text[:50]}...")
     
     text = message.text.strip()
     intent = calcola_intenzione(text)
     
-    # Funzione helper per inviare risposte Business
+    # ========================================
+    # Helper: Invia risposta Business
+    # ========================================
     async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        """
+        Invia messaggio usando business_connection_id.
+        Questo è OBBLIGATORIO per rispondere in Business.
+        """
         try:
             await context.bot.send_message(
                 business_connection_id=business_connection_id,
@@ -633,15 +657,123 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode=parse_mode,
                 reply_markup=reply_markup
             )
+            logger.info(f"✅ Risposta Business inviata")
         except Exception as e:
-            logger.error(f"Errore invio messaggio Business: {e}")
+            logger.error(f"❌ Errore invio Business: {e}")
     
-    # 1. LISTA
+    # ========================================
+    # 1. RICHIESTA LISTA
+    # ========================================
     if intent == "lista":
         lista = load_lista()
         if lista:
+            # Dividi in chunk da 4000 caratteri (limite Telegram)
             for i in range(0, len(lista), 4000):
-                await send_business_reply(lista[i:i+4000])
+                await send_business_reply(lista[i:i+4000], parse_mode=None)
+        return
+    
+    # ========================================
+    # 2. ORDINE
+    # ========================================
+    if intent == "ordine":
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await send_business_reply(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # ========================================
+    # 3. FAQ
+    # ========================================
+    if intent == "faq":
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await send_business_reply(
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+            )
+        return
+    
+    # ========================================
+    # 4. RICERCA PRODOTTI
+    # ========================================
+    if intent == "ricerca_prodotti":
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await send_business_reply(
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+            )
+            return
+    
+    # ========================================
+    # 5. FALLBACK
+    # ========================================
+    trigger_words = [
+        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
+        'quanto costa', 'prezzo', 'disponibilita', 'ne hai', 'hai',
+        'spedizione', 'tracking', 'pacco', 'voglio', 'vorrei', 'avrei bisogno'
+    ]
+    
+    if any(word in text.lower() for word in trigger_words):
+        await send_business_reply(
+            "❓ Non ho capito bene. Usa /lista per il catalogo o /help per le FAQ."
+        )
+
+
+# ============================================================
+# 3. HANDLER BUSINESS CONNECTION (Opzionale)
+# ============================================================
+
+async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Gestisce messaggi ricevuti tramite Telegram Business.
+    Questo handler viene chiamato SOLO per messaggi Business grazie al filtro custom.
+    I messaggi normali vanno in handle_group_message o handle_private_message.
+    """
+    message = update.message or update.edited_message
+    
+    if not message or not message.text:
+        return
+    
+    business_connection_id = message.business_connection_id
+    
+    logger.info(f"📱 Business message ricevuto")
+    logger.info(f"   Connection ID: {business_connection_id}")
+    logger.info(f"   Chat ID: {message.chat.id}")
+    logger.info(f"   Testo: {message.text[:50]}...")
+    
+    text = message.text.strip()
+    intent = calcola_intenzione(text)
+    
+    # Helper: Invia risposta Business
+    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        """
+        Invia messaggio usando business_connection_id.
+        Questo è OBBLIGATORIO per rispondere in Business.
+        """
+        try:
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=message.chat.id,
+                text=text_reply,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+            logger.info(f"✅ Risposta Business inviata")
+        except Exception as e:
+            logger.error(f"❌ Errore invio Business: {e}")
+    
+    # 1. RICHIESTA LISTA
+    if intent == "lista":
+        lista = load_lista()
+        if lista:
+            # Dividi in chunk da 4000 caratteri (limite Telegram)
+            for i in range(0, len(lista), 4000):
+                await send_business_reply(lista[i:i+4000], parse_mode=None)
         return
     
     # 2. ORDINE
@@ -687,12 +819,118 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             "❓ Non ho capito bene. Usa /lista per il catalogo o /help per le FAQ."
         )
 
+# ============================================================
+# 3. HANDLER BUSINESS CONNECTION (Opzionale)
+# ============================================================
+
+async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    message = update.message or update.edited_message
+    
+    if not message or not message.text:
+        return
+    
+    business_connection_id = message.business_connection_id
+    
+    logger.info(f"📱 Business message ricevuto")
+    logger.info(f"   Connection ID: {business_connection_id}")
+    logger.info(f"   Chat ID: {message.chat.id}")
+    logger.info(f"   Testo: {message.text[:50]}...")
+    
+    text = message.text.strip()
+    intent = calcola_intenzione(text)
+    
+    # Helper: Invia risposta Business
+    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        """
+        Invia messaggio usando business_connection_id.
+        Questo è OBBLIGATORIO per rispondere in Business.
+        """
+        try:
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=message.chat.id,
+                text=text_reply,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+            logger.info(f"✅ Risposta Business inviata")
+        except Exception as e:
+            logger.error(f"❌ Errore invio Business: {e}")
+    
+    # 1. RICHIESTA LISTA
+    if intent == "lista":
+        lista = load_lista()
+        if lista:
+            # Dividi in chunk da 4000 caratteri (limite Telegram)
+            for i in range(0, len(lista), 4000):
+                await send_business_reply(lista[i:i+4000], parse_mode=None)
+        return
+    
+    # 2. ORDINE
+    if intent == "ordine":
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await send_business_reply(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # 3. FAQ
+    if intent == "faq":
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await send_business_reply(
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+            )
+        return
+    
+    # 4. RICERCA PRODOTTI
+    if intent == "ricerca_prodotti":
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await send_business_reply(
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+            )
+            return
+    
+    # 5. FALLBACK
+    trigger_words = [
+        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
+        'quanto costa', 'prezzo', 'disponibilita', 'ne hai', 'hai',
+        'spedizione', 'tracking', 'pacco', 'voglio', 'vorrei', 'avrei bisogno'
+    ]
+    
+    if any(word in text.lower() for word in trigger_words):
+        await send_business_reply(
+            "❓ Non ho capito bene. Usa /lista per il catalogo o /help per le FAQ."
+        )
+
+
+# ============================================================
+# 3. HANDLER BUSINESS CONNECTION (Opzionale)
+# ============================================================
+
 async def handle_business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce nuove connessioni Business"""
+    """
+    Gestisce nuove connessioni Telegram Business.
+    Viene chiamato quando un account Business si connette al bot.
+    """
     if update.business_connection:
         connection = update.business_connection
-        logger.info(f"🔗 Nuova connessione Business: {connection.id}")
-        # Puoi salvare il connection_id se necessario
+        logger.info(f"🔗 Nuova connessione Business")
+        logger.info(f"   Connection ID: {connection.id}")
+        logger.info(f"   User ID: {connection.user.id}")
+        logger.info(f"   Nome: {connection.user.first_name}")
+        
+        # Opzionale: Salva il connection_id per uso futuro
+        context.bot_data.setdefault('business_connections', {})[connection.id] = {
+            'user_id': connection.user.id,
+            'timestamp': datetime.now().isoformat()
+        }
 
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
@@ -919,27 +1157,17 @@ async def setup_bot():
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
         except Exception as e:
             logger.warning(f"Prefetch warning: {e}")
-
-        application = Application.builder() \
-            .token(BOT_TOKEN) \
-            .updater(None) \
-            .build()
-        application.bot_data['allowed_updates'] = [
-            "message",
-            "edited_message",
-            "channel_post",
-            "edited_channel_post",
-            "callback_query",
-            "chat_member",
-            "my_chat_member",
-            "business_connection",        
-            "business_message",            
-            "edited_business_message"      
-        ]
         
+        application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
         get_bot_username.username = bot.username
         logger.info(f"Bot: @{bot.username}")
+        
+        # ============================================================
+        # REGISTRAZIONE HANDLER (ORDINE IMPORTANTE!)
+        # ============================================================
+        
+        # 1. COMANDI (priorità massima)
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("genera_link", genera_link_command))
@@ -951,73 +1179,59 @@ async def setup_bot():
         application.add_handler(CommandHandler("lista", lista_command))
         application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
         application.add_handler(CommandHandler("ordini", ordini_command))
-        application.add_handler(MessageHandler(filters.UpdateType.BUSINESS_MESSAGE, handle_business_message))
-        application.add_handler(MessageHandler(filters.UpdateType.EDITED_BUSINESS_MESSAGE, handle_business_message))
-        application.add_handler(MessageHandler(filters.UpdateType.BUSINESS_CONNECTION, handle_business_connection))
+        
+        # 2. STATUS UPDATES
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
         application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+        
+        # 3. CALLBACK QUERY (bottoni inline)
         application.add_handler(CallbackQueryHandler(handle_callback_query))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
+        
+        # 4. BUSINESS MESSAGES        
+        application.add_handler(MessageHandler(business_filter & filters.TEXT & ~filters.COMMAND, handle_business_message))
+        logger.info("✅ Handler Business registrato")
+        
+        # Opzionale: Handler per nuove connessioni Business
+        application.add_handler(MessageHandler(filters.ALL, handle_business_connection))
+        
+        # 5. MESSAGGI GRUPPI (NON cattura Business, già gestiti sopra)
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL),handle_group_message))
+        
+        # 6. MESSAGGI PRIVATI (NON cattura Business, già gestiti sopra)
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
 
+        # ============================================================
+        # WEBHOOK CONFIGURATION
+        # ============================================================
         if WEBHOOK_URL:
-            await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook",
+            await application.bot.set_webhook(
+                url=f"{WEBHOOK_URL}/webhook",
                 allowed_updates=[
-                "message", "edited_message", "channel_post", "edited_channel_post",
-                "callback_query", "chat_member", "my_chat_member", "business_connection",
-                "business_message", "edited_business_message"
+                    "message",
+                    "edited_message", 
+                    "channel_post",
+                    "edited_channel_post",
+                    "callback_query",
+                    "chat_member",
+                    "my_chat_member",
+                    "business_connection",
+                    "business_message",
+                    "edited_business_message"
                 ]
             )
-            logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
+            logger.info(f"✅ Webhook configurato: {WEBHOOK_URL}/webhook")
+            logger.info(f"✅ Business updates abilitati nel webhook")
 
         await application.initialize()
         await application.start()
         logger.info("🤖 Bot pronto!")
+        logger.info("📱 Business support: ATTIVO")
         
         return application
+        
     except Exception as e:
         logger.error(f"❌ Setup error: {e}")
         initialization_lock = False
         raise
-
-@app.route('/')
-def index():
-    return "🤖 Bot attivo! ✅", 200
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    global bot_application, bot_initialized
-    
-    if not bot_initialized:
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            bot_application = loop.run_until_complete(setup_bot())
-            bot_initialized = True
-        except Exception as e:
-            logger.error(f"Webhook init error: {e}")
-            return "Init error", 503
-    
-    if not bot_application:
-        return "Bot not ready", 503
-    
-    try:
-        update = Update.de_json(request.get_json(force=True), bot_application.bot)
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        loop.run_until_complete(bot_application.process_update(update))
-        return "OK", 200
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return "ERROR", 500
-
-@app.route('/health')
-def health():
-    return "OK", 200
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT, debug=False)
 
 #End main.py
