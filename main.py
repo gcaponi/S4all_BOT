@@ -721,15 +721,11 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
     
-    # 5. FALLBACK - AGGIUNGI RISPOSTA ANCHE NEI GRUPPI
-    # ❌ PRIMA: Nessuna risposta (silenzio)
-    
-    # ✅ DOPO: Risposta solo se il messaggio sembra rivolto al bot
-    # (contiene parole come "ordine", "lista", "prodotto", ecc.)
+    # 5. FALLBACK INTELLIGENTE - Risponde solo se contiene keyword rilevanti
     trigger_words = [
         'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
         'quanto costa', 'prezzo', 'disponibilita', 'ne hai', 'hai',
-        'spedizione', 'tracking', 'pacco'
+        'spedizione', 'tracking', 'pacco', 'voglio', 'vorrei', 'avrei bisogno'
     ]
     
     if any(word in text.lower() for word in trigger_words):
