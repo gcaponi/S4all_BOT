@@ -600,6 +600,100 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GESTIONE MESSAGGI: LOGICA UNIFICATA (PRIVATI E GRUPPI)
 # --------------------------------------------------------------------
 
+async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce messaggi ricevuti tramite Telegram Business"""
+    
+    # Estrai business_connection_id
+    business_connection_id = None
+    
+    if update.business_message:
+        business_connection_id = update.business_message.business_connection_id
+        message = update.business_message
+    elif update.edited_business_message:
+        business_connection_id = update.edited_business_message.business_connection_id
+        message = update.edited_business_message
+    else:
+        return
+    
+    if not message or not message.text:
+        return
+    
+    logger.info(f"📱 Business message: {message.text[:50]}... (connection: {business_connection_id})")
+    
+    text = message.text.strip()
+    intent = calcola_intenzione(text)
+    
+    # Funzione helper per inviare risposte Business
+    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        try:
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=message.chat.id,
+                text=text_reply,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Errore invio messaggio Business: {e}")
+    
+    # 1. LISTA
+    if intent == "lista":
+        lista = load_lista()
+        if lista:
+            for i in range(0, len(lista), 4000):
+                await send_business_reply(lista[i:i+4000])
+        return
+    
+    # 2. ORDINE
+    if intent == "ordine":
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await send_business_reply(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # 3. FAQ
+    if intent == "faq":
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await send_business_reply(
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+            )
+        return
+    
+    # 4. RICERCA PRODOTTI
+    if intent == "ricerca_prodotti":
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await send_business_reply(
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+            )
+            return
+    
+    # 5. FALLBACK
+    trigger_words = [
+        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
+        'quanto costa', 'prezzo', 'disponibilita', 'ne hai', 'hai',
+        'spedizione', 'tracking', 'pacco', 'voglio', 'vorrei', 'avrei bisogno'
+    ]
+    
+    if any(word in text.lower() for word in trigger_words):
+        await send_business_reply(
+            "❓ Non ho capito bene. Usa /lista per il catalogo o /help per le FAQ."
+        )
+
+async def handle_business_connection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce nuove connessioni Business"""
+    if update.business_connection:
+        connection = update.business_connection
+        logger.info(f"🔗 Nuova connessione Business: {connection.id}")
+        # Puoi salvare il connection_id se necessario
+
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -822,12 +916,27 @@ async def setup_bot():
         try:
             update_faq_from_web()
             update_lista_from_web()
-            # AGGIUNGI QUESTA RIGA
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
         except Exception as e:
             logger.warning(f"Prefetch warning: {e}")
+
+        application = Application.builder() \
+            .token(BOT_TOKEN) \
+            .updater(None) \
+            .build()
+        application.bot_data['allowed_updates'] = [
+            "message",
+            "edited_message",
+            "channel_post",
+            "edited_channel_post",
+            "callback_query",
+            "chat_member",
+            "my_chat_member",
+            "business_connection",        
+            "business_message",            
+            "edited_business_message"      
+        ]
         
-        application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
         get_bot_username.username = bot.username
         logger.info(f"Bot: @{bot.username}")
@@ -842,6 +951,9 @@ async def setup_bot():
         application.add_handler(CommandHandler("lista", lista_command))
         application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
         application.add_handler(CommandHandler("ordini", ordini_command))
+        application.add_handler(MessageHandler(filters.UpdateType.BUSINESS_MESSAGE, handle_business_message))
+        application.add_handler(MessageHandler(filters.UpdateType.EDITED_BUSINESS_MESSAGE, handle_business_message))
+        application.add_handler(MessageHandler(filters.UpdateType.BUSINESS_CONNECTION, handle_business_connection))
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
         application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
         application.add_handler(CallbackQueryHandler(handle_callback_query))
@@ -849,7 +961,13 @@ async def setup_bot():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
 
         if WEBHOOK_URL:
-            await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+            await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook",
+                allowed_updates=[
+                "message", "edited_message", "channel_post", "edited_channel_post",
+                "callback_query", "chat_member", "my_chat_member", "business_connection",
+                "business_message", "edited_business_message"
+                ]
+            )
             logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
 
         await application.initialize()
