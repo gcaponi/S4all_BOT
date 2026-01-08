@@ -619,13 +619,9 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------------------------------------------------
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Gestisce messaggi ricevuti tramite Telegram Business.
-    
-    Questo handler viene chiamato SOLO per messaggi Business
-    grazie al filtro custom. I messaggi normali vanno in
-    handle_group_message o handle_private_message.
-    """
+    """ Gestisce messaggi ricevuti tramite Telegram Business.
+    Questo handler viene chiamato SOLO per messaggi Business grazie al filtro custom.
+    I messaggi normali vanno in handle_group_message o handle_private_message. """
     message = update.message or update.edited_message
     
     if not message or not message.text:
@@ -713,17 +709,14 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             "❓ Non ho capito bene. Usa /lista per il catalogo o /help per le FAQ."
         )
 
-
 # ============================================================
 # 3. HANDLER BUSINESS CONNECTION (Opzionale)
 # ============================================================
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Gestisce messaggi ricevuti tramite Telegram Business.
+    """ Gestisce messaggi ricevuti tramite Telegram Business.
     Questo handler viene chiamato SOLO per messaggi Business grazie al filtro custom.
-    I messaggi normali vanno in handle_group_message o handle_private_message.
-    """
+    I messaggi normali vanno in handle_group_message o handle_private_message. """
     message = update.message or update.edited_message
     
     if not message or not message.text:
@@ -1168,24 +1161,43 @@ async def setup_bot():
         application.add_handler(CommandHandler("ordini", ordini_command))
         
         # 2. STATUS UPDATES
-        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
-        application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+        application.add_handler(MessageHandler(
+            filters.StatusUpdate.NEW_CHAT_MEMBERS, 
+            handle_user_status
+        ))
+        application.add_handler(ChatMemberHandler(
+            handle_chat_member_update, 
+            ChatMemberHandler.CHAT_MEMBER
+        ))
         
         # 3. CALLBACK QUERY (bottoni inline)
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
         # 4. BUSINESS MESSAGES        
-        application.add_handler(MessageHandler(business_filter & filters.TEXT & ~filters.COMMAND, handle_business_message))
+        application.add_handler(MessageHandler(
+            business_filter & filters.TEXT & ~filters.COMMAND,
+            handle_business_message
+        ))
         logger.info("✅ Handler Business registrato")
         
         # Opzionale: Handler per nuove connessioni Business
         application.add_handler(MessageHandler(filters.ALL, handle_business_connection))
         
         # 5. MESSAGGI GRUPPI (NON cattura Business, già gestiti sopra)
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL),handle_group_message))
-        
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & (
+            filters.ChatType.GROUP | 
+            filters.ChatType.SUPERGROUP | 
+            filters.ChatType.CHANNEL
+            ),
+            handle_group_message
+        )) 
+
         # 6. MESSAGGI PRIVATI (NON cattura Business, già gestiti sopra)
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+            handle_private_message
+        ))
 
         # ============================================================
         # WEBHOOK CONFIGURATION
