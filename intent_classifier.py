@@ -558,7 +558,7 @@ class IntentClassifier:
         text = re.sub(r'\s+', ' ', text)
         return text.strip().lower()
 ,
-                r'^\s*listino\s*[.!?]?\s*'
+                r'^\s*listino\s*[.!?]?\s*$'
         
         # ESCLUSIONI per ordine
         self.ordine_exclusions = [
