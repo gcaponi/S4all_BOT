@@ -64,9 +64,12 @@ class IntentClassifier:
                 r'\bdai\s+(la\s+)?lista\b',
             ],
             'lista_diretta': [
-                r'^\s*lista\s*[.!?]?\s*
-            ]
-            
+                r'^\s*lista\s*[.!?]?\s*$',
+                r'^\s*listino\s*[.!?]?\s*$',   
+                r'^\s*catalogo\s*[.!?]?\s*$',
+                r'^\s*prezzi\s*[.!?]?\s*$',
+            ],
+        
         # ESCLUSIONI per ordine
         self.ordine_exclusions = [
             r'\bcome\s+(faccio|si\s+fa|posso)\s+.*ordine\b',
