@@ -1189,9 +1189,9 @@ async def setup_bot():
             # Usa file locali se esistono, altrimenti scarica
             if os.path.exists(FAQ_FILE):
                 logger.info("📋 FAQ caricate da file locale")
-        else:
-            logger.info("📥 Scaricamento FAQ...")
-            update_faq_from_web()
+            else:
+                logger.info("📥 Scaricamento FAQ...")
+                update_faq_from_web()
     
         if os.path.exists(LISTA_FILE):
             logger.info("📦 Lista caricata da file locale")
