@@ -208,23 +208,9 @@ class IntentClassifier:
         return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
     
     def _check_ordine_reale(self, text: str, text_lower: str) -> IntentResult:
-        """Controlla se è un ordine vero - USA LA LOGICA ORIGINALE"""
+        """Controlla se è un ordine vero - USA LA LOGICA ORIGINALE MIGLIORATA"""
         
         logger.info(f"🔍 CHECK ORDINE - Text: '{text}'")
-        
-        # ESCLUSIONI: Frasi conversazionali che NON sono ordini
-        conversational_phrases = [
-            'volevo', 'vorrei', 'voglio fare', 'posso fare', 'come faccio', 'come fare',
-            'buongiorno', 'buonasera', 'ciao', 'salve', 'come si', 'devo fare',
-            'fare un ordine', 'fare ordine', 'ordinare', 'per ordinare', 'come ordino',
-            'voglio ordinare', 'posso ordinare', 'come si ordina', 'aiuto',
-            'informazioni', 'domanda', 'chiedere', 'sapere se', 'mi dici', 'puoi dirmi'
-        ]
-        
-        # Se contiene frasi conversazionali, NON è un ordine
-        if any(phrase in text_lower for phrase in conversational_phrases):
-            logger.info(f"  ❌ ESCLUSO: Contiene frase conversazionale")
-            return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: conversazionale", [])
         
         # Controlla lunghezza minima
         if len(text.strip()) < 5:
@@ -236,6 +222,22 @@ class IntentClassifier:
             logger.info(f"  ❌ ESCLUSO: Nessun numero")
             return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: no numeri", [])
         
+        # ESCLUSIONI FORTI: Solo domande esplicite su "come ordinare"
+        # NON bloccare richieste di costo/prezzo che includono quantità
+        strong_exclusions = [
+            r'\bcome\s+(faccio|posso|si\s+fa)\s+.*\border',  # "come faccio a ordinare"
+            r'\bcome\s+ordino\b',                              # "come ordino"
+            r'\bcome\s+si\s+ordina\b',                         # "come si ordina"
+            r'\bprocedura\s+per\s+ordinar',                    # "procedura per ordinare"
+            r'\bper\s+ordinar.*\bcome\b',                      # "per ordinare come"
+            r'\baiuto.*\border',                               # "aiuto per ordinare"
+        ]
+        
+        for pattern in strong_exclusions:
+            if re.search(pattern, text_lower, re.I):
+                logger.info(f"  ❌ ESCLUSO: Pattern strong exclusion: {pattern}")
+                return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: domanda su ordini", [])
+        
         # INDICATORI DI ORDINE REALE
         order_indicators = 0
         matched = []
@@ -246,13 +248,22 @@ class IntentClassifier:
             matched.append('prezzo')
             logger.info(f"  ✓ Prezzo trovato (+3 punti)")
         
-        # 2. Quantità chiare
-        if re.search(r'\d+\s*x\s*|\d+\s+[a-z]{4,}', text_lower):
-            order_indicators += 2
-            matched.append('quantita')
-            logger.info(f"  ✓ Quantità trovata (+2 punti)")
+        # 2. Quantità chiare (PATTERN MIGLIORATO)
+        quantita_patterns = [
+            r'\d+\s*x\s*\w+',                    # "2x prodotto", "2 x prodotto"
+            r'\d+\s+[a-z]{3,}',                  # "2 testo", "3 npp" (almeno 3 lettere)
+            r'\b\d+\s*pezz[io]',                 # "2 pezzi"
+            r'\b\d+\s*confezioni',               # "3 confezioni"
+        ]
         
-        # 3. Virgole/separatori
+        for pattern in quantita_patterns:
+            if re.search(pattern, text_lower):
+                order_indicators += 2
+                matched.append('quantita')
+                logger.info(f"  ✓ Quantità trovata (+2 punti)")
+                break
+        
+        # 3. Virgole/separatori (lista prodotti)
         if text.count(',') >= 2 or text.count(';') >= 1:
             order_indicators += 2
             matched.append('separatori_multipli')
@@ -261,6 +272,12 @@ class IntentClassifier:
             order_indicators += 1
             matched.append('separatore_singolo')
             logger.info(f"  ✓ Separatore singolo (+1 punto)")
+        
+        # 3b. A capo multipli (ordine su righe separate)
+        if text.count('\n') >= 2:
+            order_indicators += 1
+            matched.append('righe_multiple')
+            logger.info(f"  ✓ Righe multiple (+1 punto)")
         
         # 4. Località/spedizione
         location_keywords = [
@@ -276,9 +293,20 @@ class IntentClassifier:
         if any(kw in text_lower for kw in location_keywords):
             order_indicators += 1
             matched.append('localita')
-            logger.info(f"  ✓ Località trovata (+1 punto)")
+            logger.info(f"  ✓ Località/spedizione trovata (+1 punto)")
         
-        # 5. Prodotti dalla lista
+        # 5. Parole chiave ordine diretto
+        order_keywords = [
+            'ordino', 'ordine', 'nuovo ordine', 'voglio', 'prendo',
+            'disponibilita', 'ne hai', 'assicurazione', 'codice sconto'
+        ]
+        order_keyword_found = any(kw in text_lower for kw in order_keywords)
+        if order_keyword_found:
+            order_indicators += 1
+            matched.append('keyword_ordine')
+            logger.info(f"  ✓ Keyword ordine trovata (+1 punto)")
+        
+        # 6. Prodotti dalla lista
         if self.load_lista_func:
             try:
                 lista_text = self.load_lista_func()
@@ -300,7 +328,7 @@ class IntentClassifier:
             except Exception as e:
                 logger.warning(f"Errore caricamento lista: {e}")
         
-        # 6. Metodi di pagamento espliciti
+        # 7. Metodi di pagamento espliciti
         payment_keywords = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'usdc', 'xmr']
         if any(kw in text_lower for kw in payment_keywords):
             order_indicators += 2
@@ -310,10 +338,10 @@ class IntentClassifier:
         logger.info(f"📊 ORDINE TOTALE: {order_indicators} punti")
         logger.info(f"📊 ORDINE MATCHED: {matched}")
         
-        # Soglia: almeno 4 punti
-        if order_indicators >= 4:
-            confidence = min(order_indicators / 10.0, 1.0)  # Max 1.0
-            logger.info(f"✅ ORDINE RICONOSCIUTO (>= 4 punti)")
+        # Soglia abbassata: almeno 3 punti (prima era 4)
+        if order_indicators >= 3:
+            confidence = min(order_indicators / 10.0, 1.0)
+            logger.info(f"✅ ORDINE RICONOSCIUTO (>= 3 punti)")
             return IntentResult(
                 IntentType.INVIO_ORDINE,
                 confidence,
@@ -321,7 +349,7 @@ class IntentClassifier:
                 matched
             )
         
-        logger.info(f"❌ NON ORDINE (< 4 punti)")
+        logger.info(f"❌ NON ORDINE (< 3 punti)")
         confidence = order_indicators / 10.0
         return IntentResult(IntentType.INVIO_ORDINE, confidence, f"Score troppo basso: {order_indicators} punti", matched)
     
