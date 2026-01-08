@@ -1132,11 +1132,21 @@ async def setup_bot():
         logger.info("🔡 Inizializzazione bot...")
         
         try:
-            update_faq_from_web()
-            update_lista_from_web()
+            # Usa file locali se esistono (istantaneo)
+            if os.path.exists(FAQ_FILE):
+                logger.info("📋 FAQ caricate da file locale")
+            else:
+                update_faq_from_web()  # Solo se mancano
+    
+            if os.path.exists(LISTA_FILE):
+                logger.info("📦 Lista caricata da file locale")
+            else:
+                update_lista_from_web()  # Solo se mancano
+    
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
-        except Exception as e:
-            logger.warning(f"Prefetch warning: {e}")
+    
+except Exception as e:
+    logger.warning(f"⚠️ Prefetch warning (non critico): {e}")
         
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
