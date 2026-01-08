@@ -89,7 +89,7 @@ def webhook():
         if not bot_application:
             logger.info("🔄 Bot non inizializzato, inizializzo...")
             future = asyncio.run_coroutine_threadsafe(setup_bot(), loop)
-            bot_application = future.result(timeout=90)  # Aumentato timeout a 90s
+            bot_application = future.result(timeout=120)  # Aumentato timeout a 90s
             logger.info("✅ Bot inizializzato dal webhook")
         
         # Processa l'update da Telegram
