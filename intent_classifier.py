@@ -223,14 +223,16 @@ class IntentClassifier:
             return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: no numeri", [])
         
         # ESCLUSIONI FORTI: Solo domande esplicite su "come ordinare"
-        # NON bloccare richieste di costo/prezzo che includono quantità
+        # NON bloccare ordini che contengono quantità/prodotti
         strong_exclusions = [
-            r'\bcome\s+(faccio|posso|si\s+fa)\s+.*\border',  # "come faccio a ordinare"
-            r'\bcome\s+ordino\b',                              # "come ordino"
-            r'\bcome\s+si\s+ordina\b',                         # "come si ordina"
-            r'\bprocedura\s+per\s+ordinar',                    # "procedura per ordinare"
-            r'\bper\s+ordinar.*\bcome\b',                      # "per ordinare come"
-            r'\baiuto.*\border',                               # "aiuto per ordinare"
+            r'\bcome\s+(faccio|posso|si\s+fa)\s+(a\s+)?ordinar',  # "come faccio a ordinare"
+            r'\bcome\s+ordino\b',                                   # "come ordino"
+            r'\bcome\s+si\s+ordina\b',                              # "come si ordina"
+            r'\bprocedura\s+per\s+ordinar',                         # "procedura per ordinare"
+            r'\bper\s+ordinar.*\bcome\b',                           # "per ordinare come"
+            r'\baiuto.*\border',                                    # "aiuto per ordinare"
+            r'\b(volevo|vorrei|voglio)\s+fare\s+un\s+ordine\b.*[?]',  # "volevo fare un ordine?" (con ?)
+            r'\b(posso|devo)\s+fare\s+un\s+ordine\b.*[?]',          # "posso fare un ordine?"
         ]
         
         for pattern in strong_exclusions:
