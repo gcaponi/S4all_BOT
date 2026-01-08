@@ -661,9 +661,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         except Exception as e:
             logger.error(f"❌ Errore invio Business: {e}")
     
-    # ========================================
     # 1. RICHIESTA LISTA
-    # ========================================
     if intent == "lista":
         lista = load_lista()
         if lista:
@@ -672,9 +670,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 await send_business_reply(lista[i:i+4000], parse_mode=None)
         return
     
-    # ========================================
     # 2. ORDINE
-    # ========================================
     if intent == "ordine":
         keyboard = [[
             InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
@@ -686,9 +682,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         )
         return
     
-    # ========================================
     # 3. FAQ
-    # ========================================
     if intent == "faq":
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
@@ -698,9 +692,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             )
         return
     
-    # ========================================
     # 4. RICERCA PRODOTTI
-    # ========================================
     if intent == "ricerca_prodotti":
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
@@ -709,9 +701,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             )
             return
     
-    # ========================================
     # 5. FALLBACK
-    # ========================================
     trigger_words = [
         'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
         'quanto costa', 'prezzo', 'disponibilita', 'ne hai', 'hai',
@@ -751,10 +741,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # Helper: Invia risposta Business
     async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
-        """
-        Invia messaggio usando business_connection_id.
-        Questo è OBBLIGATORIO per rispondere in Business.
-        """
+        """Invia messaggio usando business_connection_id. Questo è OBBLIGATORIO per rispondere in Business."""
         try:
             await context.bot.send_message(
                 business_connection_id=business_connection_id,
