@@ -1180,9 +1180,6 @@ async def setup_bot():
         ))
         logger.info("✅ Handler Business registrato")
         
-        # Opzionale: Handler per nuove connessioni Business
-        application.add_handler(MessageHandler(filters.ALL, handle_business_connection))
-        
         # 5. MESSAGGI GRUPPI (NON cattura Business, già gestiti sopra)
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & (
