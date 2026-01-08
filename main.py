@@ -497,9 +497,15 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando manuale per visualizzare il listino prodotti"""
     if not is_user_authorized(update.effective_user.id):
         return
-        
-    update_lista_from_web()
+    
+    # Non scaricare ogni volta, usa file locale
     lista_text = load_lista()
+    
+    # Se il file è vuoto, scarica
+    if not lista_text:
+        logger.info("📥 Lista vuota, scarico da web...")
+        update_lista_from_web()
+        lista_text = load_lista()
     
     if not lista_text:
         await update.message.reply_text("❌ Listino non disponibile. Riprova più tardi.")
@@ -660,11 +666,23 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # 1. RICHIESTA LISTA
     if intent == "lista":
         lista = load_lista()
-        if lista:
-            # Dividi in chunk da 4000 caratteri (limite Telegram)
-            for i in range(0, len(lista), 4000):
-                await send_business_reply(lista[i:i+4000], parse_mode=None)
-        return
+    
+        if not lista:
+            logger.info("📥 Lista vuota, scarico da web...")
+            try:
+                update_lista_from_web()
+                lista = load_lista()
+            except Exception as e:
+                logger.error(f"❌ Errore scaricamento lista: {e}")
+                await send_business_reply("❌ Errore caricamento lista. Riprova tra poco.")
+                return
+    
+    if lista:
+        for i in range(0, len(lista), 4000):
+            await send_business_reply(lista[i:i+4000], parse_mode=None)
+    else:
+        await send_business_reply("❌ Lista non disponibile al momento.")
+    return
     
     # 2. ORDINE
     if intent == "ordine":
@@ -928,10 +946,24 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     # 1. ROUTER CENTRALE -> Lista
     if intent == "lista":
         lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000):
-                await message.reply_text(lista[i:i+4000])
-        return
+    
+        # Se vuota, prova a scaricare
+        if not lista:
+            logger.info("📥 Lista vuota, scarico da web...")
+            try:
+                update_lista_from_web()
+                lista = load_lista()
+            except Exception as e:
+                logger.error(f"❌ Errore scaricamento lista: {e}")
+                await message.reply_text("❌ Errore caricamento lista. Riprova tra poco.")
+                return
+    
+    if lista:
+        for i in range(0, len(lista), 4000):
+            await message.reply_text(lista[i:i+4000])
+    else:
+        await message.reply_text("❌ Lista non disponibile al momento.")
+    return
 
     # 2. ORDINE
     if intent == "ordine":
@@ -984,14 +1016,36 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     # 1. LISTA COMPLETA
     if intent == "lista":
         lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000):
+    
+        # Se vuota, prova a scaricare
+        if not lista:
+            logger.info("📥 Lista vuota, scarico da web...")
+            try:
+                update_lista_from_web()
+                lista = load_lista()
+            except Exception as e:
+                logger.error(f"❌ Errore scaricamento lista: {e}")
                 await context.bot.send_message(
                     chat_id=message.chat.id,
-                    text=lista[i:i+4000],
+                    text="❌ Errore caricamento lista. Riprova tra poco.",
                     reply_to_message_id=message.message_id
                 )
-        return
+                return
+    
+    if lista:
+        for i in range(0, len(lista), 4000):
+            await context.bot.send_message(
+                chat_id=message.chat.id,
+                text=lista[i:i+4000],
+                reply_to_message_id=message.message_id
+            )
+    else:
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            text="❌ Lista non disponibile al momento.",
+            reply_to_message_id=message.message_id
+        )
+    return
 
     # 2. ORDINE
     if intent == "ordine":
@@ -1132,11 +1186,24 @@ async def setup_bot():
         logger.info("🔡 Inizializzazione bot...")
         
         try:
+            # Usa file locali se esistono, altrimenti scarica
+            if os.path.exists(FAQ_FILE):
+                logger.info("📋 FAQ caricate da file locale")
+        else:
+            logger.info("📥 Scaricamento FAQ...")
             update_faq_from_web()
+    
+        if os.path.exists(LISTA_FILE):
+            logger.info("📦 Lista caricata da file locale")
+        else:
+            logger.info("📥 Scaricamento lista...")
             update_lista_from_web()
-            PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
-        except Exception as e:
-            logger.warning(f"Prefetch warning: {e}")
+    
+        PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
+        logger.info(f"✅ {len(PAROLE_CHIAVE_LISTA)} keywords estratte")
+    
+except Exception as e:
+    logger.warning(f"⚠️ Prefetch warning (non critico): {e}")
         
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
