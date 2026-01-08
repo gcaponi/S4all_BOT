@@ -1132,21 +1132,11 @@ async def setup_bot():
         logger.info("🔡 Inizializzazione bot...")
         
         try:
-            # Usa file locali se esistono (istantaneo)
-            if os.path.exists(FAQ_FILE):
-                logger.info("📋 FAQ caricate da file locale")
-            else:
-                update_faq_from_web()  # Solo se mancano
-    
-            if os.path.exists(LISTA_FILE):
-                logger.info("📦 Lista caricata da file locale")
-            else:
-                update_lista_from_web()  # Solo se mancano
-    
+            update_faq_from_web()
+            update_lista_from_web()
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
-    
-except Exception as e:
-    logger.warning(f"⚠️ Prefetch warning (non critico): {e}")
+        except Exception as e:
+            logger.warning(f"Prefetch warning: {e}")
         
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
@@ -1190,7 +1180,7 @@ except Exception as e:
         ))
         logger.info("✅ Handler Business registrato")
         
-        # 5. MESSAGGI GRUPPI (NON cattura Business, già gestiti sopra)
+        # 5. MESSAGGI GRUPPI
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & (
             filters.ChatType.GROUP | 
@@ -1200,7 +1190,7 @@ except Exception as e:
             handle_group_message
         )) 
 
-        # 6. MESSAGGI PRIVATI (NON cattura Business, già gestiti sopra)
+        # 6. MESSAGGI PRIVATI
         application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
             handle_private_message
@@ -1240,4 +1230,4 @@ except Exception as e:
         initialization_lock = False
         raise
 
-#End main.py
+# End main.py
