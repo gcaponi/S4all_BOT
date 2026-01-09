@@ -1,5 +1,3 @@
-'''Data: 09/01/2026'''
-
 import os
 import json
 import logging
@@ -300,30 +298,52 @@ def normalize_text(text: str) -> str:
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
-    """Cerca la risposta più pertinente nelle FAQ con score"""
+    """Cerca la risposta più pertinente nelle FAQ con sinonimi estesi"""
     user_normalized = normalize_text(user_message)
     
-    # Sistema sinonimi esteso
+    # Sistema sinonimi ESTESO
     keywords_map = {
-        "spedizione": ["spedito", "spedisci", "spedite", "corriere", "pacco", "invio", "mandato", "spedizioni", "arriva", "consegna"],
-        "tracking": ["track", "codice", "tracciabilità", "tracciamento", "tracking", "traccia", "seguire", "dove"],
-        "tempi": ["quando arriva", "quanto tempo", "giorni", "ricevo", "consegna", "tempistiche", "quanto ci vuole"],
-        "pagamento": ["pagare", "metodi", "bonifico", "ricarica", "paypal", "crypto", "pagamenti", "come pago", "pagamento"],
-        "ordinare": ["ordine", "ordinare", "fare ordine", "come ordino", "voglio ordinare", "fare un ordine", "posso ordinare", "come faccio", "procedura"]
+        "spedizione": [
+            "spedito", "spedisci", "spedite", "corriere", "pacco", 
+            "invio", "mandato", "spedizioni", "arriva", "consegna",
+            "inviato", "inviare", "hai spedito", "hai inviato",
+            "mio pacco", "il pacco", "ordine spedito", "stato ordine"
+        ],
+        "tracking": [
+            "track", "codice", "tracciabilità", "tracciamento", 
+            "tracking", "traccia", "seguire", "dove",
+            "numero tracking", "codice spedizione", "dove si trova"
+        ],
+        "tempi": [
+            "quando arriva", "quanto tempo", "giorni", "ricevo", 
+            "consegna", "tempistiche", "quanto ci vuole",
+            "tempi di spedizione", "quanto tempo ci vuole"
+        ],
+        "pagamento": [
+            "pagare", "metodi", "bonifico", "ricarica", "paypal", 
+            "crypto", "pagamenti", "come pago", "pagamento"
+        ],
+        "ordinare": [
+            "ordine", "ordinare", "fare ordine", "come ordino", 
+            "voglio ordinare", "fare un ordine", "posso ordinare", 
+            "come faccio", "procedura"
+        ]
     }
 
-    # PRIORITÀ ALTA: Match con keywords (score massimo)
+    # PRIORITÀ ALTA: Match con keywords
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         risposta_norm = normalize_text(item["risposta"])
         
         for root, synonyms in keywords_map.items():
             if any(syn in user_normalized for syn in synonyms):
-                if root in domanda_norm or root in risposta_norm:
+                # Match in domanda, risposta o keywords
+                if (root in domanda_norm or root in risposta_norm or 
+                    any(syn in risposta_norm for syn in synonyms)):
                     logger.info(f"✅ FAQ Match (keyword): {root} → score: 1.0")
                     return {'match': True, 'item': item, 'score': 1.0, 'method': 'keyword'}
 
-    # PRIORITÀ MEDIA: Match per similarità
+    # PRIORITÀ MEDIA: Similarità
     best_match = None
     best_score = 0
     
@@ -335,19 +355,20 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
             logger.info(f"✅ FAQ Match (exact): score: 1.0")
             return {'match': True, 'item': item, 'score': 1.0, 'method': 'exact'}
         
-        # Calcolo similarità
+        # Similarità
         score = calculate_similarity(user_normalized, domanda_norm)
         if score > best_score:
             best_score = score
             best_match = item
     
-    # Se supera la soglia
+    # Soglia
     if best_score >= FAQ_CONFIDENCE_THRESHOLD:
         logger.info(f"✅ FAQ Match (fuzzy): score: {best_score:.2f}")
         return {'match': True, 'item': best_match, 'score': best_score, 'method': 'similarity'}
     
     logger.info(f"❌ FAQ: No match (best score: {best_score:.2f})")
     return {'match': False, 'item': None, 'score': best_score, 'method': None}
+
 
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     """Cerca prodotti nella lista con filtro semantico + score"""
@@ -810,6 +831,11 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 # Setup bot
 # --------------------------------------------------------------------
 
+
+# ============================================
+# FILTRO BUSINESS MESSAGES
+# ============================================
+
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce messaggi ricevuti tramite Telegram Business"""
     message = update.message or update.edited_message
@@ -832,6 +858,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode=parse_mode,
                 reply_markup=reply_markup
             )
+            logger.info(f"✅ Business reply inviata")
         except Exception as e:
             logger.error(f"❌ Errore Business reply: {e}")
     
@@ -844,6 +871,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         if lista:
             for i in range(0, len(lista), 4000):
                 await send_business_reply(lista[i:i+4000], parse_mode=None)
+        else:
+            await send_business_reply("❌ Lista non disponibile al momento.")
         return
     
     # 2. ORDINE
@@ -866,6 +895,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             await send_business_reply(
                 f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
             )
+        else:
+            await send_business_reply(
+                "❓ Non ho trovato una risposta specifica. Usa /help per tutte le FAQ."
+            )
         return
     
     # 4. RICERCA PRODOTTI
@@ -879,14 +912,24 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 5. FALLBACK
     trigger_words = [
-        'ordine', 'lista', 'listino', 'prodotto',
-        'quanto costa', 'prezzo', 'hai'
+        'ordine', 'lista', 'listino', 'prodotto', 'prodotti',
+        'quanto costa', 'prezzo', 'hai', 'disponibile'
     ]
     
     if any(word in text.lower() for word in trigger_words):
         await send_business_reply(
-            "❓ Non ho capito. Scrivi 'lista' per il catalogo."
+            "❓ Non ho capito. Scrivi 'lista' per il catalogo o /help per info."
         )
+
+class BusinessMessageFilter(filters.MessageFilter):
+    """Filtro custom per identificare messaggi Telegram Business"""
+    def filter(self, message):
+        return (
+            hasattr(message, 'business_connection_id') and 
+            message.business_connection_id is not None
+        )
+
+business_filter = BusinessMessageFilter()
 
 async def initialize_bot():
     """Inizializza il bot - Ottimizzato con file locali"""
@@ -934,23 +977,14 @@ async def initialize_bot():
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
         application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
         application.add_handler(CallbackQueryHandler(handle_callback_query))
-        # Filtro custom per Business Messages
-        class BusinessMessageFilter(filters.MessageFilter):
-            def filter(self, message):
-                return (
-                    hasattr(message, 'business_connection_id') and 
-                    message.business_connection_id is not None
-                )
         
-        business_filter = BusinessMessageFilter()
-        
-        # Handler per Business Messages
+        # BUSINESS MESSAGES HANDLER
         application.add_handler(MessageHandler(
             business_filter & filters.TEXT & ~filters.COMMAND,
             handle_business_message
         ))
         logger.info("✅ Handler Business Messages registrato")
-        
+
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
 
