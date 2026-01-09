@@ -1,5 +1,6 @@
 """
-WSGI Entry Point per Render.com - VERSIONE DEFINITIVA -- Gestisce l'inizializzazione del bot Telegram e gli endpoint Flask
+WSGI Entry Point per Render.com - TIMEOUT AUMENTATI
+Gestisce l'inizializzazione del bot Telegram e gli endpoint Flask
 """
 import asyncio
 import logging
@@ -49,7 +50,6 @@ def shutdown_handler(signum, frame):
     
     if bot_application:
         try:
-            # Ferma l'application in modo pulito
             future = asyncio.run_coroutine_threadsafe(
                 bot_application.stop(), 
                 event_loop
@@ -88,7 +88,7 @@ def webhook():
         if not bot_application:
             logger.info("🔄 Bot non inizializzato, inizializzo...")
             future = asyncio.run_coroutine_threadsafe(setup_bot(), loop)
-            bot_application = future.result(timeout=90)  # Aumentato timeout a 90s
+            bot_application = future.result(timeout=180)  # ⚡ AUMENTATO A 180s
             logger.info("✅ Bot inizializzato dal webhook")
         
         # Processa l'update da Telegram
@@ -96,12 +96,12 @@ def webhook():
             json_data = request.get_json(force=True)
             update = Update.de_json(json_data, bot_application.bot)
             
-            # Esegui nel loop thread-safe con timeout più lungo
+            # ⚡ AUMENTATO TIMEOUT A 180 SECONDI
             future = asyncio.run_coroutine_threadsafe(
                 bot_application.process_update(update), 
                 loop
             )
-            future.result(timeout=60)  # Aumentato timeout a 60s
+            future.result(timeout=180)  # 3 MINUTI
             
             return 'ok', 200
         else:
@@ -109,7 +109,7 @@ def webhook():
             return 'Bot not initialized', 503
             
     except asyncio.TimeoutError:
-        logger.error("⏱️ Timeout durante elaborazione webhook")
+        logger.error("⏱️ TIMEOUT 180s durante elaborazione webhook")
         return 'Timeout', 504
     except Exception as e:
         logger.error(f"❌ Errore webhook: {e}", exc_info=True)
@@ -144,16 +144,16 @@ if __name__ != '__main__':
     try:
         loop = get_or_create_event_loop()
         
-        # Inizializzazione con timeout esteso
-        logger.info("⏳ Inizializzazione bot in corso (può richiedere fino a 2 minuti)...")
+        # ⚡ TIMEOUT INIZIALIZZAZIONE: 5 MINUTI
+        logger.info("⏳ Inizializzazione bot in corso (può richiedere fino a 5 minuti)...")
         future = asyncio.run_coroutine_threadsafe(setup_bot(), loop)
-        bot_application = future.result(timeout=120)  # 2 minuti per init
+        bot_application = future.result(timeout=300)  # 5 MINUTI
         
         logger.info("✅ Bot inizializzato con successo al boot")
         logger.info(f"🌐 Webhook URL: {bot_application.bot.base_url if bot_application else 'N/A'}")
         
     except asyncio.TimeoutError:
-        logger.error("⏱️ TIMEOUT durante inizializzazione bot")
+        logger.error("⏱️ TIMEOUT durante inizializzazione bot (5 minuti superati)")
         logger.error("   Il bot verrà inizializzato al primo webhook")
     except Exception as e:
         logger.error(f"❌ Errore inizializzazione bot: {e}", exc_info=True)
@@ -166,5 +166,3 @@ if __name__ == '__main__':
     asyncio.set_event_loop(loop)
     bot_application = loop.run_until_complete(setup_bot())
     app.run(host='0.0.0.0', port=10000, debug=True)
-    
-# End wsgi.py
