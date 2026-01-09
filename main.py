@@ -821,7 +821,7 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
             }
 
             if getattr(message, "message_thread_id", None):
-            kwargs["message_thread_id"] = message.message_thread_id
+                kwargs["message_thread_id"] = message.message_thread_id
 
             await context.bot.send_message(**kwargs)
         except Exception as e:
