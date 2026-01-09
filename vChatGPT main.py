@@ -813,13 +813,16 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         try:
             kwargs = {
-                "chat_id": update.message.chat.id,
-                "text": welcome_text,
-                "parse_mode": "HTML"
+                "chat_id": message.chat.id,
+                "business_connection_id": business_connection_id,
+                "text": text_reply,
+                "parse_mode": parse_mode,
+                "reply_markup": reply_markup
             }
-            thread_id = getattr(update.message, "message_thread_id", None)
-            if thread_id:
-                kwargs["message_thread_id"] = thread_id
+
+            if getattr(message, "message_thread_id", None):
+            kwargs["message_thread_id"] = message.message_thread_id
+
             await context.bot.send_message(**kwargs)
         except Exception as e:
             logger.error(f"Errore benvenuto: {e}")
@@ -831,14 +834,15 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 # Setup bot
 # --------------------------------------------------------------------
 
-
-# ============================================
 # FILTRO BUSINESS MESSAGES
-# ============================================
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce messaggi ricevuti tramite Telegram Business"""
-    message = update.message or update.edited_message
+    message = (
+        update.business_message
+        or update.message
+        or update.edited_message
+    )
     
     if not message or not message.text:
         return
@@ -923,7 +927,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 
 class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
-     def filter(self, message):
+    def filter(self, message):
         # Log di debug
         logger.info(f"🔍 BusinessFilter check - hasattr: {hasattr(message, 'business_connection_id')}")
         if hasattr(message, 'business_connection_id'):
@@ -988,14 +992,31 @@ async def initialize_bot():
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
         # BUSINESS MESSAGES HANDLER
-        application.add_handler(MessageHandler(
-            business_filter & filters.TEXT & ~filters.COMMAND,
-            handle_business_message
-        ))
+        application.add_handler(
+            MessageHandler(
+                business_filter,
+                handle_business_message
+            ),
+            group=0
+        )
         logger.info("✅ Handler Business Messages registrato")
 
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
+        application.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND &
+                (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL),
+                handle_group_message
+            ),
+            group=1
+        ) 
+
+        application.add_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+                handle_private_message
+            ),
+            group=2
+        )
 
         if WEBHOOK_URL:
             await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
