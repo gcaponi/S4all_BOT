@@ -1,5 +1,5 @@
 """
-WSGI Entry Point per Render.com - CON PROTEZIONE MESSAGGI TEST
+WSGI Entry Point per Render.com - VERSIONE FINALE CORRETTA
 Gestisce l'inizializzazione del bot Telegram e gli endpoint Flask
 """
 import asyncio
@@ -108,8 +108,18 @@ def webhook():
         if bot_application:
             update = Update.de_json(json_data, bot_application.bot)
             
-            # 🛡️ PROTEZIONE: Ignora update senza messaggio/callback
-            if not update.message and not update.callback_query and not update.business_message:
+            # 🛡️ PROTEZIONE: Ignora update senza contenuto
+            # NON controllare business_message perché non esiste in questa versione
+            has_content = (
+                update.message or 
+                update.callback_query or 
+                update.edited_message or
+                update.channel_post or
+                update.edited_channel_post or
+                ('business_message' in json_data)  # Controlla nel JSON raw
+            )
+            
+            if not has_content:
                 logger.info("📭 Update senza contenuto ignorato")
                 return 'ok', 200
             
