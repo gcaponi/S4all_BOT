@@ -1,13 +1,19 @@
-# Bot Telegram con supporto Business Messages
-python-telegram-bot==20.8
+# Bot Telegram con supporto Business Messages NATIVO
+# Versione aggiornata - 09 Gennaio 2026
+
+# Telegram Bot (versione con Business support nativo)
+python-telegram-bot[all]==21.7
 
 # Web server per webhook
-Flask==3.0.0
+Flask==3.0.3
 gunicorn==21.2.0
 
 # Parsing e scraping
-beautifulsoup4==4.12.2
+beautifulsoup4==4.12.3
 requests==2.31.0
 
+# HTTP client (richiesto da python-telegram-bot)
+httpx[http2]>=0.27.0
+
 # Utilities
-python-dotenv==1.0.0
+python-dotenv==1.0.1
