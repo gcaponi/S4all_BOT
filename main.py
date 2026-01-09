@@ -142,34 +142,90 @@ def estrai_parole_chiave_lista():
     return parole_filtrate
 
 def calcola_intenzione(text: str) -> str:
+    def calcola_intenzione(text: str) -> str:
     """
-    NUOVA VERSIONE: Usa il classificatore intelligente
+    Versione OTTIMIZZATA del classificatore.
+    Usa pattern veloci invece di fuzzy matching completo.
     """
     global intent_classifier
     
-    # Se il classifier non è inizializzato, crealo
-    if intent_classifier is None:
-        PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
+    text_lower = text.lower().strip()
     
-    # Classifica il messaggio
-    result = intent_classifier.classify(text)
+    # LOG per debug
+    logger.info(f"🔍 Analisi: '{text_lower[:50]}'")
     
-    # Log per debugging
-    logger.info(f"🎯 Intento: {result.intent.value} (conf: {result.confidence:.2f})")
-    logger.info(f"💡 Ragione: {result.reason}")
-    logger.info(f"🔑 Match: {result.matched_keywords}")
+    # ============================================
+    # PATTERN VELOCI (< 0.1 secondi)
+    # ============================================
     
-    # Mappa IntentType ai tuoi valori attuali
-    intent_map = {
-        IntentType.RICHIESTA_LISTA: "lista",
-        IntentType.INVIO_ORDINE: "ordine",
-        IntentType.DOMANDA_FAQ: "faq",
-        IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
-        IntentType.SALUTO: "fallback",  # I saluti li gestisci come fallback
-        IntentType.FALLBACK: "fallback",
-    }
+    # 1. LISTA - Pattern diretti
+    lista_keywords = ['lista', 'listino', 'catalogo', 'prezzi', 'prodotti']
+    if any(kw in text_lower for kw in lista_keywords):
+        logger.info(f"✅ Intent: LISTA")
+        return "lista"
     
-    return intent_map.get(result.intent, "fallback")
+    # 2. COMANDI - Skip (hanno handler dedicati)
+    if text_lower.startswith('/'):
+        logger.info(f"✅ Intent: COMANDO")
+        return "fallback"
+    
+    # 3. DOMANDE FAQ - Parole interrogative + ?
+    question_words = ['come', 'quando', 'quanto', 'dove', 'perche', 'perché', 'cosa', 'chi', 'quale', 'quali']
+    is_question = (
+        text_lower.endswith('?') or 
+        any(text_lower.startswith(w) for w in question_words) or
+        any(f' {w} ' in f' {text_lower} ' for w in ['quando', 'dove', 'come'])
+    )
+    
+    # Keywords FAQ specifiche
+    faq_keywords = [
+        'spedizione', 'spedito', 'tracking', 'arriva', 'pacco',
+        'pagamento', 'pagare', 'bonifico', 'crypto',
+        'ordine mio', 'stato ordine', 'ricevuto'
+    ]
+    
+    if is_question or any(kw in text_lower for kw in faq_keywords):
+        logger.info(f"✅ Intent: FAQ")
+        return "faq"
+    
+    # 4. ORDINI - Segnali forti
+    order_signals = 0
+    
+    # Numeri/quantità
+    if any(char.isdigit() for char in text):
+        order_signals += 1
+    
+    # Quantità testuali
+    if any(q in text_lower for q in ['un ', 'una ', 'due ', 'tre ', 'x ']):
+        order_signals += 1
+    
+    # Parole chiave ordine
+    order_words = ['ordino', 'ordine', 'vorrei', 'voglio', 'prendo', 'acquisto', 'comprare']
+    if any(w in text_lower for w in order_words):
+        order_signals += 1
+    
+    # Virgole (elenco prodotti)
+    if text.count(',') >= 2:
+        order_signals += 1
+    
+    # Metodi pagamento
+    payment_words = ['bonifico', 'usdt', 'crypto', 'btc', 'bitcoin']
+    if any(w in text_lower for w in payment_words):
+        order_signals += 2
+    
+    if order_signals >= 2:
+        logger.info(f"✅ Intent: ORDINE (signals: {order_signals})")
+        return "ordine"
+    
+    # 5. RICERCA PRODOTTI
+    search_words = ['hai', 'ce', 'costa', 'prezzo', 'vendete', 'disponibile']
+    if any(w in text_lower for w in search_words):
+        logger.info(f"✅ Intent: RICERCA")
+        return "ricerca_prodotti"
+    
+    # 6. FALLBACK
+    logger.info(f"✅ Intent: FALLBACK")
+    return "fallback"
     
 def load_lista():
     """Carica il contenuto testuale del listino dal file locale"""
