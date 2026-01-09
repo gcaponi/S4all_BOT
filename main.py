@@ -813,16 +813,13 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
         )
         try:
             kwargs = {
-                "chat_id": message.chat.id,
-                "business_connection_id": business_connection_id,
-                "text": text_reply,
-                "parse_mode": parse_mode,
-                "reply_markup": reply_markup
+                "chat_id": update.message.chat.id,
+                "text": welcome_text,
+                "parse_mode": "HTML"
             }
-
-            if getattr(message, "message_thread_id", None):
-                kwargs["message_thread_id"] = message.message_thread_id
-
+            thread_id = getattr(update.message, "message_thread_id", None)
+            if thread_id:
+                kwargs["message_thread_id"] = thread_id
             await context.bot.send_message(**kwargs)
         except Exception as e:
             logger.error(f"Errore benvenuto: {e}")
@@ -834,10 +831,14 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 # Setup bot
 # --------------------------------------------------------------------
 
+
+# ============================================
 # FILTRO BUSINESS MESSAGES
+# ============================================
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce messaggi ricevuti tramite Telegram Business"""
+    # FIX: Telegram Business usa update.business_message
     message = (
         update.business_message
         or update.message
@@ -855,13 +856,20 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # Helper per rispondere in Business
     async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
         try:
-            await context.bot.send_message(
-                business_connection_id=business_connection_id,
-                chat_id=message.chat.id,
-                text=text_reply,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup
-            )
+            # Costruisci kwargs con tutti i parametri necessari
+            kwargs = {
+                "chat_id": message.chat.id,
+                "business_connection_id": business_connection_id,
+                "text": text_reply,
+                "parse_mode": parse_mode,
+                "reply_markup": reply_markup
+            }
+            
+            # Aggiungi message_thread_id se presente
+            if getattr(message, "message_thread_id", None):
+                kwargs["message_thread_id"] = message.message_thread_id
+            
+            await context.bot.send_message(**kwargs)
             logger.info(f"✅ Business reply inviata")
         except Exception as e:
             logger.error(f"❌ Errore Business reply: {e}")
@@ -928,20 +936,11 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
     def filter(self, message):
-        # Log di debug
-        logger.info(f"🔍 BusinessFilter check - hasattr: {hasattr(message, 'business_connection_id')}")
-        if hasattr(message, 'business_connection_id'):
-            logger.info(f"🔍 business_connection_id value: {message.business_connection_id}")
-        
-        # Check più permissivo
-        has_business = (
+        return (
             hasattr(message, 'business_connection_id') and 
-            message.business_connection_id is not None and
-            message.business_connection_id != ''
+            message.business_connection_id is not None
         )
-        
-        logger.info(f"🔍 BusinessFilter result: {has_business}")
-        return has_business
+
 business_filter = BusinessMessageFilter()
 
 async def initialize_bot():
@@ -991,32 +990,18 @@ async def initialize_bot():
         application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
-        # BUSINESS MESSAGES HANDLER
+        # BUSINESS MESSAGES HANDLER (group=0 = massima priorità)
         application.add_handler(
             MessageHandler(
-                business_filter,
+                business_filter & filters.TEXT & ~filters.COMMAND,
                 handle_business_message
             ),
             group=0
         )
-        logger.info("✅ Handler Business Messages registrato")
+        logger.info("✅ Handler Business Messages registrato (priority group=0)")
 
-        application.add_handler(
-            MessageHandler(
-                filters.TEXT & ~filters.COMMAND &
-                (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL),
-                handle_group_message
-            ),
-            group=1
-        ) 
-
-        application.add_handler(
-            MessageHandler(
-                filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-                handle_private_message
-            ),
-            group=2
-        )
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
 
         if WEBHOOK_URL:
             await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
@@ -1040,20 +1025,7 @@ def index():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     global bot_application, bot_initialized
-    # DEBUG: Vedi cosa arriva
-    try:
-        json_data = request.get_json(force=True)
-        logger.info(f"🔍 WEBHOOK DEBUG: {json_data.keys()}")
-        if 'business_message' in json_data:
-            logger.info(f"🔍 BUSINESS MESSAGE RILEVATO!")
-        if 'message' in json_data:
-            msg = json_data['message']
-            logger.info(f"🔍 Message keys: {msg.keys()}")
-            if 'business_connection_id' in msg:
-                logger.info(f"🔍 Ha business_connection_id: {msg['business_connection_id']}")
-    except Exception as e:
-        logger.error(f"Debug error: {e}")
-        
+    
     if not bot_initialized:
         try:
             loop = asyncio.new_event_loop()
