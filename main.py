@@ -1,4 +1,4 @@
-''' Data: 09/06/206 '''
+'''Data: 09/01/2026'''
 
 import os
 import json
@@ -142,90 +142,34 @@ def estrai_parole_chiave_lista():
     return parole_filtrate
 
 def calcola_intenzione(text: str) -> str:
-    def calcola_intenzione(text: str) -> str:
     """
-    Versione OTTIMIZZATA del classificatore.
-    Usa pattern veloci invece di fuzzy matching completo.
+    NUOVA VERSIONE: Usa il classificatore intelligente
     """
     global intent_classifier
     
-    text_lower = text.lower().strip()
+    # Se il classifier non è inizializzato, crealo
+    if intent_classifier is None:
+        PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
     
-    # LOG per debug
-    logger.info(f"🔍 Analisi: '{text_lower[:50]}'")
+    # Classifica il messaggio
+    result = intent_classifier.classify(text)
     
-    # ============================================
-    # PATTERN VELOCI (< 0.1 secondi)
-    # ============================================
+    # Log per debugging
+    logger.info(f"🎯 Intento: {result.intent.value} (conf: {result.confidence:.2f})")
+    logger.info(f"💡 Ragione: {result.reason}")
+    logger.info(f"🔑 Match: {result.matched_keywords}")
     
-    # 1. LISTA - Pattern diretti
-    lista_keywords = ['lista', 'listino', 'catalogo', 'prezzi', 'prodotti']
-    if any(kw in text_lower for kw in lista_keywords):
-        logger.info(f"✅ Intent: LISTA")
-        return "lista"
+    # Mappa IntentType ai tuoi valori attuali
+    intent_map = {
+        IntentType.RICHIESTA_LISTA: "lista",
+        IntentType.INVIO_ORDINE: "ordine",
+        IntentType.DOMANDA_FAQ: "faq",
+        IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
+        IntentType.SALUTO: "fallback",  # I saluti li gestisci come fallback
+        IntentType.FALLBACK: "fallback",
+    }
     
-    # 2. COMANDI - Skip (hanno handler dedicati)
-    if text_lower.startswith('/'):
-        logger.info(f"✅ Intent: COMANDO")
-        return "fallback"
-    
-    # 3. DOMANDE FAQ - Parole interrogative + ?
-    question_words = ['come', 'quando', 'quanto', 'dove', 'perche', 'perché', 'cosa', 'chi', 'quale', 'quali']
-    is_question = (
-        text_lower.endswith('?') or 
-        any(text_lower.startswith(w) for w in question_words) or
-        any(f' {w} ' in f' {text_lower} ' for w in ['quando', 'dove', 'come'])
-    )
-    
-    # Keywords FAQ specifiche
-    faq_keywords = [
-        'spedizione', 'spedito', 'tracking', 'arriva', 'pacco',
-        'pagamento', 'pagare', 'bonifico', 'crypto',
-        'ordine mio', 'stato ordine', 'ricevuto'
-    ]
-    
-    if is_question or any(kw in text_lower for kw in faq_keywords):
-        logger.info(f"✅ Intent: FAQ")
-        return "faq"
-    
-    # 4. ORDINI - Segnali forti
-    order_signals = 0
-    
-    # Numeri/quantità
-    if any(char.isdigit() for char in text):
-        order_signals += 1
-    
-    # Quantità testuali
-    if any(q in text_lower for q in ['un ', 'una ', 'due ', 'tre ', 'x ']):
-        order_signals += 1
-    
-    # Parole chiave ordine
-    order_words = ['ordino', 'ordine', 'vorrei', 'voglio', 'prendo', 'acquisto', 'comprare']
-    if any(w in text_lower for w in order_words):
-        order_signals += 1
-    
-    # Virgole (elenco prodotti)
-    if text.count(',') >= 2:
-        order_signals += 1
-    
-    # Metodi pagamento
-    payment_words = ['bonifico', 'usdt', 'crypto', 'btc', 'bitcoin']
-    if any(w in text_lower for w in payment_words):
-        order_signals += 2
-    
-    if order_signals >= 2:
-        logger.info(f"✅ Intent: ORDINE (signals: {order_signals})")
-        return "ordine"
-    
-    # 5. RICERCA PRODOTTI
-    search_words = ['hai', 'ce', 'costa', 'prezzo', 'vendete', 'disponibile']
-    if any(w in text_lower for w in search_words):
-        logger.info(f"✅ Intent: RICERCA")
-        return "ricerca_prodotti"
-    
-    # 6. FALLBACK
-    logger.info(f"✅ Intent: FALLBACK")
-    return "fallback"
+    return intent_map.get(result.intent, "fallback")
     
 def load_lista():
     """Carica il contenuto testuale del listino dal file locale"""
@@ -867,11 +811,8 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 # --------------------------------------------------------------------
 
 async def initialize_bot():
-    """
-    Inizializza il bot con Business Messages nativo.
-    Ottimizzata: usa file locali quando disponibili.
-    """
-    global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA, intent_classifier
+    """Inizializza il bot - Ottimizzato con file locali"""
+    global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA
     
     if initialization_lock:
         return None
@@ -881,36 +822,26 @@ async def initialize_bot():
     try:
         logger.info("🔡 Inizializzazione bot...")
         
-        # Carica dati (usa file locali per velocità)
         try:
-            # FAQ
+            # Usa file locali se esistono (ottimizzazione)
             if os.path.exists(FAQ_FILE):
                 logger.info("📋 FAQ da file locale")
             else:
-                logger.info("📥 Download FAQ...")
                 update_faq_from_web()
             
-            # Lista
             if os.path.exists(LISTA_FILE):
                 logger.info("📦 Lista da file locale")
             else:
-                logger.info("📥 Download lista...")
                 update_lista_from_web()
             
-            # Keywords
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
-            logger.info(f"✅ {len(PAROLE_CHIAVE_LISTA)} keywords")
-            
         except Exception as e:
-            logger.warning(f"⚠️ Prefetch: {e}")
+            logger.warning(f"Prefetch warning: {e}")
         
-        # Crea application
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
         get_bot_username.username = bot.username
-        logger.info(f"🤖 Bot: @{bot.username}")
-        
-        # Handler (IDENTICO ALL'ORIGINALE)
+        logger.info(f"Bot: @{bot.username}")
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("genera_link", genera_link_command))
@@ -925,34 +856,62 @@ async def initialize_bot():
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
         application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
         application.add_handler(CallbackQueryHandler(handle_callback_query))
-        application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND & (
-                filters.ChatType.GROUP | 
-                filters.ChatType.SUPERGROUP | 
-                filters.ChatType.CHANNEL
-            ),
-            handle_group_message
-        ))
-        application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
-            handle_private_message
-        ))
-        
-        # Webhook
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
+
         if WEBHOOK_URL:
             await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
             logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
-        
-        # Avvia
+
         await application.initialize()
         await application.start()
-        logger.info("🎉 Bot pronto!")
+        logger.info("🤖 Bot pronto!")
         
         return application
-        
     except Exception as e:
         logger.error(f"❌ Setup error: {e}")
         initialization_lock = False
         raise
 
-# End main.py
+
+@app.route('/')
+def index():
+    return "🤖 Bot attivo! ✅", 200
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    global bot_application, bot_initialized
+    
+    if not bot_initialized:
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            bot_application = loop.run_until_complete(initialize_bot())
+            bot_initialized = True
+        except Exception as e:
+            logger.error(f"Webhook init error: {e}")
+            return "Init error", 503
+    
+    if not bot_application:
+        return "Bot not ready", 503
+    
+    try:
+        update = Update.de_json(request.get_json(force=True), bot_application.bot)
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot_application.process_update(update))
+        return "OK", 200
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return "ERROR", 500
+
+@app.route('/health')
+def health():
+    return "OK", 200
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=PORT, debug=False)
+
+#End main.py
