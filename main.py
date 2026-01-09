@@ -810,6 +810,84 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 # Setup bot
 # --------------------------------------------------------------------
 
+async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gestisce messaggi ricevuti tramite Telegram Business"""
+    message = update.message or update.edited_message
+    
+    if not message or not message.text:
+        return
+    
+    business_connection_id = message.business_connection_id
+    text = message.text.strip()
+    
+    logger.info(f"📱 Business message: '{text[:50]}'")
+    
+    # Helper per rispondere in Business
+    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        try:
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=message.chat.id,
+                text=text_reply,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"❌ Errore Business reply: {e}")
+    
+    # Usa l'intent classifier
+    intent = calcola_intenzione(text)
+    
+    # 1. LISTA
+    if intent == "lista":
+        lista = load_lista()
+        if lista:
+            for i in range(0, len(lista), 4000):
+                await send_business_reply(lista[i:i+4000], parse_mode=None)
+        return
+    
+    # 2. ORDINE
+    if intent == "ordine":
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await send_business_reply(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # 3. FAQ
+    if intent == "faq":
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await send_business_reply(
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+            )
+        return
+    
+    # 4. RICERCA PRODOTTI
+    if intent == "ricerca_prodotti":
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await send_business_reply(
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+            )
+            return
+    
+    # 5. FALLBACK
+    trigger_words = [
+        'ordine', 'lista', 'listino', 'prodotto',
+        'quanto costa', 'prezzo', 'hai'
+    ]
+    
+    if any(word in text.lower() for word in trigger_words):
+        await send_business_reply(
+            "❓ Non ho capito. Scrivi 'lista' per il catalogo."
+        )
+
 async def initialize_bot():
     """Inizializza il bot - Ottimizzato con file locali"""
     global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA
@@ -856,6 +934,23 @@ async def initialize_bot():
         application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
         application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
         application.add_handler(CallbackQueryHandler(handle_callback_query))
+        # Filtro custom per Business Messages
+        class BusinessMessageFilter(filters.MessageFilter):
+            def filter(self, message):
+                return (
+                    hasattr(message, 'business_connection_id') and 
+                    message.business_connection_id is not None
+                )
+        
+        business_filter = BusinessMessageFilter()
+        
+        # Handler per Business Messages
+        application.add_handler(MessageHandler(
+            business_filter & filters.TEXT & ~filters.COMMAND,
+            handle_business_message
+        ))
+        logger.info("✅ Handler Business Messages registrato")
+        
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
 
