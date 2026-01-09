@@ -1,6 +1,7 @@
 """
-WSGI Entry Point per Render.com - VERSIONE FINALE CORRETTA
-Gestisce l'inizializzazione del bot Telegram e gli endpoint Flask
+WSGI Entry Point - Versione Moderna con Business Messages
+Creato: 09 Gennaio 2026
+Architettura: Async pulita + Event loop dedicato + Business support nativo
 """
 import asyncio
 import logging
@@ -9,192 +10,191 @@ import signal
 import sys
 from flask import request
 from telegram import Update
-from main import app, setup_bot
+from main import app, initialize_bot
 
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
-# Variabile globale per il bot e l'event loop
+# ============================================================
+# GESTIONE EVENT LOOP ASINCRONO
+# ============================================================
+
+# Variabili globali
 bot_application = None
 event_loop = None
 loop_thread = None
-shutdown_event = threading.Event()
+shutdown_requested = threading.Event()
 
 def run_event_loop(loop):
     """Esegue l'event loop in un thread dedicato"""
     asyncio.set_event_loop(loop)
     try:
         loop.run_forever()
+        logger.info("✅ Event loop terminato normalmente")
     except Exception as e:
-        logger.error(f"❌ Event loop error: {e}")
-    finally:
-        logger.info("🔄 Event loop terminato")
+        logger.error(f"❌ Event loop error: {e}", exc_info=True)
 
 def get_or_create_event_loop():
-    """Ottiene l'event loop esistente o ne crea uno nuovo in un thread dedicato"""
+    """Ottiene l'event loop esistente o ne crea uno nuovo"""
     global event_loop, loop_thread
     
     if event_loop is None or event_loop.is_closed():
         event_loop = asyncio.new_event_loop()
-        loop_thread = threading.Thread(target=run_event_loop, args=(event_loop,), daemon=True)
+        loop_thread = threading.Thread(
+            target=run_event_loop, 
+            args=(event_loop,), 
+            daemon=True,
+            name="AsyncEventLoop"
+        )
         loop_thread.start()
-        logger.info("✅ Nuovo event loop creato in thread dedicato")
+        logger.info("✅ Event loop creato e avviato")
     
     return event_loop
 
 def shutdown_handler(signum, frame):
-    """Gestisce lo shutdown pulito del bot"""
+    """Gestisce lo shutdown pulito del sistema"""
     global bot_application, event_loop
     
-    logger.info("🛑 Ricevuto segnale di shutdown")
-    shutdown_event.set()
+    logger.info("🛑 Shutdown richiesto...")
+    shutdown_requested.set()
     
+    # Ferma il bot
     if bot_application:
         try:
+            loop = get_or_create_event_loop()
             future = asyncio.run_coroutine_threadsafe(
-                bot_application.stop(), 
-                event_loop
+                bot_application.stop(),
+                loop
             )
             future.result(timeout=5)
             logger.info("✅ Bot fermato correttamente")
         except Exception as e:
-            logger.error(f"❌ Errore durante shutdown bot: {e}")
+            logger.error(f"❌ Errore fermata bot: {e}")
     
+    # Ferma l'event loop
     if event_loop and not event_loop.is_closed():
         try:
             event_loop.call_soon_threadsafe(event_loop.stop)
             logger.info("✅ Event loop fermato")
         except Exception as e:
-            logger.error(f"❌ Errore fermata event loop: {e}")
+            logger.error(f"❌ Errore fermata loop: {e}")
     
     sys.exit(0)
 
-# Registra handler per shutdown pulito
+# Registra signal handlers
 signal.signal(signal.SIGTERM, shutdown_handler)
 signal.signal(signal.SIGINT, shutdown_handler)
+
+# ============================================================
+# ENDPOINT FLASK
+# ============================================================
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     """
-    Endpoint per ricevere gli update da Telegram via webhook.
-    Questo viene chiamato da Telegram ogni volta che c'è un nuovo messaggio.
+    Endpoint webhook per ricevere gli update da Telegram.
+    Supporta messaggi normali, Business Messages, e tutti i tipi di update.
     """
     global bot_application
     
     try:
-        # Ottieni JSON
+        # Ottieni i dati
         json_data = request.get_json(force=True)
         
-        # 🛡️ PROTEZIONE: Ignora richieste vuote o di test
-        if not json_data or json_data == {}:
-            logger.info("📭 Webhook vuoto ignorato (probabilmente test)")
+        # Ignora richieste vuote (test di Telegram)
+        if not json_data or 'update_id' not in json_data:
+            logger.debug("📭 Webhook vuoto ignorato (probabilmente test)")
             return 'ok', 200
         
-        # 🛡️ PROTEZIONE: Verifica che ci sia un update valido
-        if 'update_id' not in json_data:
-            logger.info("📭 Webhook senza update_id ignorato")
-            return 'ok', 200
+        update_id = json_data.get('update_id')
         
-        # Ottieni o crea l'event loop
+        # Ottieni/crea event loop
         loop = get_or_create_event_loop()
         
-        # Se il bot non è ancora inizializzato, inizializzalo
+        # Inizializza bot se necessario
         if not bot_application:
-            logger.info("🔄 Bot non inizializzato, inizializzo...")
-            future = asyncio.run_coroutine_threadsafe(setup_bot(), loop)
-            bot_application = future.result(timeout=180)
+            logger.info("⏳ Bot non inizializzato, inizializzo...")
+            future = asyncio.run_coroutine_threadsafe(initialize_bot(), loop)
+            bot_application = future.result(timeout=60)
             logger.info("✅ Bot inizializzato dal webhook")
         
-        # Processa l'update da Telegram
+        # Processa l'update
         if bot_application:
+            logger.info(f"📨 Processing update {update_id}")
+            
+            # Deserializza update
             update = Update.de_json(json_data, bot_application.bot)
             
-            # 🛡️ PROTEZIONE: Ignora update senza contenuto
-            # NON controllare business_message perché non esiste in questa versione
-            has_content = (
-                update.message or 
-                update.callback_query or 
-                update.edited_message or
-                update.channel_post or
-                update.edited_channel_post or
-                ('business_message' in json_data)  # Controlla nel JSON raw
-            )
-            
-            if not has_content:
-                logger.info("📭 Update senza contenuto ignorato")
-                return 'ok', 200
-            
-            logger.info(f"📨 Processing update {update.update_id}")
-            
-            # Esegui nel loop thread-safe con timeout
+            # Processa in modo asincrono
             future = asyncio.run_coroutine_threadsafe(
-                bot_application.process_update(update), 
+                bot_application.process_update(update),
                 loop
             )
-            future.result(timeout=180)  # 3 minuti
+            future.result(timeout=60)  # Timeout 60 secondi
             
-            logger.info(f"✅ Update {update.update_id} processato")
+            logger.info(f"✅ Update {update_id} processato")
             return 'ok', 200
         else:
-            logger.error("❌ Bot application non disponibile")
+            logger.error("❌ Bot non disponibile")
             return 'Bot not initialized', 503
             
     except asyncio.TimeoutError:
-        logger.error("⏱️ TIMEOUT 180s durante elaborazione webhook")
-        logger.error(f"   JSON ricevuto: {json_data if 'json_data' in locals() else 'N/A'}")
+        logger.error(f"⏱️ Timeout elaborazione webhook (60s)")
         return 'Timeout', 504
     except Exception as e:
         logger.error(f"❌ Errore webhook: {e}", exc_info=True)
-        logger.error(f"   JSON ricevuto: {json_data if 'json_data' in locals() else 'N/A'}")
         return 'Error', 500
 
 @app.route('/health', methods=['GET'])
 def health():
-    """
-    Health check endpoint per Render.
-    Render usa questo per verificare che l'app sia attiva.
-    """
-    if bot_application:
-        return 'OK - Bot running', 200
-    else:
-        return 'OK - Bot initializing', 200
+    """Health check per Render"""
+    status = "running" if bot_application else "initializing"
+    return {'status': status}, 200
 
 @app.route('/', methods=['GET'])
 def home():
-    """Endpoint root per verificare che il server sia online"""
+    """Endpoint root"""
     status = "✅ Running" if bot_application else "⏳ Initializing"
     return f'''
     🤖 Bot Telegram Business - {status}
     
-    Endpoint disponibili:
+    Endpoints:
     - GET  /health  → Health check
     - POST /webhook → Telegram webhook
     ''', 200
 
-# Inizializzazione al boot (quando Gunicorn carica il modulo)
+# ============================================================
+# INIZIALIZZAZIONE AL BOOT
+# ============================================================
+
 if __name__ != '__main__':
-    logger.info("🚀 Avvio inizializzazione bot (Gunicorn context)...")
+    logger.info("🚀 Avvio inizializzazione bot (Gunicorn)...")
+    
     try:
         loop = get_or_create_event_loop()
         
-        # Inizializzazione con timeout esteso
-        logger.info("⏳ Inizializzazione bot in corso (può richiedere fino a 3 minuti)...")
-        future = asyncio.run_coroutine_threadsafe(setup_bot(), loop)
-        bot_application = future.result(timeout=180)  # 3 minuti
+        logger.info("⏳ Inizializzazione bot...")
+        future = asyncio.run_coroutine_threadsafe(initialize_bot(), loop)
+        bot_application = future.result(timeout=90)  # 90 secondi per init
         
-        logger.info("✅ Bot inizializzato con successo al boot")
-        logger.info(f"🌐 Webhook URL: {bot_application.bot.base_url if bot_application else 'N/A'}")
+        logger.info("✅ Bot inizializzato con successo")
+        logger.info(f"🌐 Webhook: {bot_application.bot.base_url}")
         
     except asyncio.TimeoutError:
-        logger.error("⏱️ TIMEOUT durante inizializzazione bot (3 minuti superati)")
-        logger.error("   Il bot verrà inizializzato al primo webhook valido")
+        logger.warning("⚠️ Timeout init (90s) - bot si init al primo webhook")
     except Exception as e:
-        logger.error(f"❌ Errore inizializzazione bot: {e}", exc_info=True)
-        logger.error("   Il bot verrà inizializzato al primo webhook valido")
+        logger.error(f"❌ Errore init: {e}", exc_info=True)
+        logger.warning("⚠️ Bot si inizializzerà al primo webhook")
 
-# Per test in locale
+# Test locale
 if __name__ == '__main__':
     logger.info("🧪 Modalità TEST locale")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    bot_application = loop.run_until_complete(setup_bot())
+    bot_application = loop.run_until_complete(initialize_bot())
     app.run(host='0.0.0.0', port=10000, debug=True)
+
+# End wsgi.py
