@@ -1,5 +1,5 @@
 """
-WSGI Entry Point per Render.com - TIMEOUT AUMENTATI
+WSGI Entry Point per Render.com - CON PROTEZIONE MESSAGGI TEST
 Gestisce l'inizializzazione del bot Telegram e gli endpoint Flask
 """
 import asyncio
@@ -81,6 +81,19 @@ def webhook():
     global bot_application
     
     try:
+        # Ottieni JSON
+        json_data = request.get_json(force=True)
+        
+        # 🛡️ PROTEZIONE: Ignora richieste vuote o di test
+        if not json_data or json_data == {}:
+            logger.info("📭 Webhook vuoto ignorato (probabilmente test)")
+            return 'ok', 200
+        
+        # 🛡️ PROTEZIONE: Verifica che ci sia un update valido
+        if 'update_id' not in json_data:
+            logger.info("📭 Webhook senza update_id ignorato")
+            return 'ok', 200
+        
         # Ottieni o crea l'event loop
         loop = get_or_create_event_loop()
         
@@ -88,21 +101,28 @@ def webhook():
         if not bot_application:
             logger.info("🔄 Bot non inizializzato, inizializzo...")
             future = asyncio.run_coroutine_threadsafe(setup_bot(), loop)
-            bot_application = future.result(timeout=180)  # ⚡ AUMENTATO A 180s
+            bot_application = future.result(timeout=180)
             logger.info("✅ Bot inizializzato dal webhook")
         
         # Processa l'update da Telegram
         if bot_application:
-            json_data = request.get_json(force=True)
             update = Update.de_json(json_data, bot_application.bot)
             
-            # ⚡ AUMENTATO TIMEOUT A 180 SECONDI
+            # 🛡️ PROTEZIONE: Ignora update senza messaggio/callback
+            if not update.message and not update.callback_query and not update.business_message:
+                logger.info("📭 Update senza contenuto ignorato")
+                return 'ok', 200
+            
+            logger.info(f"📨 Processing update {update.update_id}")
+            
+            # Esegui nel loop thread-safe con timeout
             future = asyncio.run_coroutine_threadsafe(
                 bot_application.process_update(update), 
                 loop
             )
-            future.result(timeout=180)  # 3 MINUTI
+            future.result(timeout=180)  # 3 minuti
             
+            logger.info(f"✅ Update {update.update_id} processato")
             return 'ok', 200
         else:
             logger.error("❌ Bot application non disponibile")
@@ -110,9 +130,11 @@ def webhook():
             
     except asyncio.TimeoutError:
         logger.error("⏱️ TIMEOUT 180s durante elaborazione webhook")
+        logger.error(f"   JSON ricevuto: {json_data if 'json_data' in locals() else 'N/A'}")
         return 'Timeout', 504
     except Exception as e:
         logger.error(f"❌ Errore webhook: {e}", exc_info=True)
+        logger.error(f"   JSON ricevuto: {json_data if 'json_data' in locals() else 'N/A'}")
         return 'Error', 500
 
 @app.route('/health', methods=['GET'])
@@ -144,20 +166,20 @@ if __name__ != '__main__':
     try:
         loop = get_or_create_event_loop()
         
-        # ⚡ TIMEOUT INIZIALIZZAZIONE: 5 MINUTI
-        logger.info("⏳ Inizializzazione bot in corso (può richiedere fino a 5 minuti)...")
+        # Inizializzazione con timeout esteso
+        logger.info("⏳ Inizializzazione bot in corso (può richiedere fino a 3 minuti)...")
         future = asyncio.run_coroutine_threadsafe(setup_bot(), loop)
-        bot_application = future.result(timeout=300)  # 5 MINUTI
+        bot_application = future.result(timeout=180)  # 3 minuti
         
         logger.info("✅ Bot inizializzato con successo al boot")
         logger.info(f"🌐 Webhook URL: {bot_application.bot.base_url if bot_application else 'N/A'}")
         
     except asyncio.TimeoutError:
-        logger.error("⏱️ TIMEOUT durante inizializzazione bot (5 minuti superati)")
-        logger.error("   Il bot verrà inizializzato al primo webhook")
+        logger.error("⏱️ TIMEOUT durante inizializzazione bot (3 minuti superati)")
+        logger.error("   Il bot verrà inizializzato al primo webhook valido")
     except Exception as e:
         logger.error(f"❌ Errore inizializzazione bot: {e}", exc_info=True)
-        logger.error("   Il bot verrà inizializzato al primo webhook")
+        logger.error("   Il bot verrà inizializzato al primo webhook valido")
 
 # Per test in locale
 if __name__ == '__main__':
