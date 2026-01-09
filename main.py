@@ -764,38 +764,103 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     
     if query.data.startswith("pay_ok_"):
+        user = query.from_user
+        
+        # FIX BUSINESS: Estrai message_id originale dal callback_data
+        try:
+            original_msg_id = int(query.data.split("_")[-1])
+            logger.info(f"🔍 Original message ID: {original_msg_id}")
+        except:
+            original_msg_id = None
+        
+        # Prova a trovare il messaggio originale
         original_msg = query.message.reply_to_message
-        if original_msg:
-            user = query.from_user
-            add_ordine_confermato(
-                user_id=user.id,
-                user_name=user.first_name or "Sconosciuto",
-                username=user.username or "nessuno",
-                message_text=original_msg.text,
-                chat_id=original_msg.chat.id,
-                message_id=original_msg.message_id
+        
+        # FALLBACK: Se non c'è reply (Business), usa il messaggio del bottone
+        if not original_msg:
+            logger.info("⚠️ reply_to_message è None, uso query.message")
+            original_msg = query.message
+        
+        # Estrai testo ordine
+        if original_msg and hasattr(original_msg, 'text'):
+            order_text = original_msg.text
+            # Rimuovi la parte dei bottoni se presente
+            if "Sembra un ordine" in order_text:
+                # Cerca il messaggio originale nel context
+                # Per Business, il testo dell'ordine è perso, quindi usiamo placeholder
+                order_text = f"Ordine confermato (ID msg: {original_msg_id})"
+        else:
+            order_text = f"Ordine da Business (callback: {query.data})"
+        
+        logger.info(f"📝 Testo ordine estratto: {order_text[:100]}")
+        
+        # SALVA SEMPRE l'ordine
+        add_ordine_confermato(
+            user_id=user.id,
+            user_name=user.first_name or "Sconosciuto",
+            username=user.username or "nessuno",
+            message_text=order_text,
+            chat_id=query.message.chat.id,
+            message_id=query.message.message_id
+        )
+        
+        logger.info(f"✅ Ordine salvato: {user.first_name} ({user.id})")
+        
+        # Aggiorna messaggio
+        try:
+            # Controlla se è Business
+            is_business = (
+                hasattr(query.message, 'business_connection_id') and 
+                query.message.business_connection_id
             )
             
-            await query.edit_message_text(f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile.")
-            
-            # Notifica admin
-            if ADMIN_CHAT_ID:
-                try:
-                    notifica = (
-                    f"🔔 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
+            if is_business:
+                await context.bot.edit_message_text(
+                    business_connection_id=query.message.business_connection_id,
+                    chat_id=query.message.chat.id,
+                    message_id=query.message.message_id,
+                    text=f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile."
+                )
+            else:
+                await query.edit_message_text(
+                    f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile."
+                )
+        except Exception as e:
+            logger.error(f"❌ Errore edit message: {e}")
+        
+        # Notifica admin
+        if ADMIN_CHAT_ID:
+            try:
+                notifica = (
+                    f"📢 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
                     f"👤 Utente: {user.first_name} (@{user.username})\n"
                     f"🆔 ID: <code>{user.id}</code>\n"
-                    f"📝 Messaggio:\n<code>{original_msg.text[:200]}</code>"
-                    )
-                    await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
-                except Exception as e:
-                    logger.error(f"Errore notifica admin: {e}")
-        else:
-            await query.edit_message_text("✅ Ottimo!")
-            
+                    f"💬 Chat: <code>{query.message.chat.id}</code>\n"
+                    f"📝 Testo:\n<code>{order_text[:200]}</code>"
+                )
+                await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"❌ Errore notifica admin: {e}")
+                
     elif query.data.startswith("pay_no_"):
-        await query.edit_message_text("💡 Per favore, indica il metodo (Bonifico, Crypto).")
-
+        try:
+            is_business = (
+                hasattr(query.message, 'business_connection_id') and 
+                query.message.business_connection_id
+            )
+            
+            if is_business:
+                await context.bot.edit_message_text(
+                    business_connection_id=query.message.business_connection_id,
+                    chat_id=query.message.chat.id,
+                    message_id=query.message.message_id,
+                    text="💡 Per favore, indica il metodo (Bonifico, Crypto)."
+                )
+            else:
+                await query.edit_message_text("💡 Per favore, indica il metodo (Bonifico, Crypto).")
+        except Exception as e:
+            logger.error(f"❌ Errore pay_no: {e}")
+            
 # Benvenuto nuovi membri
 async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.new_chat_members:
