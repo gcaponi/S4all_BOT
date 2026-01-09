@@ -923,12 +923,21 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 
 class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
-    def filter(self, message):
-        return (
+     def filter(self, message):
+        # Log di debug
+        logger.info(f"🔍 BusinessFilter check - hasattr: {hasattr(message, 'business_connection_id')}")
+        if hasattr(message, 'business_connection_id'):
+            logger.info(f"🔍 business_connection_id value: {message.business_connection_id}")
+        
+        # Check più permissivo
+        has_business = (
             hasattr(message, 'business_connection_id') and 
-            message.business_connection_id is not None
+            message.business_connection_id is not None and
+            message.business_connection_id != ''
         )
-
+        
+        logger.info(f"🔍 BusinessFilter result: {has_business}")
+        return has_business
 business_filter = BusinessMessageFilter()
 
 async def initialize_bot():
@@ -1010,7 +1019,20 @@ def index():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     global bot_application, bot_initialized
-    
+    # DEBUG: Vedi cosa arriva
+    try:
+        json_data = request.get_json(force=True)
+        logger.info(f"🔍 WEBHOOK DEBUG: {json_data.keys()}")
+        if 'business_message' in json_data:
+            logger.info(f"🔍 BUSINESS MESSAGE RILEVATO!")
+        if 'message' in json_data:
+            msg = json_data['message']
+            logger.info(f"🔍 Message keys: {msg.keys()}")
+            if 'business_connection_id' in msg:
+                logger.info(f"🔍 Ha business_connection_id: {msg['business_connection_id']}")
+    except Exception as e:
+        logger.error(f"Debug error: {e}")
+        
     if not bot_initialized:
         try:
             loop = asyncio.new_event_loop()
