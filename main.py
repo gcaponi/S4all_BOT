@@ -13,18 +13,18 @@ import asyncio
 from datetime import datetime
 from intent_classifier import IntentClassifier, IntentType
 
-# --------------------------------------------------------------------
+# =============================================================================
 # CONFIGURAZIONE LOGGING (DETTAGLIATO)
-# --------------------------------------------------------------------
+# =============================================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------------------------
+# =============================================================================
 # VARIABILI DI AMBIENTE E COSTANTI
-# --------------------------------------------------------------------
+# =============================================================================
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
@@ -58,10 +58,9 @@ initialization_lock = False
 FAQ_CONFIDENCE_THRESHOLD = 0.65
 LISTA_CONFIDENCE_THRESHOLD = 0.30
 
-# --------------------------------------------------------------------
+# =============================================================================
 # UTILS: WEB FETCH, PARSING, I/O (SISTEMA DI AGGIORNAMENTO)
-# --------------------------------------------------------------------
-
+# =============================================================================
 def fetch_markdown_from_html(url: str) -> str:
     """Scarica il contenuto HTML da JustPaste e lo converte in testo pulito"""
     try:
@@ -189,10 +188,9 @@ def save_json_file(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# --------------------------------------------------------------------
+# =============================================================================
 # GESTIONE AUTORIZZAZIONI E UTENTI
-# --------------------------------------------------------------------
-
+# =============================================================================
 def load_authorized_users():
     """Carica il database degli utenti che hanno usato il link segreto"""
     data = load_json_file(AUTHORIZED_USERS_FILE, default={})
@@ -244,10 +242,9 @@ def get_bot_username():
     """Utility per ottenere lo username del bot per comporre link dinamici"""
     return getattr(get_bot_username, 'username', 'tuobot')
 
-# --------------------------------------------------------------------
+# =============================================================================
 # GESTIONE ORDINI CONFERMATI
-# --------------------------------------------------------------------
-
+# =============================================================================
 def load_ordini():
     """Carica il database degli ordini confermati"""
     return load_json_file(ORDINI_FILE, default=[])
@@ -282,10 +279,9 @@ def get_ordini_oggi():
     oggi = datetime.now().strftime("%Y-%m-%d")
     return [o for o in ordini if o.get("data") == oggi]
 
-# --------------------------------------------------------------------
+# =============================================================================
 # LOGICHE DI RICERCA INTELLIGENTE (CORE)
-# --------------------------------------------------------------------
-
+# =============================================================================
 def calculate_similarity(text1: str, text2: str) -> float:
     """Calcola l'indice di somiglianza tra due stringhe (utilizzato per i refusi)"""
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
@@ -451,10 +447,9 @@ def has_payment_method(text: str) -> bool:
         return False
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
-# --------------------------------------------------------------------
+# =============================================================================
 # HANDLERS: COMANDI (START, HELP, LISTA)
-# --------------------------------------------------------------------
-
+# =============================================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -509,10 +504,9 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(lista_text), 4000):
         await update.message.reply_text(lista_text[i:i+4000])
 
-# --------------------------------------------------------------------
+# =============================================================================
 # HANDLERS: AMMINISTRAZIONE (SOLO ADMIN_CHAT_ID)
-# --------------------------------------------------------------------
-
+# =============================================================================
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
@@ -604,10 +598,10 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = ordine.get('user_id', 'N/A')
         ora = ordine.get('ora', 'N/A')
         message = ordine.get('message', 'N/A')
-        chat_id = ordine.get('chat_id', 'N/A')
-        msg += f"<b>{i}. {user_name}</b> (@{username})    🆔 ID: <code>{user_id}</code>\n"
-        msg += f"   🕐 Ora: {ora}    💬 Chat: <code>{chat_id}</code>\n"
-        msg += f"   📝 Messaggio:\n   <code>{message[:100]}...</code>\n\n"
+        
+        msg += f"<b>{i}. {user_name}</b> (@{username}) 🆔 ID: <code>{user_id}</code>\n"
+        msg += f"   🕐 Ora: {ora}\n"
+        msg += f"   📝 Messaggio:\n <code>{message[:300]}</code>\n\n"
     
     if len(msg) > 4000:
         for i in range(0, len(msg), 4000):
@@ -615,10 +609,9 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg, parse_mode='HTML')
 
-# --------------------------------------------------------------------
+# =============================================================================
 # GESTIONE MESSAGGI: LOGICA UNIFICATA (PRIVATI E GRUPPI)
-# --------------------------------------------------------------------
-
+# =============================================================================
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
@@ -762,40 +755,37 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("pay_ok_"):
         user = query.from_user
         
-        # FIX BUSINESS: Estrai message_id originale dal callback_data
+        # Estrai message_id originale dal callback_data
         try:
             original_msg_id = int(query.data.split("_")[-1])
-            logger.info(f"🔍 Original message ID: {original_msg_id}")
         except:
             original_msg_id = None
         
         # Prova a trovare il messaggio originale
         original_msg = query.message.reply_to_message
         
-        # FALLBACK: Se non c'è reply (Business), usa il messaggio del bottone
-        if not original_msg:
-            logger.info("⚠️ reply_to_message è None, uso query.message")
-            original_msg = query.message
-        
         # Estrai testo ordine
         if original_msg and hasattr(original_msg, 'text'):
+            # Chat normale con reply
             order_text = original_msg.text
-            # Rimuovi la parte dei bottoni se presente
-            if "Sembra un ordine" in order_text:
-                # Cerca il messaggio originale nel context
-                # Per Business, il testo dell'ordine è perso, quindi usiamo placeholder
-                order_text = f"Ordine confermato (ID msg: {original_msg_id})"
+        elif original_msg_id and f"order_text_{original_msg_id}" in context.bot_data:
+            # Business - recupera dal bot_data
+            order_text = context.bot_data[f"order_text_{original_msg_id}"]
+            logger.info(f"📝 Testo recuperato da bot_data: {order_text}")
+            # Pulisci bot_data
+            del context.bot_data[f"order_text_{original_msg_id}"]
         else:
-            order_text = f"Ordine da Business (callback: {query.data})"
+            # Fallback
+            order_text = f"Ordine (msg ID: {original_msg_id})"
         
-        logger.info(f"📝 Testo ordine estratto: {order_text[:100]}")
+        logger.info(f"📝 Testo ordine finale: {order_text[:100]}")
         
-        # SALVA SEMPRE l'ordine
+        # SALVA l'ordine con il testo corretto
         add_ordine_confermato(
             user_id=user.id,
             user_name=user.first_name or "Sconosciuto",
             username=user.username or "nessuno",
-            message_text=order_text,
+            message_text=order_text,  # ← Testo originale!
             chat_id=query.message.chat.id,
             message_id=query.message.message_id
         )
@@ -1019,6 +1009,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 2. ORDINE
     if intent == "ordine":
+        context.bot_data[d"order_text_{message.message_id}"] = text
         keyboard = [[
             InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
             InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
