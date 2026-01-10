@@ -1063,8 +1063,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     ]
 
     if any(word in text.lower() for word in trigger_words):
-    # Check specifico per "vorrei/voglio ordinare"
-    if 'vorrei ordinare' in text.lower() or 'voglio ordinare' in text.lower():
+        # Check specifico per "vorrei/voglio ordinare"
+        if 'vorrei ordinare' in text.lower() or 'voglio ordinare' in text.lower():
         await send_business_reply(
             "👋 Certo! Ecco cosa puoi fare:\n\n"
             "📋 Scrivi <b>'lista'</b> per vedere tutti i prodotti\n"
@@ -1073,10 +1073,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             "<code>Quantità Prodotto Prezzo</code>\n"
             "Esempio: <code>1 Creatina 25€</code>"
         )
-    else:
-        await send_business_reply(
-            "❓ Non ho capito. Scrivi 'lista' per il catalogo o /help per info."
-        )
+        else:
+            await send_business_reply(
+                "❓ Non ho capito. Scrivi 'lista' per il catalogo o /help per info."
+            )
 
 class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
