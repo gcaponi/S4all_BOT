@@ -917,7 +917,80 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     text = message.text.strip()
     
     logger.info(f"📱 Business message: '{text[:50]}'")
-    
+
+    # FIX: GESTISCI COMANDI IN BUSINESS
+    if text.startswith('/'):
+        command = text.split()[0].lower()
+        
+        logger.info(f"🔧 Comando Business rilevato: {command}")
+        
+        # Helper per rispondere
+        async def send_reply(text_reply, parse_mode='HTML'):
+            try:
+                await context.bot.send_message(
+                    business_connection_id=business_connection_id,
+                    chat_id=message.chat.id,
+                    text=text_reply,
+                    parse_mode=parse_mode
+                )
+            except Exception as e:
+                logger.error(f"❌ Errore reply comando: {e}")
+        
+        # /help - Mostra FAQ
+        if command == '/help':
+            faq_data = load_faq()
+            faq_list = faq_data.get("faq", [])
+            
+            if not faq_list:
+                await send_reply("⚠️ FAQ non ancora configurate.")
+                return
+            
+            full_text = "🗒️ <b>REGOLAMENTO E INFORMAZIONI</b>\n\n"
+            for item in faq_list:
+                full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
+            
+            # Invia in chunks se troppo lungo
+            if len(full_text) > 4000:
+                for i in range(0, len(full_text), 4000):
+                    await send_reply(full_text[i:i+4000])
+            else:
+                await send_reply(full_text)
+            return
+        
+        # /lista - Mostra listino
+        elif command == '/lista':
+            lista = load_lista()
+            if lista:
+                for i in range(0, len(lista), 4000):
+                    await send_reply(lista[i:i+4000], parse_mode=None)
+            else:
+                await send_reply("❌ Lista non disponibile.")
+            return
+        
+        # /start - Messaggio benvenuto
+        elif command == '/start':
+            await send_reply(
+                "👋 <b>Benvenuto!</b>\n\n"
+                "Sono il tuo assistente automatico.\n\n"
+                "Comandi disponibili:\n"
+                "• /help - Mostra FAQ complete\n"
+                "• /lista - Mostra listino prodotti\n"
+                "• Scrivi 'lista' per il catalogo\n"
+                "• Chiedimi info su spedizioni, pagamenti, etc."
+            )
+            return
+        
+        # Altri comandi
+        else:
+            await send_reply(
+                "❓ Comando non riconosciuto.\n\n"
+                "Comandi disponibili:\n"
+                "• /help\n"
+                "• /lista\n"
+                "• /start"
+            )
+            return
+            
     # Helper per rispondere in Business
     async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
         try:
