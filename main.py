@@ -1057,12 +1057,12 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             return
     
     # 5. FALLBACK
-trigger_words = [
+    trigger_words = [
     'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
     'quanto costa', 'prezzo', 'hai', 'disponibile', 'vorrei', 'voglio'
-]
+    ]
 
-if any(word in text.lower() for word in trigger_words):
+    if any(word in text.lower() for word in trigger_words):
     # Check specifico per "vorrei/voglio ordinare"
     if 'vorrei ordinare' in text.lower() or 'voglio ordinare' in text.lower():
         await send_business_reply(
