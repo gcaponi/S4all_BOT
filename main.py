@@ -892,7 +892,7 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 # SETUP BOT
 # =============================================================================
 
-    # [FILTRO BUSINESS MESSAGES]
+# [FILTRO BUSINESS MESSAGES]
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = (
         update.business_message
@@ -904,7 +904,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         return
         
     # [IGNORA MESSAGGI AUTOMATICI/BOT BUSINESS]
-     if message.from_user and message.from_user.is_bot:
+    if message.from_user and message.from_user.is_bot:
         logger.info(f"🤖 Messaggio da bot (automatico) - IGNORATO")
         return
          
