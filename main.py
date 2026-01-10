@@ -1009,7 +1009,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 2. ORDINE
     if intent == "ordine":
-        context.bot_data[d"order_text_{message.message_id}"] = text
+        context.bot_data[f"order_text_{message.message_id}"] = text
         keyboard = [[
             InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
             InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
