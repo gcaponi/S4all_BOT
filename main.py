@@ -892,15 +892,11 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
-# --------------------------------------------------------------------
-# Setup bot
-# --------------------------------------------------------------------
+# =============================================================================
+# SETUP BOT
+# =============================================================================
 
-
-# ============================================
-# FILTRO BUSINESS MESSAGES
-# ============================================
-
+    # [FILTRO BUSINESS MESSAGES]
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce messaggi ricevuti tramite Telegram Business"""
     # FIX: Telegram Business usa update.business_message
@@ -1001,8 +997,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 "text": text_reply,
                 "parse_mode": parse_mode,
                 "reply_markup": reply_markup
-            }
-            
+            }            
             # Aggiungi message_thread_id se presente
             if getattr(message, "message_thread_id", None):
                 kwargs["message_thread_id"] = message.message_thread_id
@@ -1011,8 +1006,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             logger.info(f"✅ Business reply inviata")
         except Exception as e:
             logger.error(f"❌ Errore Business reply: {e}")
-    
-    # Usa l'intent classifier
     intent = calcola_intenzione(text)
     
     # 1. LISTA
@@ -1045,6 +1038,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             await send_business_reply(
                 f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
             )
+            return
         else:
             await send_business_reply(
                 "❓ Non ho trovato una risposta specifica. Usa /help per tutte le FAQ."
