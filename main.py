@@ -752,6 +752,98 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
+    # ============================================
+    # GESTIONE BOTTONI FAQ E LISTA
+    # ============================================
+    
+    if query.data == "show_lista":
+        lista = load_lista()
+        
+        # Check se è Business
+        is_business = (
+            hasattr(query.message, 'business_connection_id') and 
+            query.message.business_connection_id
+        )
+        
+        if lista:
+            try:
+                # Elimina il messaggio con i bottoni
+                if is_business:
+                    await context.bot.delete_message(
+                        business_connection_id=query.message.business_connection_id,
+                        chat_id=query.message.chat.id,
+                        message_id=query.message.message_id
+                    )
+                else:
+                    await query.message.delete()
+                
+                # Invia la lista
+                if is_business:
+                    for i in range(0, len(lista), 4000):
+                        await context.bot.send_message(
+                            business_connection_id=query.message.business_connection_id,
+                            chat_id=query.message.chat.id,
+                            text=lista[i:i+4000]
+                        )
+                else:
+                    for i in range(0, len(lista), 4000):
+                        await query.message.reply_text(lista[i:i+4000])
+            except Exception as e:
+                logger.error(f"❌ Errore invio lista: {e}")
+        return
+    
+    elif query.data == "show_faq":
+        faq_data = load_faq()
+        faq_list = faq_data.get("faq", [])
+        
+        # Check se è Business
+        is_business = (
+            hasattr(query.message, 'business_connection_id') and 
+            query.message.business_connection_id
+        )
+        
+        if faq_list:
+            full_text = "🗒️ <b>INFORMAZIONI E FAQ</b>\n\n"
+            for item in faq_list:
+                full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
+            
+            try:
+                # Elimina il messaggio con i bottoni
+                if is_business:
+                    await context.bot.delete_message(
+                        business_connection_id=query.message.business_connection_id,
+                        chat_id=query.message.chat.id,
+                        message_id=query.message.message_id
+                    )
+                else:
+                    await query.message.delete()
+                
+                # Invia FAQ
+                if len(full_text) > 4000:
+                    for i in range(0, len(full_text), 4000):
+                        if is_business:
+                            await context.bot.send_message(
+                                business_connection_id=query.message.business_connection_id,
+                                chat_id=query.message.chat.id,
+                                text=full_text[i:i+4000],
+                                parse_mode='HTML'
+                            )
+                        else:
+                            await query.message.reply_text(full_text[i:i+4000], parse_mode='HTML')
+                else:
+                    if is_business:
+                        await context.bot.send_message(
+                            business_connection_id=query.message.business_connection_id,
+                            chat_id=query.message.chat.id,
+                            text=full_text,
+                            parse_mode='HTML'
+                        )
+                    else:
+                        await query.message.reply_text(full_text, parse_mode='HTML')
+            except Exception as e:
+                logger.error(f"❌ Errore invio FAQ: {e}")
+        return
+        
     if query.data.startswith("pay_ok_"):
         user = query.from_user
         
@@ -1063,19 +1155,24 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     ]
 
     if any(word in text.lower() for word in trigger_words):
-        # Check specifico per "vorrei/voglio ordinare"
+    # Check specifico per "vorrei/voglio ordinare"
         if 'vorrei ordinare' in text.lower() or 'voglio ordinare' in text.lower():
+            keyboard = [
+                [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
+                [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
+           ]
             await send_business_reply(
-            "👋 Certo! Ecco cosa puoi fare:\n\n"
-            "📋 Scrivi <b>'lista'</b> per vedere tutti i prodotti\n"
-            "❓ Usa <b>/help</b> per FAQ su spedizioni e pagamenti\n\n"
-            "Quando sei pronto, inviami il tuo ordine così:\n"
-            "<code>Quantità Prodotto Prezzo</code>\n"
-            "Esempio: <code>1 Creatina 25€</code>"
+                "👋 SALVE!\n\n📋 Clicchi su PRODOTTI per vedere cosa abbiamo\n❓Clicchi su FAQ per domande frequenti",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
+            keyboard = [
+                [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
+                [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
+            ]
             await send_business_reply(
-                "❓ Non ho capito. Scrivi 'lista' per il catalogo o /help per info."
+                "👋 SALVE!\n\n📋 Clicchi su PRODOTTI per vedere cosa abbiamo\n❓Clicchi su FAQ per domande frequenti",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
 
 class BusinessMessageFilter(filters.MessageFilter):
