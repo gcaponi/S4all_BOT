@@ -1,0 +1,40 @@
+{
+  "capoluoghi_provincia": [
+    "agrigento", "alessandria", "ancona", "aosta", "arezzo", "ascoli piceno",
+    "asti", "avellino", "bari", "barletta", "belluno", "benevento", "bergamo",
+    "biella", "bologna", "bolzano", "brescia", "brindisi", "cagliari",
+    "caltanissetta", "campobasso", "caserta", "catania", "catanzaro", "chieti",
+    "como", "cosenza", "cremona", "crotone", "cuneo", "enna", "fermo", "ferrara",
+    "firenze", "foggia", "forlì", "frosinone", "genova", "gorizia", "grosseto",
+    "imperia", "isernia", "la spezia", "l'aquila", "latina", "lecce", "lecco",
+    "livorno", "lodi", "lucca", "macerata", "mantova", "massa", "matera",
+    "messina", "milano", "modena", "monza", "napoli", "novara", "nuoro",
+    "oristano", "padova", "palermo", "parma", "pavia", "perugia", "pesaro",
+    "pescara", "piacenza", "pisa", "pistoia", "pordenone", "potenza", "prato",
+    "ragusa", "ravenna", "reggio calabria", "reggio emilia", "rieti", "rimini",
+    "roma", "rovigo", "salerno", "sassari", "savona", "siena", "siracusa",
+    "sondrio", "taranto", "teramo", "terni", "torino", "trapani", "trento",
+    "treviso", "trieste", "udine", "varese", "venezia", "verbania", "vercelli",
+    "verona", "vibo valentia", "vicenza", "viterbo"
+  ],
+  "citta_maggiori": [
+    "roma", "milano", "napoli", "torino", "palermo", "genova", "bologna",
+    "firenze", "bari", "catania", "venezia", "verona", "messina", "padova",
+    "trieste", "brescia", "taranto", "prato", "parma", "reggio calabria",
+    "modena", "reggio emilia", "perugia", "livorno", "ravenna", "cagliari",
+    "foggia", "rimini", "salerno", "ferrara", "sassari", "monza", "latina",
+    "giugliano in campania", "bergamo", "forlì", "trento", "vicenza", "terni",
+    "bolzano", "novara", "piacenza", "ancona", "andria", "arezzo", "udine",
+    "cesena", "lecce", "pesaro", "barletta", "alessandria", "pistoia", "pisa"
+  ],
+  "alias_comuni": {
+    "la spezia": "la spezia",
+    "laquila": "l'aquila",
+    "l aquila": "l'aquila",
+    "reggio calabria": "reggio calabria",
+    "reggio emilia": "reggio emilia",
+    "forli": "forlì",
+    "bolzano": "bolzano",
+    "giugliano": "giugliano in campania"
+  }
+}
