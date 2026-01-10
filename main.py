@@ -1057,12 +1057,23 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             return
     
     # 5. FALLBACK
-    trigger_words = [
-        'ordine', 'lista', 'listino', 'prodotto', 'prodotti',
-        'quanto costa', 'prezzo', 'hai', 'disponibile'
-    ]
-    
-    if any(word in text.lower() for word in trigger_words):
+trigger_words = [
+    'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
+    'quanto costa', 'prezzo', 'hai', 'disponibile', 'vorrei', 'voglio'
+]
+
+if any(word in text.lower() for word in trigger_words):
+    # Check specifico per "vorrei/voglio ordinare"
+    if 'vorrei ordinare' in text.lower() or 'voglio ordinare' in text.lower():
+        await send_business_reply(
+            "👋 Certo! Ecco cosa puoi fare:\n\n"
+            "📋 Scrivi <b>'lista'</b> per vedere tutti i prodotti\n"
+            "❓ Usa <b>/help</b> per FAQ su spedizioni e pagamenti\n\n"
+            "Quando sei pronto, inviami il tuo ordine così:\n"
+            "<code>Quantità Prodotto Prezzo</code>\n"
+            "Esempio: <code>1 Creatina 25€</code>"
+        )
+    else:
         await send_business_reply(
             "❓ Non ho capito. Scrivi 'lista' per il catalogo o /help per info."
         )
@@ -1090,20 +1101,32 @@ async def initialize_bot():
         logger.info("🔡 Inizializzazione bot...")
         
         try:
-            # Usa file locali se esistono (ottimizzazione)
+            # [USA FILE LOCALI SE ESISTONO]
+            # FAQ - Verifica e scarica se vuoto
             if os.path.exists(FAQ_FILE):
-                logger.info("📋 FAQ da file locale")
+                faq_data = load_faq()
+                if faq_data.get("faq"):
+                    logger.info(f"📋 FAQ da file locale ({len(faq_data['faq'])} elementi)")
+                else:
+                    logger.warning("⚠️ FAQ vuote, scarico da web")
+                    update_faq_from_web()
             else:
+                logger.info("📥 Download FAQ...")
                 update_faq_from_web()
-            
+                
+            # Lista prodotti
             if os.path.exists(LISTA_FILE):
                 logger.info("📦 Lista da file locale")
             else:
+                logger.info("📥 Download lista...")
                 update_lista_from_web()
-            
+                
+            # Estrai Keywords
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
+            logger.info(f"✅ {len(PAROLE_CHIAVE_LISTA)} keywords estratte")
+            
         except Exception as e:
-            logger.warning(f"Prefetch warning: {e}")
+            logger.warning(f"⚠️ Prefetch: {e}")
         
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
