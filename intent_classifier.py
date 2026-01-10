@@ -243,6 +243,10 @@ class IntentClassifier:
             r'\bprocedura\s+per\s+ordinar',
             r'\bper\s+ordinar.*\bcome\b',
             r'\baiuto.*\border',
+            r'\bc\'?[eè]\s+(il|un|qualche|mio|tuo)\s+(tracking|codice|pacco)',
+            r'\bdov[eè]\s+(il|mio|l)\s+(tracking|pacco|ordine)',
+            r'\btracking\s+(della|del|di|mio)\s+ordine',
+            r'\bmio\s+ordine\b',
         ]
         
         for pattern in strong_exclusions:
