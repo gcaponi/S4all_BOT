@@ -757,9 +757,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     # ============================================
     
     if query.data == "show_lista":
+        logger.info("📋 Bottone LISTA cliccato")     
         lista = load_lista()
-        
-        # Check se è Business
         is_business = (
             hasattr(query.message, 'business_connection_id') and 
             query.message.business_connection_id
@@ -767,17 +766,15 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         
         if lista:
             try:
-                # Elimina il messaggio con i bottoni
+                # Elimina messaggio con bottoni
                 if is_business:
                     await context.bot.delete_message(
                         business_connection_id=query.message.business_connection_id,
                         chat_id=query.message.chat.id,
                         message_id=query.message.message_id
                     )
-                else:
-                    await query.message.delete()
                 
-                # Invia la lista
+                # Invia lista
                 if is_business:
                     for i in range(0, len(lista), 4000):
                         await context.bot.send_message(
@@ -785,11 +782,57 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                             chat_id=query.message.chat.id,
                             text=lista[i:i+4000]
                         )
-                else:
-                    for i in range(0, len(lista), 4000):
-                        await query.message.reply_text(lista[i:i+4000])
+                        logger.info(f"✅ Lista inviata (chunk {i//4000 + 1})")
             except Exception as e:
                 logger.error(f"❌ Errore invio lista: {e}")
+        return
+    
+    elif query.data == "show_faq":
+        logger.info("❓ Bottone FAQ cliccato")
+        
+        faq_data = load_faq()
+        faq_list = faq_data.get("faq", [])
+        is_business = (
+            hasattr(query.message, 'business_connection_id') and 
+            query.message.business_connection_id
+        )
+        
+        if faq_list:
+            full_text = "🗒️ <b>INFORMAZIONI E FAQ</b>\n\n"
+            for item in faq_list:
+                full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
+            
+            try:
+                # Elimina messaggio con bottoni
+                if is_business:
+                    await context.bot.delete_message(
+                        business_connection_id=query.message.business_connection_id,
+                        chat_id=query.message.chat.id,
+                        message_id=query.message.message_id
+                    )
+                
+                # Invia FAQ
+                if len(full_text) > 4000:
+                    for i in range(0, len(full_text), 4000):
+                        if is_business:
+                            await context.bot.send_message(
+                                business_connection_id=query.message.business_connection_id,
+                                chat_id=query.message.chat.id,
+                                text=full_text[i:i+4000],
+                                parse_mode='HTML'
+                            )
+                            logger.info(f"✅ FAQ inviate (chunk {i//4000 + 1})")
+                else:
+                    if is_business:
+                        await context.bot.send_message(
+                            business_connection_id=query.message.business_connection_id,
+                            chat_id=query.message.chat.id,
+                            text=full_text,
+                            parse_mode='HTML'
+                        )
+                        logger.info("✅ FAQ inviate")
+            except Exception as e:
+                logger.error(f"❌ Errore invio FAQ: {e}")
         return
     
     elif query.data == "show_faq":
