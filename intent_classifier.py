@@ -1,9 +1,13 @@
-"""
-Sistema di Classificazione Intenti - Versione Finale
-Con tutti i fix per ordini, quantità testuali e fuzzy matching
-"""
+""" Sistema di Classificazione Intenti - Versione Finale
+FIXES:
+- Caricamento città italiane da JSON
+- Fix località (no falsi positivi come "una", "re", "or")
+- Fix esclusioni domande su ordini senza prodotto
+- Rimozione della parola "ordine" dalla lista prodotti """
 import re
 import logging
+import json
+import os
 from typing import Dict, List, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -31,6 +35,39 @@ class IntentResult:
 def calculate_similarity(text1: str, text2: str) -> float:
     """Calcola similarità tra due stringhe (per fuzzy matching)"""
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
+
+def load_citta_italiane() -> set:
+    """Carica lista città italiane dal file JSON"""
+    try:
+        # Cerca il file nella stessa directory del classifier
+        json_path = os.path.join(os.path.dirname(__file__), 'citta_italiane.json')
+        if not os.path.exists(json_path):
+            # Fallback: cerca nella directory corrente
+            json_path = 'citta_italiane.json'
+        
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Combina capoluoghi + città maggiori
+                citta = set(data.get('capoluoghi_provincia', []))
+                citta.update(data.get('citta_maggiori', []))
+                logger.info(f"✅ Caricate {len(citta)} città italiane dal JSON")
+                return citta
+        else:
+            logger.warning(f"⚠️ File citta_italiane.json non trovato, uso lista base")
+            # Fallback: lista minima delle città principali
+            return {
+                'roma', 'milano', 'napoli', 'torino', 'palermo', 'genova', 
+                'bologna', 'firenze', 'bari', 'catania', 'venezia', 'verona',
+                'messina', 'padova', 'trieste', 'brescia', 'taranto', 'prato'
+            }
+    except Exception as e:
+        logger.error(f"❌ Errore caricamento città: {e}")
+        # Ritorna lista base in caso di errore
+        return {
+            'roma', 'milano', 'napoli', 'torino', 'palermo', 'genova', 
+            'bologna', 'firenze', 'bari', 'catania', 'venezia', 'verona'
+        }
     
 class IntentClassifier:
     """Classificatore intelligente con debug e fuzzy matching"""
@@ -38,6 +75,9 @@ class IntentClassifier:
     def __init__(self, lista_keywords: set = None, load_lista_func=None):
         self.lista_keywords = lista_keywords or set()
         self.load_lista_func = load_lista_func
+        
+        # Carica città italiane dal JSON
+        self.citta_italiane = load_citta_italiane()
         
         # PRIORITÀ 1: Richieste esplicite
         self.richiesta_lista_patterns = {
@@ -76,11 +116,13 @@ class IntentClassifier:
             ]
         }
         
-        # ESCLUSIONI per ordine
+        # ESCLUSIONI per ordine (MIGLIORATE)
         self.ordine_exclusions = [
             r'\bcome\s+(faccio|si\s+fa|posso)\s+.*ordine\b',
-            r'\bvoglio\s+(fare|effettuare)\s+.*ordine\b',
-            r'\bvorrei\s+(fare|effettuare)\s+.*ordine\b',
+            r'\bvoglio\s+(fare|effettuare)\s+(un[ao]?)?\s*ordine\s*$',  # "voglio fare un ordine" senza prodotto
+            r'\bvorrei\s+(fare|effettuare)\s+(un[ao]?)?\s*ordine\s*$',  # "vorrei fare un ordine" senza prodotto
+            r'\bvorrei\s+ordinar[ei]\s*$',  # "vorrei ordinare" senza prodotto
+            r'\bvoglio\s+ordinar[ei]\s*$',  # "voglio ordinare" senza prodotto
             r'\bper\s+ordinar[ei]\b',
             r'\bcome\s+ordino\b',
             r'\bcome\s+si\s+ordina\b',
@@ -235,7 +277,7 @@ class IntentClassifier:
                 logger.info(f"  ❌ ESCLUSO: 'volevo fare ordine' senza prodotto/con ?")
                 return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: domanda su ordini", [])
         
-        # ESCLUSIONI FORTI
+        # ESCLUSIONI FORTI (MIGLIORATE)
         strong_exclusions = [
             r'\bcome\s+(faccio|posso|si\s+fa)\s+(a\s+)?ordinar',
             r'\bcome\s+ordino\b',
@@ -243,15 +285,15 @@ class IntentClassifier:
             r'\bprocedura\s+per\s+ordinar',
             r'\bper\s+ordinar.*\bcome\b',
             r'\baiuto.*\border',
-            r'\bc\'?[eè]\s+(il|un|qualche|mio|tuo)\s+(tracking|codice|pacco)',
-            r'\bdov[eè]\s+(il|mio|l)\s+(tracking|pacco|ordine)',
-            r'\btracking\s+(della|del|di|mio)\s+ordine',
-            r'\bmio\s+ordine\b',
+            r'\bvorrei\s+(fare|effettuare)\s+(un[ao]?)?\s*ordine\s*$',  # "vorrei fare un ordine" SENZA prodotto
+            r'\bvoglio\s+(fare|effettuare)\s+(un[ao]?)?\s*ordine\s*$',  # "voglio fare un ordine" SENZA prodotto
+            r'\bvorrei\s+ordinar[ei]\s*$',  # "vorrei ordinare" SENZA prodotto
+            r'\bvoglio\s+ordinar[ei]\s*$',  # "voglio ordinare" SENZA prodotto
         ]
         
         for pattern in strong_exclusions:
             if re.search(pattern, text_lower, re.I):
-                logger.info(f"  ❌ ESCLUSO: Pattern strong exclusion")
+                logger.info(f"  ❌ ESCLUSO: Pattern strong exclusion matched")
                 return IntentResult(IntentType.INVIO_ORDINE, 0.0, "Escluso: domanda su ordini", [])
         
         # INDICATORI DI ORDINE REALE
@@ -311,21 +353,32 @@ class IntentClassifier:
             matched.append('righe_multiple')
             logger.info(f"  ✓ Righe multiple (+1 punto)")
         
-        # 4. Località/spedizione
-        location_keywords = [
-            'roma', 'milano', 'napoli', 'torino', 'bologna', 'firenze', 
-            'via', 'indirizzo', 'spedizione', 'spedire', 'consegna',
-            'ag', 'al', 'an', 'ao', 'ap', 'aq', 'ar', 'at', 'av', 'ba', 'bg', 'bi', 'bl', 'bn', 'bo', 'br', 'bs', 'bt', 
-            'bz', 'ca', 'cb', 'ce', 'ch', 'cl', 'cn', 'co', 'cr', 'cs', 'ct', 'cz', 'en', 'fc', 'fe', 'fg', 'fi', 'fm', 
-            'fr', 'ge', 'go', 'gr', 'im', 'is', 'kr', 'lc', 'le', 'li', 'lo', 'lt', 'lu', 'mb', 'mc', 'me', 'mi', 'mn', 
-            'mo', 'ms', 'mt', 'na', 'no', 'nu', 'og', 'or', 'pa', 'pc', 'pd', 'pe', 'pg', 'pi', 'pn', 'po', 'pr', 'pt', 
-            'pu', 'pv', 'pz', 'ra', 'rc', 're', 'rg', 'ri', 'rm', 'rn', 'ro', 'sa', 'si', 'so', 'sp', 'sr', 'ss', 'su', 
-            'sv', 'ta', 'te', 'tn', 'to', 'tp', 'tr', 'ts', 'tv', 'ud', 'va', 'vb', 'vc', 've', 'vi', 'vr', 'vt', 'vv'
+        # 4. Località/spedizione (VERSIONE MIGLIORATA - NO FALSI POSITIVI)
+        location_patterns = [
+            r'\b(via|corso|piazza|viale)\s+\w+',  # Indirizzi
+            r'\b(cap|c\.a\.p\.?)\s*:?\s*\d{5}',    # CAP
+            r'\b\d{5}\s+(roma|milano|napoli|torino)',  # CAP + città
+            r'\b(spedizione|spedire|consegna|consegnare)\b',
         ]
-        if any(kw in text_lower for kw in location_keywords):
-            order_indicators += 1
-            matched.append('localita')
-            logger.info(f"  ✓ Località/spedizione (+1 punto)")
+        
+        # Controlla pattern indirizzo
+        has_location = False
+        for pattern in location_patterns:
+            if re.search(pattern, text_lower):
+                order_indicators += 1
+                matched.append('localita_pattern')
+                has_location = True
+                logger.info(f"  ✓ Pattern località/indirizzo (+1 punto)")
+                break
+        
+        # Controlla città (solo parole intere dal JSON)
+        if not has_location:
+            for city in self.citta_italiane:
+                if re.search(r'\b' + re.escape(city) + r'\b', text_lower):
+                    order_indicators += 1
+                    matched.append(f'citta:{city}')
+                    logger.info(f"  ✓ Città rilevata: {city} (+1 punto)")
+                    break
         
         # 5. Parole chiave ordine diretto
         order_keywords = [
@@ -350,7 +403,7 @@ class IntentClassifier:
             matched.append('keyword_ordine')
             logger.info(f"  ✓ Keyword ordine (+1 punto)")
         
-        # 6. Prodotti dalla lista (CON FUZZY MATCHING)
+        # 6. Prodotti dalla lista (CON FUZZY MATCHING) - ESCLUDI "ordine"
         if self.load_lista_func:
             try:
                 lista_text = self.load_lista_func()
@@ -361,6 +414,11 @@ class IntentClassifier:
                     
                     product_found = False
                     for word in text_words:
+                        # SKIP "ordine" - non è un prodotto!
+                        if word == 'ordine':
+                            logger.info(f"  ⚠️ Skipping 'ordine' (non è un prodotto)")
+                            continue
+                            
                         for line in lista_lines:
                             if word in line:
                                 order_indicators += 2
@@ -501,11 +559,11 @@ class IntentClassifier:
         first_word = text.split()[0] if text.split() else ''
         
         if first_word in question_starters:
-            logger.info(f"  📝 Domanda chiara: inizia con '{first_word}'")
+            logger.info(f"  🔍 Domanda chiara: inizia con '{first_word}'")
             return True
         
         if text.strip().endswith('?'):
-            logger.info(f"  📝 Domanda chiara: finisce con ?")
+            logger.info(f"  🔍 Domanda chiara: finisce con ?")
             return True
         
         question_patterns = [
@@ -519,7 +577,7 @@ class IntentClassifier:
         
         for pattern in question_patterns:
             if re.search(pattern, text, re.I):
-                logger.info(f"  📝 Domanda chiara: pattern '{pattern[:30]}'")
+                logger.info(f"  🔍 Domanda chiara: pattern '{pattern[:30]}'")
                 return True
         
         return False
