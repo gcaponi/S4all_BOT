@@ -131,18 +131,16 @@ def estrai_parole_chiave_lista():
     parole = set(testo_norm.split())
     parole_filtrate = {p for p in parole if len(p) > 2}
     
-    # IMPORTANTE: Passa anche la funzione load_lista al classifier
+    # Passa anche la funzione load_lista al classifier
     intent_classifier = IntentClassifier(
         lista_keywords=parole_filtrate,
-        load_lista_func=load_lista  # <-- AGGIUNGI QUESTO
+        load_lista_func=load_lista
     )
     
     return parole_filtrate
 
 def calcola_intenzione(text: str) -> str:
-    """
-    NUOVA VERSIONE: Usa il classificatore intelligente
-    """
+    """ NUOVA VERSIONE: Usa il classificatore intelligente """
     global intent_classifier
     
     # Se il classifier non è inizializzato, crealo
@@ -301,7 +299,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     """Cerca la risposta più pertinente nelle FAQ con sinonimi estesi"""
     user_normalized = normalize_text(user_message)
     
-    # Sistema sinonimi ESTESO
+    # [SISTEMA SINONIMI ESTESO]
     keywords_map = {
         "spedizione": [
             "spedito", "spedisci", "spedite", "corriere", "pacco", 
@@ -330,7 +328,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
         ]
     }
 
-    # PRIORITÀ ALTA: Match con keywords
+    # [PRIORITÀ ALTA: MATCH CON KEYWORDS]
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         risposta_norm = normalize_text(item["risposta"])
@@ -343,7 +341,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
                     logger.info(f"✅ FAQ Match (keyword): {root} → score: 1.0")
                     return {'match': True, 'item': item, 'score': 1.0, 'method': 'keyword'}
 
-    # PRIORITÀ MEDIA: Similarità
+    # [PRIORITÀ MEDIA: SIMILARITà]
     best_match = None
     best_score = 0
     
@@ -416,8 +414,6 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     # Se ha trovato prodotti, IGNORA il filtro conversazionale
     if best_lines:
         score = matches_count / len(words) if words else 0
-        
-        # RIMUOVI IL LIMITE DI 5 RIGHE - mostra tutto
         snippet = '\n'.join(best_lines)
         
         # Se il risultato è troppo lungo (>4000 caratteri), tronca con messaggio
@@ -898,8 +894,6 @@ async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAUL
 
     # [FILTRO BUSINESS MESSAGES]
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gestisce messaggi ricevuti tramite Telegram Business"""
-    # FIX: Telegram Business usa update.business_message
     message = (
         update.business_message
         or update.message
@@ -908,13 +902,18 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     if not message or not message.text:
         return
-    
+        
+    # [IGNORA MESSAGGI AUTOMATICI/BOT BUSINESS]
+     if message.from_user and message.from_user.is_bot:
+        logger.info(f"🤖 Messaggio da bot (automatico) - IGNORATO")
+        return
+         
     business_connection_id = message.business_connection_id
     text = message.text.strip()
     
     logger.info(f"📱 Business message: '{text[:50]}'")
 
-    # FIX: GESTISCI COMANDI IN BUSINESS
+    # [GESTISCI COMANDI IN BUSINESS]
     if text.startswith('/'):
         command = text.split()[0].lower()
         
@@ -987,7 +986,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             )
             return
             
-    # Helper per rispondere in Business
+    # [HELPER PER RISPONDERE IN BUSINESS]
     async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
         try:
             # Costruisci kwargs con tutti i parametri necessari
