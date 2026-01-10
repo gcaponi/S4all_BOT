@@ -1099,6 +1099,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             logger.info(f"✅ Business reply inviata")
         except Exception as e:
             logger.error(f"❌ Errore Business reply: {e}")
+            
     intent = calcola_intenzione(text)
     
     # 1. LISTA
@@ -1147,33 +1148,46 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
             )
             return
-    
-    # 5. FALLBACK
-    trigger_words = [
-        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
-        'quanto costa', 'prezzo', 'hai', 'disponibile', 'vorrei', 'voglio'
-    ]
-
-    if any(word in text.lower() for word in trigger_words):
-    # Check specifico per "vorrei/voglio ordinare"
-        if 'vorrei ordinare' in text.lower() or 'voglio ordinare' in text.lower():
-            keyboard = [
-                [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
-                [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
-           ]
-            await send_business_reply(
-                "👋 SALVE!\n\n📋 Clicchi su PRODOTTI per vedere cosa abbiamo\n❓Clicchi su FAQ per domande frequenti",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:
+            
+    # 5. SALUTO
+    if intent == "saluto":
+        # Check se contiene anche "ordinare/ordine"
+        if any(word in text.lower() for word in ['ordinare', 'ordine', 'comprare', 'acquistare']):
             keyboard = [
                 [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
                 [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
             ]
             await send_business_reply(
-                "👋 SALVE!\n\n📋 Clicchi su PRODOTTI per vedere cosa abbiamo\n❓Clicchi su FAQ per domande frequenti",
+                "👋 Buongiorno!\n\n📋 Clicchi su PRODOTTI per vedere cosa abbiamo\n❓ Clicchi su FAQ per domande frequenti",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
+        else:
+            # Saluto semplice senza intent di ordinare
+            keyboard = [
+                [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
+                [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
+            ]
+            await send_business_reply(
+                "👋 Buongiorno! Come posso aiutarla?",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        return
+        
+    # 6. FALLBACK
+    trigger_words = [
+        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
+        'quanto costa', 'prezzo', 'hai', 'disponibile'
+    ]
+    
+    if any(word in text.lower() for word in trigger_words):
+        keyboard = [
+            [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
+            [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
+        ]
+        await send_business_reply(
+            "👋 SALVE!\n\n📋 PRODOTTI per vedere cosa abbiamo\n ❓FAQ per domande frequenti",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
