@@ -1058,21 +1058,21 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 5. FALLBACK
     trigger_words = [
-    'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
-    'quanto costa', 'prezzo', 'hai', 'disponibile', 'vorrei', 'voglio'
+        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
+        'quanto costa', 'prezzo', 'hai', 'disponibile', 'vorrei', 'voglio'
     ]
 
     if any(word in text.lower() for word in trigger_words):
         # Check specifico per "vorrei/voglio ordinare"
         if 'vorrei ordinare' in text.lower() or 'voglio ordinare' in text.lower():
-        await send_business_reply(
+            await send_business_reply(
             "👋 Certo! Ecco cosa puoi fare:\n\n"
             "📋 Scrivi <b>'lista'</b> per vedere tutti i prodotti\n"
             "❓ Usa <b>/help</b> per FAQ su spedizioni e pagamenti\n\n"
             "Quando sei pronto, inviami il tuo ordine così:\n"
             "<code>Quantità Prodotto Prezzo</code>\n"
             "Esempio: <code>1 Creatina 25€</code>"
-        )
+            )
         else:
             await send_business_reply(
                 "❓ Non ho capito. Scrivi 'lista' per il catalogo o /help per info."
