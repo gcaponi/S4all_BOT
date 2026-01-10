@@ -768,10 +768,11 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 # Elimina messaggio con bottoni
                 if is_business:
-                    await context.bot.delete_message(
+                    await context.bot.edit_message_text(
                         business_connection_id=query.message.business_connection_id,
                         chat_id=query.message.chat.id,
-                        message_id=query.message.message_id
+                        message_id=query.message.message_id,
+                        text="📋 Ecco il nostro listino prodotti:"
                     )
                 
                 # Invia lista
@@ -782,7 +783,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                             chat_id=query.message.chat.id,
                             text=lista[i:i+4000]
                         )
-                        logger.info(f"✅ Lista inviata (chunk {i//4000 + 1})")
+                        logger.info(f"✅ Lista inviata")
             except Exception as e:
                 logger.error(f"❌ Errore invio lista: {e}")
         return
@@ -805,10 +806,12 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 # Elimina messaggio con bottoni
                 if is_business:
-                    await context.bot.delete_message(
+                    await context.bot.edit_message_text(
                         business_connection_id=query.message.business_connection_id,
                         chat_id=query.message.chat.id,
-                        message_id=query.message.message_id
+                        message_id=query.message.message_id,
+                        text="❓ Ecco le nostre FAQ:",
+                        parse_mode='HTML'
                     )
                 
                 # Invia FAQ
