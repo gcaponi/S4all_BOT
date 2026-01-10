@@ -894,10 +894,23 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         return
         
     # [IGNORA MESSAGGI AUTOMATICI/BOT BUSINESS]
+    
+    # Metodo 1: Check is_bot (per bot veri)    
     if message.from_user and message.from_user.is_bot:
         logger.info(f"🤖 Messaggio da bot (automatico) - IGNORATO")
         return
-         
+        
+    # Metodo 2: Rileva messaggi automatici dal testo
+    text_lower = text.lower()
+    
+    if (
+        text_lower.startswith('messaggio automatico') or
+        'messaggio automatico:' in text_lower or
+        ('rispondo dal lunedì al venerdì' in text_lower and 'ho registrato la tua richiesta' in text_lower)
+    ):
+        logger.info(f"🤖 Messaggio automatico Business rilevato - IGNORATO")
+        return 
+        
     business_connection_id = message.business_connection_id
     text = message.text.strip()
     
