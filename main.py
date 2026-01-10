@@ -160,7 +160,7 @@ def calcola_intenzione(text: str) -> str:
         IntentType.INVIO_ORDINE: "ordine",
         IntentType.DOMANDA_FAQ: "faq",
         IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
-        IntentType.SALUTO: "fallback",  # I saluti li gestisci come fallback
+        IntentType.SALUTO: "saluto",
         IntentType.FALLBACK: "fallback",
     }
     
@@ -1101,9 +1101,11 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             logger.error(f"❌ Errore Business reply: {e}")
             
     intent = calcola_intenzione(text)
+    logger.info(f"🔄 Intent ricevuto: '{intent}'")
     
     # 1. LISTA
     if intent == "lista":
+        logger.info("➡️ Entrato in blocco LISTA")
         lista = load_lista()
         if lista:
             for i in range(0, len(lista), 4000):
@@ -1114,6 +1116,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 2. ORDINE
     if intent == "ordine":
+        logger.info("➡️ Entrato in blocco ORDINE")
         context.bot_data[f"order_text_{message.message_id}"] = text
         keyboard = [[
             InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
@@ -1127,6 +1130,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 3. FAQ
     if intent == "faq":
+        logger.info("➡️ Entrato in blocco FAQ")
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
         if res.get("match"):
@@ -1142,6 +1146,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 4. RICERCA PRODOTTI
     if intent == "ricerca_prodotti":
+        logger.info("➡️ Entrato in blocco RICERCA")
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
             await send_business_reply(
@@ -1151,6 +1156,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             
     # 5. SALUTO
     if intent == "saluto":
+        logger.info("➡️ Entrato in blocco SALUTO")
         # Check se contiene anche "ordinare/ordine"
         if any(word in text.lower() for word in ['ordinare', 'ordine', 'comprare', 'acquistare']):
             keyboard = [
@@ -1158,7 +1164,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
             ]
             await send_business_reply(
-                "👋 Buongiorno!\n\n📋 Clicchi su PRODOTTI per vedere cosa abbiamo\n❓ Clicchi su FAQ per domande frequenti",
+                "👋 Buongiorno!\n\n📋 PRODOTTI per vedere cosa abbiamo\n❓ FAQ per domande frequenti",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
