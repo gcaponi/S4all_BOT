@@ -1141,9 +1141,73 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
-# --------------------------------------------------------------------
-# Setup bot
-# --------------------------------------------------------------------
+# ============================================================================
+# FLASK ROUTES
+# ============================================================================
+
+@app.route('/', methods=['GET'])
+def home():
+    """Homepage con status del bot"""
+    global bot_application
+    status = "✅ ATTIVO" if bot_application else "⏳ INIZIALIZZAZIONE"
+    
+    return f'''
+    🤖 Bot Telegram Business - {status}
+    
+    Endpoint disponibili:
+    - GET  /        → Status page
+    - GET  /health  → Health check  
+    - POST /webhook → Telegram webhook
+    ''', 200
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint per Render"""
+    global bot_application
+    
+    if bot_application:
+        return 'OK - Bot active', 200
+    else:
+        return 'OK - Bot initializing', 200
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Endpoint webhook per ricevere update da Telegram"""
+    global bot_application
+    
+    try:
+        if not bot_application:
+            logger.warning("⚠️ Bot non inizializzato al momento del webhook")
+            return 'Bot not ready', 503
+        
+        json_data = request.get_json(force=True)
+        
+        if not json_data:
+            logger.warning("⚠️ Webhook ricevuto senza dati")
+            return 'No data', 400
+        
+        update = Update.de_json(json_data, bot_application.bot)
+        
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        loop.run_until_complete(bot_application.process_update(update))
+        
+        return 'ok', 200
+        
+    except Exception as e:
+        logger.error(f"❌ Errore webhook: {e}", exc_info=True)
+        return 'Error', 500
+
+# ============================================================================
+# SETUP BOT
+# ============================================================================
+
+async def setup_bot():
+    # ... resto del codice ...
 
 async def setup_bot():
     global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA, intent_classifier
