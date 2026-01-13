@@ -1333,9 +1333,21 @@ async def setup_bot():
         
         return application
         
-    except Exception as e:
-        logger.error(f"âŒ Setup error: {e}")
-        initialization_lock = False
-        raise
+# ============================================================================
+# SHUTDOWN HANDLER
+# ============================================================================
 
+async def shutdown_bot():
+    """Chiude il bot in modo pulito"""
+    global bot_application
+    
+    if bot_application:
+        logger.info("🛑 Shutdown bot in corso...")
+        try:
+            await bot_application.stop()
+            await bot_application.shutdown()
+            logger.info("✅ Bot chiuso correttamente")
+        except Exception as e:
+            logger.error(f"❌ Errore durante shutdown: {e}")
+            
 # End main.py
