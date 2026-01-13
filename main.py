@@ -13,18 +13,18 @@ import asyncio
 from datetime import datetime
 from intent_classifier import IntentClassifier, IntentType
 
-# --------------------------------------------------------------------
+# ============================================================
 # CONFIGURAZIONE LOGGING (DETTAGLIATO)
-# --------------------------------------------------------------------
+# ============================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------------------------
+# ============================================================
 # VARIABILI DI AMBIENTE E COSTANTI
-# --------------------------------------------------------------------
+# ============================================================
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
@@ -61,7 +61,6 @@ LISTA_CONFIDENCE_THRESHOLD = 0.30
 # ============================================================
 # FILTRO CUSTOM PER BUSINESS MESSAGES
 # ============================================================
-
 class BusinessMessageFilter(filters.MessageFilter):
     """
     Filtro custom per identificare messaggi Telegram Business.
@@ -76,10 +75,9 @@ class BusinessMessageFilter(filters.MessageFilter):
 # Istanza del filtro
 business_filter = BusinessMessageFilter()
 
-# --------------------------------------------------------------------
+# ============================================================
 # UTILS: WEB FETCH, PARSING, I/O (SISTEMA DI AGGIORNAMENTO)
-# --------------------------------------------------------------------
-
+# ============================================================
 def fetch_markdown_from_html(url: str) -> str:
     """Scarica il contenuto HTML da JustPaste e lo converte in testo pulito"""
     try:
@@ -234,10 +232,9 @@ def save_json_file(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# --------------------------------------------------------------------
+# ============================================================
 # GESTIONE AUTORIZZAZIONI E UTENTI
-# --------------------------------------------------------------------
-
+# ============================================================
 def load_authorized_users():
     """Carica il database degli utenti che hanno usato il link segreto"""
     data = load_json_file(AUTHORIZED_USERS_FILE, default={})
@@ -289,10 +286,9 @@ def get_bot_username():
     """Utility per ottenere lo username del bot per comporre link dinamici"""
     return getattr(get_bot_username, 'username', 'tuobot')
 
-# --------------------------------------------------------------------
+# ============================================================
 # GESTIONE ORDINI CONFERMATI
-# --------------------------------------------------------------------
-
+# ============================================================
 def load_ordini():
     """Carica il database degli ordini confermati"""
     return load_json_file(ORDINI_FILE, default=[])
@@ -327,10 +323,9 @@ def get_ordini_oggi():
     oggi = datetime.now().strftime("%Y-%m-%d")
     return [o for o in ordini if o.get("data") == oggi]
 
-# --------------------------------------------------------------------
+# ============================================================
 # LOGICHE DI RICERCA INTELLIGENTE (CORE)
-# --------------------------------------------------------------------
-
+# ============================================================
 def calculate_similarity(text1: str, text2: str) -> float:
     """Calcola l'indice di somiglianza tra due stringhe (utilizzato per i refusi)"""
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
@@ -475,10 +470,9 @@ def has_payment_method(text: str) -> bool:
         return False
     return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
-# --------------------------------------------------------------------
+# ============================================================
 # HANDLERS: COMANDI (START, HELP, LISTA)
-# --------------------------------------------------------------------
-
+# ============================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -533,9 +527,9 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(lista_text), 4000):
         await update.message.reply_text(lista_text[i:i+4000])
 
-# --------------------------------------------------------------------
+# ============================================================
 # HANDLERS: AMMINISTRAZIONE (SOLO ADMIN_CHAT_ID)
-# --------------------------------------------------------------------
+# ============================================================
 
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
@@ -639,10 +633,9 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg, parse_mode='HTML')
 
-# --------------------------------------------------------------------
+# ============================================================
 # GESTIONE MESSAGGI: LOGICA UNIFICATA (PRIVATI E GRUPPI)
-# --------------------------------------------------------------------
-
+# ============================================================
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """ Gestisce messaggi ricevuti tramite Telegram Business.
     Questo handler viene chiamato SOLO per messaggi Business grazie al filtro custom.
@@ -1246,6 +1239,7 @@ async def setup_bot():
                 logger.critical(f"💀 FALLIMENTO TOTALE classifier: {e2}")
                 initialization_lock = False
                 raise
+                
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
         get_bot_username.username = bot.username
@@ -1333,6 +1327,11 @@ async def setup_bot():
         
         return application
         
+    except Exception as e:
+        logger.error(f"❌ Setup error: {e}")
+        initialization_lock = False
+        raise 
+
 # ============================================================================
 # SHUTDOWN HANDLER
 # ============================================================================
@@ -1349,5 +1348,5 @@ async def shutdown_bot():
             logger.info("✅ Bot chiuso correttamente")
         except Exception as e:
             logger.error(f"❌ Errore durante shutdown: {e}")
-            
+    
 # End main.py
