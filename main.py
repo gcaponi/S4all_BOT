@@ -1,5 +1,4 @@
 import os
-import json
 import logging
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -159,7 +158,7 @@ def calcola_intenzione(text: str) -> str:
         IntentType.RICHIESTA_LISTA: "lista",
         IntentType.INVIO_ORDINE: "ordine",
         IntentType.DOMANDA_FAQ: "faq",
-        IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
+    #     IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
         IntentType.SALUTO: "saluto",
         IntentType.FALLBACK: "fallback",
     }
@@ -658,14 +657,14 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
             return
 
     # 4. RICERCA PRODOTTI
-    if intent == "ricerca_prodotti":
-        l_res = fuzzy_search_lista(text, load_lista())
-        if l_res.get("match"):
-            await message.reply_text(
-                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
-                parse_mode="HTML"
-            )
-            return
+    # if intent == "ricerca_prodotti":
+    #     l_res = fuzzy_search_lista(text, load_lista())
+    #     if l_res.get("match"):
+    #         await message.reply_text(
+    #             f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
+    #             parse_mode="HTML"
+    #         )
+    #         return
 
     # 5. FALLBACK
     await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
@@ -722,16 +721,16 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # 4. RICERCA PRODOTTI
-    if intent == "ricerca_prodotti":
-        l_res = fuzzy_search_lista(text, load_lista())
-        if l_res.get("match"):
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
-                parse_mode="HTML",
-                reply_to_message_id=message.message_id
-            )
-            return
+    # if intent == "ricerca_prodotti":
+    #     l_res = fuzzy_search_lista(text, load_lista())
+    #     if l_res.get("match"):
+    #         await context.bot.send_message(
+    #             chat_id=message.chat.id,
+    #             text=f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
+    #             parse_mode="HTML",
+    #             reply_to_message_id=message.message_id
+    #         )
+    #         return
     
     # 5. FALLBACK INTELLIGENTE - Risponde solo se contiene keyword rilevanti
     trigger_words = [
@@ -1191,14 +1190,14 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         return
     
     # 4. RICERCA PRODOTTI
-    if intent == "ricerca_prodotti":
-        logger.info("➡️ Entrato in blocco RICERCA")
-        l_res = fuzzy_search_lista(text, load_lista())
-        if l_res.get("match"):
-            await send_business_reply(
-                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
-            )
-            return
+    # if intent == "ricerca_prodotti":
+    #     logger.info("➡️ Entrato in blocco RICERCA")
+    #     l_res = fuzzy_search_lista(text, load_lista())
+    #     if l_res.get("match"):
+    #         await send_business_reply(
+    #             f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+    #         )
+    #         return
             
     # 5. SALUTO
     if intent == "saluto":
