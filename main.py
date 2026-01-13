@@ -1207,9 +1207,6 @@ def webhook():
 # ============================================================================
 
 async def setup_bot():
-    # ... resto del codice ...
-
-async def setup_bot():
     global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA, intent_classifier
     
     if initialization_lock:
