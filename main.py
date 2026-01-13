@@ -637,13 +637,14 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # GESTIONE MESSAGGI: LOGICA UNIFICATA (PRIVATI E GRUPPI)
 # ============================================================
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Gestisce messaggi ricevuti tramite Telegram Business.
-    Questo handler viene chiamato SOLO per messaggi Business grazie al filtro custom.
-    I messaggi normali vanno in handle_group_message o handle_private_message. """
+    logger.info("🔵 BUSINESS MESSAGE HANDLER chiamato!")
     message = update.message or update.edited_message
     
     if not message or not message.text:
+        logger.warning("⚠️ Business message senza testo")
         return
+    
+    logger.info(f"📱 Business message: '{message.text}'")
     
     business_connection_id = message.business_connection_id
     
@@ -732,13 +733,14 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 # ============================================================
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Gestisce messaggi ricevuti tramite Telegram Business.
-    Questo handler viene chiamato SOLO per messaggi Business grazie al filtro custom.
-    I messaggi normali vanno in handle_group_message o handle_private_message. """
-    message = update.message or update.edited_message
+    logger.info("🟢 PRIVATE MESSAGE HANDLER chiamato!")
+    message = update.message
     
     if not message or not message.text:
+        logger.warning("⚠️ Private message senza testo")
         return
+        
+    logger.info(f"💬 Private message: '{message.text}'")
     
     business_connection_id = message.business_connection_id
     
@@ -1168,6 +1170,10 @@ def webhook():
     """Endpoint webhook per ricevere update da Telegram"""
     global bot_application
     
+    logger.info("=" * 70)
+    logger.info("📨 WEBHOOK RICEVUTO!")
+    logger.info("=" * 70)
+    
     try:
         if not bot_application:
             logger.warning("⚠️ Bot non inizializzato al momento del webhook")
@@ -1175,19 +1181,36 @@ def webhook():
         
         json_data = request.get_json(force=True)
         
+        # LOG DEL CONTENUTO
+        logger.info(f"📦 JSON ricevuto: {json.dumps(json_data, indent=2)[:500]}")
+        
         if not json_data:
             logger.warning("⚠️ Webhook ricevuto senza dati")
             return 'No data', 400
         
+        # Converti in Update object
+        logger.info("🔄 Conversione in Update object...")
         update = Update.de_json(json_data, bot_application.bot)
+        logger.info(f"✅ Update creato: {update}")
         
+        # Verifica tipo di update
+        if update.message:
+            logger.info(f"📝 Messaggio: '{update.message.text}'")
+            logger.info(f"👤 Da: {update.message.from_user.first_name}")
+            logger.info(f"💬 Chat ID: {update.message.chat.id}")
+            logger.info(f"🔑 Business: {getattr(update.message, 'business_connection_id', None)}")
+        
+        # Processa l'update
+        logger.info("🚀 Chiamata process_update()...")
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
+            logger.warning("⚠️ Event loop non trovato, ne creo uno nuovo")
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
         loop.run_until_complete(bot_application.process_update(update))
+        logger.info("✅ Update processato!")
         
         return 'ok', 200
         
