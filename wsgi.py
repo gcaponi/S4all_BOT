@@ -4,6 +4,8 @@ Importa semplicemente l'app da main.py (che ora ha tutte le route)
 """
 import asyncio
 import logging
+import signal
+import sys
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -77,3 +79,28 @@ if __name__ == '__main__':
     main.bot_application = bot_application
     
     app.run(host='0.0.0.0', port=10000, debug=True)
+
+# ============================================================================
+# SIGNAL HANDLER per shutdown pulito
+# ============================================================================
+
+def handle_shutdown(signum, frame):
+    """Gestisce SIGTERM per shutdown pulito"""
+    logger.info("🛑 Ricevuto segnale di shutdown")
+    
+    if bot_application:
+        try:
+            loop = asyncio.get_event_loop()
+            if not loop.is_closed():
+                from main import shutdown_bot
+                loop.run_until_complete(shutdown_bot())
+        except Exception as e:
+            logger.error(f"❌ Errore shutdown: {e}")
+    
+    sys.exit(0)
+
+# Registra il signal handler
+signal.signal(signal.SIGTERM, handle_shutdown)
+signal.signal(signal.SIGINT, handle_shutdown)
+
+# End wsgi.py
