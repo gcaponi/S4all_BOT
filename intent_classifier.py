@@ -1,4 +1,9 @@
-""" Sistema di Classificazione Intenti - 13/01/26 """
+""" Sistema di Classificazione Intenti - Versione Finale
+FIXES:
+- Caricamento città italiane da JSON
+- Fix località (no falsi positivi come "una", "re", "or")
+- Fix esclusioni domande su ordini senza prodotto
+- Rimozione della parola "ordine" dalla lista prodotti """
 import re
 import logging
 import json
@@ -15,7 +20,7 @@ class IntentType(Enum):
     RICHIESTA_LISTA = "lista"
     INVIO_ORDINE = "ordine"
     DOMANDA_FAQ = "faq"
-    # RICERCA_PRODOTTO = "ricerca"
+    RICERCA_PRODOTTO = "ricerca"
     SALUTO = "saluto"
     FALLBACK = "fallback"
 
@@ -144,15 +149,15 @@ class IntentClassifier:
         }
         
         # PRIORITÀ 4: Ricerca prodotto
-        # self.ricerca_indicators = [
-        #    r'\bhai\s+(la|il|dello|della)\s+\w+\b',
-        #    r'\bce\s+(la|il|dello|della)\s+\w+\b',
-        #    r'\bcosto\s+(di|del|della)\s+\w+\b',
-        #    r'\bprezzo\s+(di|del|della)\s+\w+\b',
-        #    r'\bquanto\s+costa\s+\w+\b',
-        #    r'\bvendete\s+\w+\b',
-        #    r'\bavete\s+\w+\b',
-        #]
+        self.ricerca_indicators = [
+            r'\bhai\s+(la|il|dello|della)\s+\w+\b',
+            r'\bce\s+(la|il|dello|della)\s+\w+\b',
+            r'\bcosto\s+(di|del|della)\s+\w+\b',
+            r'\bprezzo\s+(di|del|della)\s+\w+\b',
+            r'\bquanto\s+costa\s+\w+\b',
+            r'\bvendete\s+\w+\b',
+            r'\bavete\s+\w+\b',
+        ]
 
     def classify(self, text: str) -> IntentResult:
         """Classifica l'intento con debug completo"""
@@ -199,21 +204,22 @@ class IntentClassifier:
             return faq_result
         
         # PRIORITÀ 4: RICERCA
-        # ricerca_result = self._check_ricerca_prodotto(text_norm, text_lower)
-        # logger.info(f"🔎 Ricerca result: {ricerca_result.confidence:.2f} - {ricerca_result.reason}")
-        # if ricerca_result.confidence >= 0.5:
-        #    if self._has_strong_faq_signals(text_lower):
-        #        return faq_result if faq_result.confidence > 0.3 else IntentResult(
-        #            IntentType.DOMANDA_FAQ, 0.5, "FAQ signal override", ['faq_override']
-        #        )
-        #    return ricerca_result
+        ricerca_result = self._check_ricerca_prodotto(text_norm, text_lower)
+        logger.info(f"🔎 Ricerca result: {ricerca_result.confidence:.2f} - {ricerca_result.reason}")
+        
+        if ricerca_result.confidence >= 0.5:
+            if self._has_strong_faq_signals(text_lower):
+                return faq_result if faq_result.confidence > 0.3 else IntentResult(
+                    IntentType.DOMANDA_FAQ, 0.5, "FAQ signal override", ['faq_override']
+                )
+            return ricerca_result
         
         # PRIORITÀ 5: SALUTO
         if self._is_saluto(text_lower):
             return IntentResult(IntentType.SALUTO, 0.95, "Rilevato saluto", ['saluto'])
         
         # FALLBACK
-        candidates = [lista_result, ordine_result, faq_result] # ← Rimuovi ricerca_result
+        candidates = [lista_result, ordine_result, faq_result, ricerca_result]
         best = max(candidates, key=lambda x: x.confidence)
         
         logger.info(f"📽 Fallback - best candidate: {best.intent.value} ({best.confidence:.2f})")
@@ -510,31 +516,30 @@ class IntentClassifier:
         confidence = min(score, 1.0)
         
         return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
+    
+    def _check_ricerca_prodotto(self, text_norm: str, text_lower: str) -> IntentResult:
+        """Controlla ricerca prodotto"""
+        score = 0.0
+        matched = []
         
-    # METODO DISABILITATO: Ricerca prodotto
-    # def _check_ricerca_prodotto(self, text_norm: str, text_lower: str) -> IntentResult:
-    #     """Controlla ricerca prodotto"""
-    #     score = 0.0
-    #     matched = []
-    #     
-    #     for pattern in self.ricerca_indicators:
-    #         if re.search(pattern, text_norm, re.I):
-    #             score += 0.4
-    #             matched.append(f"pattern")
-    #     
-    #     parole = text_lower.split()
-    #     prodotti_trovati = [p for p in parole if p in self.lista_keywords and len(p) > 3]
-    #     if prodotti_trovati:
-    #         score += 0.3 * min(len(prodotti_trovati), 2)
-    #         matched.extend([f"prodotto:{p}" for p in prodotti_trovati[:3]])
-    #     
-    #     if len(parole) == 1 and 3 <= len(text_lower) <= 20:
-    #         score += 0.5
-    #         matched.append("single_word_query")
-    #     
-    #     confidence = min(score, 1.0)
-    #     
-    #     return IntentResult(IntentType.RICERCA_PRODOTTO, confidence, f"Ricerca prodotto score: {confidence:.2f}", matched)
+        for pattern in self.ricerca_indicators:
+            if re.search(pattern, text_norm, re.I):
+                score += 0.4
+                matched.append(f"pattern")
+        
+        parole = text_lower.split()
+        prodotti_trovati = [p for p in parole if p in self.lista_keywords and len(p) > 3]
+        if prodotti_trovati:
+            score += 0.3 * min(len(prodotti_trovati), 2)
+            matched.extend([f"prodotto:{p}" for p in prodotti_trovati[:3]])
+        
+        if len(parole) == 1 and 3 <= len(text_lower) <= 20:
+            score += 0.5
+            matched.append("single_word_query")
+        
+        confidence = min(score, 1.0)
+        
+        return IntentResult(IntentType.RICERCA_PRODOTTO, confidence, f"Ricerca prodotto score: {confidence:.2f}", matched)
     
     def _has_strong_faq_signals(self, text: str) -> bool:
         """Controlla segnali FAQ forti"""
