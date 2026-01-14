@@ -1097,16 +1097,50 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     logger.info(f"📱 Business message: '{message.text}'")
 
-    # WHITELIST: Rispondi solo a utenti con questi tag nel nome
-    ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
-    user_name = (message.from_user.first_name or "") + (message.from_user.last_name or "")
+    # ========================================
+    # WHITELIST CHECK - USA CONTACT SE DISPONIBILE
+    # ========================================
     
-    has_tag = any(tag in user_name.lower() for tag in ALLOWED_TAGS)
+    ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
+    
+    # Prova prima il nome dal contatto Business (se disponibile)
+    contact_name = ""
+    
+    # Business messages hanno il contact
+    if hasattr(message, 'contact') and message.contact:
+        contact_name = (message.contact.first_name or "") + " " + (message.contact.last_name or "")
+        logger.info(f"📇 Nome contatto Business: '{contact_name}'")
+    
+    # Se non c'è contact, usa first_name + last_name standard
+    if not contact_name:
+        contact_name = (message.from_user.first_name or "") + " " + (message.from_user.last_name or "")
+        logger.info(f"👤 Nome utente Telegram: '{contact_name}'")
+    
+    # Verifica tag nel nome completo
+    has_tag = any(tag in contact_name.lower() for tag in ALLOWED_TAGS)
     
     if not has_tag:
-        logger.info(f"⏭️ Utente senza tag whitelisted: {user_name}")
+        logger.info(f"⏭️ Utente senza tag whitelisted: {contact_name.strip()}")
         return
-        
+    
+    logger.info(f"✅ Utente con tag whitelisted: {contact_name.strip()}")
+
+    # DEBUG: Stampa TUTTI i campi disponibili
+    logger.info("=" * 70)
+    logger.info("🔍 DEBUG COMPLETO MESSAGE:")
+    logger.info(f"  from_user.first_name: {message.from_user.first_name}")
+    logger.info(f"  from_user.last_name: {message.from_user.last_name}")
+    logger.info(f"  from_user.username: {message.from_user.username}")
+    logger.info(f"  chat.first_name: {getattr(message.chat, 'first_name', 'N/A')}")
+    logger.info(f"  chat.last_name: {getattr(message.chat, 'last_name', 'N/A')}")
+    logger.info(f"  chat.title: {getattr(message.chat, 'title', 'N/A')}")
+    
+    if hasattr(message, 'contact'):
+        logger.info(f"  contact.first_name: {getattr(message.contact, 'first_name', 'N/A')}")
+        logger.info(f"  contact.last_name: {getattr(message.contact, 'last_name', 'N/A')}")
+    
+    logger.info("=" * 70)
+    
     # [GESTISCI COMANDI IN BUSINESS]
     if text.startswith('/'):
         command = text.split()[0].lower()
