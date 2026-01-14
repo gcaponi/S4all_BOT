@@ -1096,6 +1096,23 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         return
     
     logger.info(f"📱 Business message: '{message.text}'")
+
+    # ========================================
+    # SUPER DEBUG - STAMPA JSON RAW COMPLETO
+    # ========================================
+    import json
+    
+    logger.info("=" * 70)
+    logger.info("🔍 JSON RAW UPDATE COMPLETO:")
+    
+    try:
+        # Converti l'update in dict per vedere TUTTO
+        update_dict = update.to_dict()
+        logger.info(json.dumps(update_dict, indent=2, ensure_ascii=False))
+    except Exception as e:
+        logger.error(f"Errore conversione: {e}")
+    
+    logger.info("=" * 70)
     
     # ========================================
     # DEBUG PRIMA DI TUTTO (SPOSTATO QUI!)
@@ -1129,29 +1146,29 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # WHITELIST CHECK
     # ========================================
     
-    ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
+    # ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
     
     # Prova prima il nome dal contatto Business (se disponibile)
-    contact_name = ""
+    # contact_name = ""
     
     # Business messages hanno il contact
-    if hasattr(message, 'contact') and message.contact:
-        contact_name = (message.contact.first_name or "") + " " + (message.contact.last_name or "")
-        logger.info(f"📇 Nome contatto Business: '{contact_name}'")
-    
+    # if hasattr(message, 'contact') and message.contact:
+    #     contact_name = (message.contact.first_name or "") + " " + (message.contact.last_name or "")
+    #     logger.info(f"📇 Nome contatto Business: '{contact_name}'")
+    # 
     # Se non c'è contact, usa first_name + last_name standard
-    if not contact_name:
-        contact_name = (message.from_user.first_name or "") + " " + (message.from_user.last_name or "")
-        logger.info(f"👤 Nome utente Telegram: '{contact_name}'")
-    
+    # if not contact_name:
+    #     contact_name = (message.from_user.first_name or "") + " " + (message.from_user.last_name or "")
+    #     logger.info(f"👤 Nome utente Telegram: '{contact_name}'")
+    # 
     # Verifica tag nel nome completo
-    has_tag = any(tag in contact_name.lower() for tag in ALLOWED_TAGS)
+    # has_tag = any(tag in contact_name.lower() for tag in ALLOWED_TAGS)
     
-    if not has_tag:
-        logger.info(f"⏭️ Utente senza tag whitelisted: {contact_name.strip()}")
-        return
+    # if not has_tag:
+    #     logger.info(f"⏭️ Utente senza tag whitelisted: {contact_name.strip()}")
+    #     return
     
-    logger.info(f"✅ Utente con tag whitelisted: {contact_name.strip()}")
+    # logger.info(f"✅ Utente con tag whitelisted: {contact_name.strip()}")
     
     # [GESTISCI COMANDI IN BUSINESS]
     if text.startswith('/'):
