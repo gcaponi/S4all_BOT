@@ -363,89 +363,130 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     logger.info(f"❌ FAQ: No match (best score: {best_score:.2f})")
     return {'match': False, 'item': None, 'score': best_score, 'method': None}
 
-
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
-    """Cerca prodotti nella lista con filtro semantico + score"""
+    """
+    Cerca prodotti nel listino con pattern ULTRA-SPECIFICI.
+    Risponde SOLO a richieste esplicite di prodotti.
+    """
     if not lista_text:
         return {'match': False, 'snippet': None, 'score': 0}
     
+    text_lower = user_message.lower()
     user_normalized = normalize_text(user_message)
     
-    # Estrai parole significative (>3 caratteri)
-    words = [w for w in user_normalized.split() if len(w) > 3]
+    # ========================================
+    # STEP 1: VERIFICA INTENT ESPLICITO
+    # ========================================
     
-    if not words:
-        return {'match': False, 'snippet': None, 'score': 0}
-    
-    # FILTRO SEMANTICO: Blocca conversazionale SOLO se non ci sono prodotti
-    conversational_stopwords = [
-        'come', 'volevo', 'vorrei', 'voglio', 'posso', 'devo', 'come faccio',
-        'buongiorno', 'buonasera', 'ciao', 'salve', 'informazioni', 'aiuto',
-        'fare', 'faccio', 'sapere', 'chiedere', 'domanda', 'spiegare'
+    # Pattern che indicano CHIARAMENTE una richiesta di prodotto
+    explicit_request_patterns = [
+        r'\bhai\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',     # "hai la creatina"
+        r'\bvendete\s+\w{4,}',                                    # "vendete proteine"
+        r'\bavete\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',   # "avete il testosterone"
+        r'\bquanto\s+costa\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}', # "quanto costa la creatina"
+        r'\bprezzo\s+(di|del|della|dello)\s+\w{4,}',             # "prezzo del testosterone"
+        r'\bcosto\s+(di|del|della|dello)\s+\w{4,}',              # "costo del prodotto"
+        r'\bdisponibile\s+\w{4,}',                                # "disponibile creatina"
+        r'\bdisponibilità\s+(di|del|della)\s+\w{4,}',            # "disponibilità del prodotto"
+        r'\bin\s+stock\s+\w{4,}',                                 # "in stock testosterone"
+        r'\bce\s+(la|il|l\'|hai|avete)\s*\w{4,}',                # "c'è la creatina"
+        r'\bvorrei\s+(il|la|dello|della|un[ao]?)\s*\w{4,}',      # "vorrei il testosterone"
+        r'\bcerco\s+\w{4,}',                                      # "cerco proteine"
+        r'\bmi\s+serve\s+(il|la|un[ao]?)\s*\w{4,}',              # "mi serve il cialis"
     ]
     
-    has_conversational = any(stopword in user_normalized for stopword in conversational_stopwords)
+    has_explicit_intent = False
+    for pattern in explicit_request_patterns:
+        if re.search(pattern, text_lower):
+            has_explicit_intent = True
+            logger.info(f"✅ Pattern richiesta esplicita: {pattern[:30]}")
+            break
     
-    # Cerca nelle righe
+    # Query singola parola (solo se >5 caratteri per evitare "hai", "per", ecc.)
+    words = user_normalized.split()
+    if len(words) == 1 and len(user_normalized) > 5:
+        has_explicit_intent = True
+        logger.info(f"✅ Query singola: '{user_normalized}'")
+    
+    # Se NON ha intent esplicito → BLOCCA
+    if not has_explicit_intent:
+        logger.info(f"❌ Nessun intent esplicito di ricerca prodotto")
+        return {'match': False, 'snippet': None, 'score': 0}
+    
+    # ========================================
+    # STEP 2: ESTRAI NOME PRODOTTO
+    # ========================================
+    
+    # Stopwords da ignorare
+    stopwords = {
+        'hai', 'avete', 'vendete', 'quanto', 'costa', 'prezzo', 'costo',
+        'disponibile', 'disponibilità', 'stock', 'vorrei', 'cerco', 'serve',
+        'per', 'sono', 'nel', 'con', 'che', 'questa', 'quello', 'tutte',
+        'della', 'dello', 'delle', 'degli', 'alla', 'allo', 'alle', 'agli'
+    }
+    
+    # Estrai parole significative (>4 caratteri, non stopwords)
+    product_keywords = [
+        w for w in words 
+        if len(w) > 4 and w not in stopwords
+    ]
+    
+    if not product_keywords:
+        logger.info(f"❌ Nessuna keyword prodotto trovata")
+        return {'match': False, 'snippet': None, 'score': 0}
+    
+    logger.info(f"🔍 Cerco prodotti con keywords: {product_keywords}")
+    
+    # ========================================
+    # STEP 3: CERCA NEL LISTINO
+    # ========================================
+    
     lines = lista_text.split('\n')
-    best_lines = []
-    matches_count = 0
+    matched_lines = []
     
     for line in lines:
         if not line.strip():
             continue
+        
+        # Ignora linee che sono solo titoli/separatori
+        if line.strip().startswith('_'):
+            continue
+        if line.strip().startswith('⬛') and line.strip().endswith('⬛'):
+            continue
+        if line.strip().startswith('🔘') and line.strip().endswith('🔘'):
+            continue
+        
         line_normalized = normalize_text(line)
         
-        # Conta quante parole matchano (ANCHE UNA SOLA BASTA!)
-        matched_words = 0
-        for w in words:
-            if w in line_normalized:
-                matched_words += 1
-        
-        # Se ha almeno UNA parola in comune, includila
-        if matched_words > 0:
-            best_lines.append(line.strip())
-            matches_count += matched_words
+        # Cerca match esatti (word boundary)
+        for keyword in product_keywords:
+            # Match con word boundary per evitare substring
+            if re.search(r'\b' + re.escape(keyword) + r'\b', line_normalized, re.IGNORECASE):
+                # Verifica che la linea contenga effettivamente un prodotto
+                # (deve avere emoji 💊 o 💉 oppure formato prezzo)
+                if ('💊' in line or '💉' in line or '€' in line):
+                    matched_lines.append(line.strip())
+                    logger.info(f"  ✅ Match: '{keyword}' in '{line[:50]}'")
+                    break
     
-    # Se ha trovato prodotti, IGNORA il filtro conversazionale
-    if best_lines:
-        score = matches_count / len(words) if words else 0
-        snippet = '\n'.join(best_lines)
+    # ========================================
+    # STEP 4: RISULTATO
+    # ========================================
+    
+    if matched_lines:
+        # Limita a max 15 righe per non sovraccaricare
+        snippet = '\n'.join(matched_lines[:15])
         
-        # Se il risultato è troppo lungo (>4000 caratteri), tronca con messaggio
         if len(snippet) > 3900:
-            snippet = snippet[:3900] + "\n\n... (altri prodotti disponibili, scrivi una ricerca più specifica)"
+            snippet = snippet[:3900] + "\n\n💡 (Scrivi il nome specifico per una ricerca più precisa)"
         
-        logger.info(f"✅ Lista: {len(best_lines)} righe trovate, score: {score:.2f}")
-        return {'match': True, 'snippet': snippet, 'score': score}
+        score = len(matched_lines) / len(product_keywords) if product_keywords else 0
+        
+        logger.info(f"✅ Trovate {len(matched_lines)} righe prodotto")
+        return {'match': True, 'snippet': snippet, 'score': min(score, 1.0)}
     
-    # Se NON ha trovato prodotti E ha parole conversazionali
-    if has_conversational and not best_lines:
-        logger.info(f"⭐ Lista: Blocked (conversational + no products)")
-        return {'match': False, 'snippet': None, 'score': 0}
-    
-    logger.info(f"❌ Lista: No match")
+    logger.info(f"❌ Nessun prodotto trovato nel listino")
     return {'match': False, 'snippet': None, 'score': 0}
-    
-    # Se ha trovato prodotti nella lista, IGNORA il filtro conversazionale
-    if best_lines:
-        score = matches_count / len(words) if words else 0
-        logger.info(f"✅ Lista: {len(best_lines)} righe, score: {score:.2f}")
-        return {'match': True, 'snippet': '\n'.join(best_lines[:5]), 'score': score}
-    
-    # Se NON ha trovato prodotti E ha parole conversazionali, probabilmente è una domanda generica
-    if has_conversational and not best_lines:
-        logger.info(f"⏭️ Lista: Blocked (conversational + no products)")
-        return {'match': False, 'snippet': None, 'score': 0}
-    
-    logger.info(f"❌ Lista: No match")
-    return {'match': False, 'snippet': None, 'score': 0}
-
-def has_payment_method(text: str) -> bool:
-    """Verifica se il messaggio contiene un metodo di pagamento noto"""
-    if not text:
-        return False
-    return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
 
 # =============================================================================
 # HANDLERS: COMANDI (START, HELP, LISTA)
