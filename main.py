@@ -1039,20 +1039,33 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # Metodo 1: Check is_bot (per bot veri)    
     if message.from_user and message.from_user.is_bot:
-        logger.info(f"🤖 Messaggio da bot (automatico) - IGNORATO")
+        logger.info(f"🤖 Messaggio da bot - IGNORATO")
         return
         
     # Metodo 2: Rileva messaggi automatici dal testo
-    if (
-        text_lower.startswith('messaggio automatico') or
-        'messaggio automatico:' in text_lower or
-        ('rispondo dal lunedì al venerdì' in text_lower and 'ho registrato la tua richiesta' in text_lower)
-    ):
-        logger.info(f"🤖 Messaggio automatico Business rilevato - IGNORATO")
+    if any(keyword in text.upper() for keyword in [
+        'MESSAGGIO AUTOMATICO', 'RISPONDO DAL LUNEDÌ', 'HO REGISTRATO LA TUA RICHIESTA'
+    ]):
+        logger.info(f"⏭️ Messaggio automatico ignorato")
         return 
-    
-    logger.info(f"📱 Business message: '{text[:50]}'")
 
+    # Metodo 3: Ignora messaggi dell'admin (proprietario Business)
+    if message.from_user.id == ADMIN_CHAT_ID:
+        logger.info(f"⏭️ Messaggio da admin ignorato: {message.from_user.first_name}")
+        return
+    
+    logger.info(f"📱 Business message: '{message.text}'")
+
+    # WHITELIST: Rispondi solo a utenti con questi tag nel nome
+    ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
+    user_name = (message.from_user.first_name or "") + (message.from_user.last_name or "")
+    
+    has_tag = any(tag in user_name.lower() for tag in ALLOWED_TAGS)
+    
+    if not has_tag:
+        logger.info(f"⏭️ Utente senza tag whitelisted: {user_name}")
+        return
+        
     # [GESTISCI COMANDI IN BUSINESS]
     if text.startswith('/'):
         command = text.split()[0].lower()
