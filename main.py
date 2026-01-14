@@ -1089,16 +1089,44 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     ]):
         logger.info(f"⏭️ Messaggio automatico ignorato")
         return 
-
+    
     # Metodo 3: Ignora messaggi dell'admin (proprietario Business)
     if message.from_user.id == ADMIN_CHAT_ID:
         logger.info(f"⏭️ Messaggio da admin ignorato: {message.from_user.first_name}")
         return
     
     logger.info(f"📱 Business message: '{message.text}'")
-
+    
     # ========================================
-    # WHITELIST CHECK - USA CONTACT SE DISPONIBILE
+    # DEBUG PRIMA DI TUTTO (SPOSTATO QUI!)
+    # ========================================
+    logger.info("=" * 70)
+    logger.info("🔍 DEBUG COMPLETO MESSAGE:")
+    logger.info(f"  from_user.id: {message.from_user.id}")
+    logger.info(f"  from_user.first_name: {message.from_user.first_name}")
+    logger.info(f"  from_user.last_name: {message.from_user.last_name}")
+    logger.info(f"  from_user.username: {message.from_user.username}")
+    logger.info(f"  chat.id: {message.chat.id}")
+    logger.info(f"  chat.type: {message.chat.type}")
+    logger.info(f"  chat.first_name: {getattr(message.chat, 'first_name', 'N/A')}")
+    logger.info(f"  chat.last_name: {getattr(message.chat, 'last_name', 'N/A')}")
+    logger.info(f"  chat.title: {getattr(message.chat, 'title', 'N/A')}")
+    
+    if hasattr(message, 'contact'):
+        logger.info(f"  HAS CONTACT FIELD!")
+        logger.info(f"  contact.first_name: {getattr(message.contact, 'first_name', 'N/A')}")
+        logger.info(f"  contact.last_name: {getattr(message.contact, 'last_name', 'N/A')}")
+        logger.info(f"  contact.phone_number: {getattr(message.contact, 'phone_number', 'N/A')}")
+    else:
+        logger.info(f"  NO CONTACT FIELD")
+    
+    # Stampa TUTTI gli attributi del message (per scoprire campi nascosti)
+    logger.info(f"  ALL MESSAGE ATTRS: {[attr for attr in dir(message) if not attr.startswith('_')][:20]}")
+    
+    logger.info("=" * 70)
+    
+    # ========================================
+    # WHITELIST CHECK
     # ========================================
     
     ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
@@ -1124,22 +1152,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         return
     
     logger.info(f"✅ Utente con tag whitelisted: {contact_name.strip()}")
-
-    # DEBUG: Stampa TUTTI i campi disponibili
-    logger.info("=" * 70)
-    logger.info("🔍 DEBUG COMPLETO MESSAGE:")
-    logger.info(f"  from_user.first_name: {message.from_user.first_name}")
-    logger.info(f"  from_user.last_name: {message.from_user.last_name}")
-    logger.info(f"  from_user.username: {message.from_user.username}")
-    logger.info(f"  chat.first_name: {getattr(message.chat, 'first_name', 'N/A')}")
-    logger.info(f"  chat.last_name: {getattr(message.chat, 'last_name', 'N/A')}")
-    logger.info(f"  chat.title: {getattr(message.chat, 'title', 'N/A')}")
-    
-    if hasattr(message, 'contact'):
-        logger.info(f"  contact.first_name: {getattr(message.contact, 'first_name', 'N/A')}")
-        logger.info(f"  contact.last_name: {getattr(message.contact, 'last_name', 'N/A')}")
-    
-    logger.info("=" * 70)
     
     # [GESTISCI COMANDI IN BUSINESS]
     if text.startswith('/'):
