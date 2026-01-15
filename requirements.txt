@@ -1,5 +1,5 @@
 # Bot Telegram con supporto Business Messages NATIVO
-# Versione aggiornata - 09 Gennaio 2026
+# Versione aggiornata - 15 Gennaio 2026
 
 # Telegram Bot (versione con Business support nativo)
 python-telegram-bot[all]==21.7
@@ -17,3 +17,5 @@ httpx[http2]>=0.27.0
 
 # Utilities
 python-dotenv==1.0.1
+psycopg2-binary==2.9.9
+sqlalchemy==2.0.23
