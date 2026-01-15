@@ -922,17 +922,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     if intent == "lista":
         logger.info(f"➡️ Entrato in blocco LISTA")
         lista = load_lista()
-        if lista:
-            # Header personalizzato per tag
-            tag_headers = {
-                'sp20': '🏷️ <b>LISTINO - Sconto SP20</b>\n\n',
-                'aff': '🏷️ <b>LISTINO - Sconto AFF</b>\n\n',
-                'jgor5': '🏷️ <b>LISTINO - Sconto JGOR5</b>\n\n',
-                'ig5': '🏷️ <b>LISTINO - Sconto IG5</b>\n\n',
-            }
-            
-            header = tag_headers.get(user_tag, '📦 <b>LISTINO</b>\n\n')
-            
+        if lista:            
             chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
             for i, chunk in enumerate(chunks):
                 if i == 0:
