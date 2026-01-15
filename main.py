@@ -355,7 +355,6 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     """
     Cerca prodotti nel listino con pattern ULTRA-SPECIFICI.
-    Risponde SOLO a richieste esplicite di prodotti.
     """
     if not lista_text:
         return {'match': False, 'snippet': None, 'score': 0}
@@ -406,7 +405,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     
     product_keywords = [
         w for w in words 
-        if len(w) > 4 and w not in stopwords
+        if len(w) >= 4 and w not in stopwords
     ]
     
     if not product_keywords:
@@ -433,7 +432,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         line_normalized = normalize_text(line)
         
         for keyword in product_keywords:
-            if re.search(r'\b' + re.escape(keyword) + r'\b', line_normalized, re.IGNORECASE):
+            if keyword in line_normalized:
                 if ('💊' in line or '💉' in line or '€' in line):
                     matched_lines.append(line.strip())
                     logger.info(f"  ✅ Match: '{keyword}' in '{line[:50]}'")
