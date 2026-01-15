@@ -861,13 +861,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             # Registra il cliente (chat_id = ID del cliente)
             set_user_tag(chat_id, tag)
             
-            await context.bot.send_message(
-                business_connection_id=business_connection_id,
-                chat_id=chat_id,
-                text=f"✅ Cliente registrato con tag: <b>{tag}</b>",
-                parse_mode='HTML'
-            )
-            
             logger.info(f"👨‍💼 Admin ha registrato cliente {chat_id} con tag {tag}")
             return
         
