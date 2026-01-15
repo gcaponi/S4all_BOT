@@ -1,9 +1,4 @@
-""" Sistema di Classificazione Intenti - Versione Finale
-FIXES:
-- Caricamento città italiane da JSON
-- Fix località (no falsi positivi come "una", "re", "or")
-- Fix esclusioni domande su ordini senza prodotto
-- Rimozione della parola "ordine" dalla lista prodotti """
+""" Sistema di Classificazione Intenti - Versione Finale """
 import re
 import logging
 import json
@@ -331,7 +326,7 @@ class IntentClassifier:
             match = re.search(r'\bun[ao]?\s+(\w{5,})', text_lower)
             if match:
                 word = match.group(1)
-                common_words = ['ordine', 'momento', 'attimo', 'secondo', 'minuto']
+                common_words = ['ordine', 'momento', 'attimo', 'secondo', 'minuto', 'tantum']
                 if word not in common_words:
                     order_indicators += 2
                     matched.append('quantita_testuale_uno')
@@ -410,7 +405,8 @@ class IntentClassifier:
                 if lista_text:
                     lista_lines = [line.strip().lower() for line in lista_text.split('\n') 
                                    if line.strip() and len(line.strip()) > 3]
-                    text_words = [w for w in text_lower.split() if len(w) > 4]
+                    SKIP_WORDS = {'ordine', 'richiede', 'secondo', 'tantum', 'momento', 'attimo'}
+                    text_words = [w for w in text_lower.split() if len(w) > 4 and w not in SKIP_WORDS]
                     
                     product_found = False
                     for word in text_words:
