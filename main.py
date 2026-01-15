@@ -13,54 +13,118 @@ import asyncio
 from datetime import datetime
 from intent_classifier import IntentClassifier, IntentType
 
-# =============================================================================
-# CONFIGURAZIONE LOGGING (DETTAGLIATO)
-# =============================================================================
+# ============================================================================
+# CONFIGURAZIONE LOGGING
+# ============================================================================
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# =============================================================================
+# ============================================================================
 # VARIABILI DI AMBIENTE E COSTANTI
-# =============================================================================
+# ============================================================================
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 ADMIN_CHAT_ID = int(os.environ.get('ADMIN_CHAT_ID', 0))
 WEBHOOK_URL = os.environ.get('WEBHOOK_URL', '')
 PORT = int(os.environ.get('PORT', 10000))
 intent_classifier = None
 
-# Nomi dei file per la persistenza dei dati
+# File dati
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
 ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
 LISTA_FILE = "lista.txt"
 ORDINI_FILE = "ordini_confermati.json"
+USER_TAGS_FILE = 'user_tags.json'  # ← NUOVO
 
-# Link JustPaste.it per aggiornamento dinamico
+# Link JustPaste.it
 LISTA_URL = "https://justpaste.it/lista_4all"
 PASTE_URL = "https://justpaste.it/faq_4all"
 
-# Soglia di precisione per la ricerca approssimativa (Fuzzy)
-FUZZY_THRESHOLD = 0.6
+# Tag clienti consentiti
+ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
 
-# Parole chiave per intercettare i metodi di pagamento negli ordini
+# Soglie
+FUZZY_THRESHOLD = 0.6
+FAQ_CONFIDENCE_THRESHOLD = 0.65
+LISTA_CONFIDENCE_THRESHOLD = 0.30
+
+# Keywords pagamento
 PAYMENT_KEYWORDS = [
     "bonifico", "usdt", "crypto", "cripto", "bitcoin", "bit", "btc", "eth", "usdc", "xmr"
 ]
 
-# Inizializzazione Flask e variabili globali Bot
+# Inizializzazione Flask
 app = Flask(__name__)
 bot_application = None
 bot_initialized = False
 initialization_lock = False
-FAQ_CONFIDENCE_THRESHOLD = 0.65
-LISTA_CONFIDENCE_THRESHOLD = 0.30
 
-# =============================================================================
-# UTILS: WEB FETCH, PARSING, I/O (SISTEMA DI AGGIORNAMENTO)
-# =============================================================================
+# ============================================================================
+# FILTRO CUSTOM PER BUSINESS MESSAGES
+# ============================================================================
+
+class BusinessMessageFilter(filters.MessageFilter):
+    """Filtro custom per identificare messaggi Telegram Business"""
+    def filter(self, message):
+        return (
+            hasattr(message, 'business_connection_id') and 
+            message.business_connection_id is not None
+        )
+
+business_filter = BusinessMessageFilter()
+
+# ============================================================================
+# GESTIONE TAG UTENTI (SISTEMA /reg)
+# ============================================================================
+
+def load_user_tags():
+    """Carica database user_id → tag"""
+    if os.path.exists(USER_TAGS_FILE):
+        try:
+            with open(USER_TAGS_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Errore caricamento user_tags: {e}")
+            return {}
+    return {}
+
+def save_user_tags(tags_dict):
+    """Salva database user_id → tag"""
+    try:
+        with open(USER_TAGS_FILE, 'w') as f:
+            json.dump(tags_dict, f, indent=2, ensure_ascii=False)
+        logger.info(f"✅ user_tags.json salvato")
+    except Exception as e:
+        logger.error(f"❌ Errore salvataggio user_tags: {e}")
+
+def get_user_tag(user_id):
+    """Ottieni tag di un user"""
+    tags = load_user_tags()
+    return tags.get(str(user_id))
+
+def set_user_tag(user_id, tag):
+    """Imposta tag per un user"""
+    tags = load_user_tags()
+    tags[str(user_id)] = tag
+    save_user_tags(tags)
+    logger.info(f"✅ User {user_id} registrato con tag: {tag}")
+
+def remove_user_tag(user_id):
+    """Rimuovi tag di un user"""
+    tags = load_user_tags()
+    if str(user_id) in tags:
+        del tags[str(user_id)]
+        save_user_tags(tags)
+        return True
+    return False
+
+# ============================================================================
+# UTILS: WEB FETCH, PARSING, I/O
+# ============================================================================
+
 def fetch_markdown_from_html(url: str) -> str:
     """Scarica il contenuto HTML da JustPaste e lo converte in testo pulito"""
     try:
@@ -115,57 +179,7 @@ def update_lista_from_web():
     except Exception as e:
         logger.error(f"Errore aggiornamento listino: {e}")
     return False
-    
-# Variabile globale per parole chiave dinamiche estratte da lista.txt
-PAROLE_CHIAVE_LISTA = set()
 
-def estrai_parole_chiave_lista():
-    global PAROLE_CHIAVE_LISTA, intent_classifier
-    
-    testo = load_lista()
-    if not testo:
-        return set()
-    
-    testo_norm = re.sub(r'[^\w\s]', ' ', testo.lower())
-    parole = set(testo_norm.split())
-    parole_filtrate = {p for p in parole if len(p) > 2}
-    
-    # Passa anche la funzione load_lista al classifier
-    intent_classifier = IntentClassifier(
-        lista_keywords=parole_filtrate,
-        load_lista_func=load_lista
-    )
-    
-    return parole_filtrate
-
-def calcola_intenzione(text: str) -> str:
-    """ NUOVA VERSIONE: Usa il classificatore intelligente """
-    global intent_classifier
-    
-    # Se il classifier non è inizializzato, crealo
-    if intent_classifier is None:
-        PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
-    
-    # Classifica il messaggio
-    result = intent_classifier.classify(text)
-    
-    # Log per debugging
-    logger.info(f"🎯 Intento: {result.intent.value} (conf: {result.confidence:.2f})")
-    logger.info(f"💡 Ragione: {result.reason}")
-    logger.info(f"🔑 Match: {result.matched_keywords}")
-    
-    # Mappa IntentType ai tuoi valori attuali
-    intent_map = {
-        IntentType.RICHIESTA_LISTA: "lista",
-        IntentType.INVIO_ORDINE: "ordine",
-        IntentType.DOMANDA_FAQ: "faq",
-        IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
-        IntentType.SALUTO: "saluto",
-        IntentType.FALLBACK: "fallback",
-    }
-    
-    return intent_map.get(result.intent, "fallback")
-    
 def load_lista():
     """Carica il contenuto testuale del listino dal file locale"""
     if os.path.exists(LISTA_FILE):
@@ -188,9 +202,10 @@ def save_json_file(filename, data):
     with open(filename, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# =============================================================================
+# ============================================================================
 # GESTIONE AUTORIZZAZIONI E UTENTI
-# =============================================================================
+# ============================================================================
+
 def load_authorized_users():
     """Carica il database degli utenti che hanno usato il link segreto"""
     data = load_json_file(AUTHORIZED_USERS_FILE, default={})
@@ -242,9 +257,10 @@ def get_bot_username():
     """Utility per ottenere lo username del bot per comporre link dinamici"""
     return getattr(get_bot_username, 'username', 'tuobot')
 
-# =============================================================================
+# ============================================================================
 # GESTIONE ORDINI CONFERMATI
-# =============================================================================
+# ============================================================================
+
 def load_ordini():
     """Carica il database degli ordini confermati"""
     return load_json_file(ORDINI_FILE, default=[])
@@ -279,9 +295,10 @@ def get_ordini_oggi():
     oggi = datetime.now().strftime("%Y-%m-%d")
     return [o for o in ordini if o.get("data") == oggi]
 
-# =============================================================================
-# LOGICHE DI RICERCA INTELLIGENTE (CORE)
-# =============================================================================
+# ============================================================================
+# LOGICHE DI RICERCA INTELLIGENTE
+# ============================================================================
+
 def calculate_similarity(text1: str, text2: str) -> float:
     """Calcola l'indice di somiglianza tra due stringhe (utilizzato per i refusi)"""
     return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
@@ -292,70 +309,42 @@ def normalize_text(text: str) -> str:
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
-    """Cerca la risposta più pertinente nelle FAQ con sinonimi estesi"""
+    """Cerca la risposta più pertinente nelle FAQ con score"""
     user_normalized = normalize_text(user_message)
     
-    # [SISTEMA SINONIMI ESTESO]
     keywords_map = {
-        "spedizione": [
-            "spedito", "spedisci", "spedite", "corriere", "pacco", 
-            "invio", "mandato", "spedizioni", "arriva", "consegna",
-            "inviato", "inviare", "hai spedito", "hai inviato",
-            "mio pacco", "il pacco", "ordine spedito", "stato ordine"
-        ],
-        "tracking": [
-            "track", "codice", "tracciabilità", "tracciamento", 
-            "tracking", "traccia", "seguire", "dove",
-            "numero tracking", "codice spedizione", "dove si trova"
-        ],
-        "tempi": [
-            "quando arriva", "quanto tempo", "giorni", "ricevo", 
-            "consegna", "tempistiche", "quanto ci vuole",
-            "tempi di spedizione", "quanto tempo ci vuole"
-        ],
-        "pagamento": [
-            "pagare", "metodi", "bonifico", "ricarica", "paypal", 
-            "crypto", "pagamenti", "come pago", "pagamento"
-        ],
-        "ordinare": [
-            "ordine", "ordinare", "fare ordine", "come ordino", 
-            "voglio ordinare", "fare un ordine", "posso ordinare", 
-            "come faccio", "procedura"
-        ]
+        "spedizione": ["spedito", "spedisci", "spedite", "corriere", "pacco", "invio", "mandato", "spedizioni", "arriva", "consegna"],
+        "tracking": ["track", "codice", "tracciabilità", "tracciamento", "tracking", "traccia", "seguire", "dove"],
+        "tempi": ["quando arriva", "quanto tempo", "giorni", "ricevo", "consegna", "tempistiche", "quanto ci vuole"],
+        "pagamento": ["pagare", "metodi", "bonifico", "ricarica", "paypal", "crypto", "pagamenti", "come pago", "pagamento"],
+        "ordinare": ["ordine", "ordinare", "fare ordine", "come ordino", "voglio ordinare", "fare un ordine", "posso ordinare", "come faccio", "procedura"]
     }
 
-    # [PRIORITÀ ALTA: MATCH CON KEYWORDS]
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         risposta_norm = normalize_text(item["risposta"])
         
         for root, synonyms in keywords_map.items():
             if any(syn in user_normalized for syn in synonyms):
-                # Match in domanda, risposta o keywords
-                if (root in domanda_norm or root in risposta_norm or 
-                    any(syn in risposta_norm for syn in synonyms)):
+                if root in domanda_norm or root in risposta_norm:
                     logger.info(f"✅ FAQ Match (keyword): {root} → score: 1.0")
                     return {'match': True, 'item': item, 'score': 1.0, 'method': 'keyword'}
 
-    # [PRIORITÀ MEDIA: SIMILARITà]
     best_match = None
     best_score = 0
     
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
         
-        # Match perfetto
         if user_normalized in domanda_norm or domanda_norm in user_normalized:
             logger.info(f"✅ FAQ Match (exact): score: 1.0")
             return {'match': True, 'item': item, 'score': 1.0, 'method': 'exact'}
         
-        # Similarità
         score = calculate_similarity(user_normalized, domanda_norm)
         if score > best_score:
             best_score = score
             best_match = item
     
-    # Soglia
     if best_score >= FAQ_CONFIDENCE_THRESHOLD:
         logger.info(f"✅ FAQ Match (fuzzy): score: {best_score:.2f}")
         return {'match': True, 'item': best_match, 'score': best_score, 'method': 'similarity'}
@@ -374,25 +363,21 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     text_lower = user_message.lower()
     user_normalized = normalize_text(user_message)
     
-    # ========================================
     # STEP 1: VERIFICA INTENT ESPLICITO
-    # ========================================
-    
-    # Pattern che indicano CHIARAMENTE una richiesta di prodotto
     explicit_request_patterns = [
-        r'\bhai\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',     # "hai la creatina"
-        r'\bvendete\s+\w{4,}',                                    # "vendete proteine"
-        r'\bavete\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',   # "avete il testosterone"
-        r'\bquanto\s+costa\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}', # "quanto costa la creatina"
-        r'\bprezzo\s+(di|del|della|dello)\s+\w{4,}',             # "prezzo del testosterone"
-        r'\bcosto\s+(di|del|della|dello)\s+\w{4,}',              # "costo del prodotto"
-        r'\bdisponibile\s+\w{4,}',                                # "disponibile creatina"
-        r'\bdisponibilità\s+(di|del|della)\s+\w{4,}',            # "disponibilità del prodotto"
-        r'\bin\s+stock\s+\w{4,}',                                 # "in stock testosterone"
-        r'\bce\s+(la|il|l\'|hai|avete)\s*\w{4,}',                # "c'è la creatina"
-        r'\bvorrei\s+(il|la|dello|della|un[ao]?)\s*\w{4,}',      # "vorrei il testosterone"
-        r'\bcerco\s+\w{4,}',                                      # "cerco proteine"
-        r'\bmi\s+serve\s+(il|la|un[ao]?)\s*\w{4,}',              # "mi serve il cialis"
+        r'\bhai\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',
+        r'\bvendete\s+\w{4,}',
+        r'\bavete\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',
+        r'\bquanto\s+costa\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',
+        r'\bprezzo\s+(di|del|della|dello)\s+\w{4,}',
+        r'\bcosto\s+(di|del|della|dello)\s+\w{4,}',
+        r'\bdisponibile\s+\w{4,}',
+        r'\bdisponibilità\s+(di|del|della)\s+\w{4,}',
+        r'\bin\s+stock\s+\w{4,}',
+        r'\bce\s+(la|il|l\'|hai|avete)\s*\w{4,}',
+        r'\bvorrei\s+(il|la|dello|della|un[ao]?)\s*\w{4,}',
+        r'\bcerco\s+\w{4,}',
+        r'\bmi\s+serve\s+(il|la|un[ao]?)\s*\w{4,}',
     ]
     
     has_explicit_intent = False
@@ -402,22 +387,16 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             logger.info(f"✅ Pattern richiesta esplicita: {pattern[:30]}")
             break
     
-    # Query singola parola (solo se >5 caratteri per evitare "hai", "per", ecc.)
     words = user_normalized.split()
     if len(words) == 1 and len(user_normalized) > 5:
         has_explicit_intent = True
         logger.info(f"✅ Query singola: '{user_normalized}'")
     
-    # Se NON ha intent esplicito → BLOCCA
     if not has_explicit_intent:
         logger.info(f"❌ Nessun intent esplicito di ricerca prodotto")
         return {'match': False, 'snippet': None, 'score': 0}
     
-    # ========================================
     # STEP 2: ESTRAI NOME PRODOTTO
-    # ========================================
-    
-    # Stopwords da ignorare
     stopwords = {
         'hai', 'avete', 'vendete', 'quanto', 'costa', 'prezzo', 'costo',
         'disponibile', 'disponibilità', 'stock', 'vorrei', 'cerco', 'serve',
@@ -425,7 +404,6 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         'della', 'dello', 'delle', 'degli', 'alla', 'allo', 'alle', 'agli'
     }
     
-    # Estrai parole significative (>4 caratteri, non stopwords)
     product_keywords = [
         w for w in words 
         if len(w) > 4 and w not in stopwords
@@ -437,10 +415,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     
     logger.info(f"🔍 Cerco prodotti con keywords: {product_keywords}")
     
-    # ========================================
     # STEP 3: CERCA NEL LISTINO
-    # ========================================
-    
     lines = lista_text.split('\n')
     matched_lines = []
     
@@ -448,7 +423,6 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         if not line.strip():
             continue
         
-        # Ignora linee che sono solo titoli/separatori
         if line.strip().startswith('_'):
             continue
         if line.strip().startswith('⬛') and line.strip().endswith('⬛'):
@@ -458,23 +432,15 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         
         line_normalized = normalize_text(line)
         
-        # Cerca match esatti (word boundary)
         for keyword in product_keywords:
-            # Match con word boundary per evitare substring
             if re.search(r'\b' + re.escape(keyword) + r'\b', line_normalized, re.IGNORECASE):
-                # Verifica che la linea contenga effettivamente un prodotto
-                # (deve avere emoji 💊 o 💉 oppure formato prezzo)
                 if ('💊' in line or '💉' in line or '€' in line):
                     matched_lines.append(line.strip())
                     logger.info(f"  ✅ Match: '{keyword}' in '{line[:50]}'")
                     break
     
-    # ========================================
     # STEP 4: RISULTATO
-    # ========================================
-    
     if matched_lines:
-        # Limita a max 15 righe per non sovraccaricare
         snippet = '\n'.join(matched_lines[:15])
         
         if len(snippet) > 3900:
@@ -488,9 +454,85 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     logger.info(f"❌ Nessun prodotto trovato nel listino")
     return {'match': False, 'snippet': None, 'score': 0}
 
-# =============================================================================
-# HANDLERS: COMANDI (START, HELP, LISTA)
-# =============================================================================
+def has_payment_method(text: str) -> bool:
+    """Verifica se il messaggio contiene un metodo di pagamento noto"""
+    if not text:
+        return False
+    return any(kw in text.lower() for kw in PAYMENT_KEYWORDS)
+
+# ============================================================================
+# INTENT CLASSIFICATION
+# ============================================================================
+
+PAROLE_CHIAVE_LISTA = set()
+
+def estrai_parole_chiave_lista():
+    """Estrae keywords dalla lista per il classifier"""
+    global PAROLE_CHIAVE_LISTA, intent_classifier
+    
+    testo = load_lista()
+    if not testo:
+        logger.warning("⚠️ Lista prodotti vuota")
+        PAROLE_CHIAVE_LISTA = set()
+    else:
+        testo_norm = re.sub(r'[^\w\s]', ' ', testo.lower())
+        parole = set(testo_norm.split())
+        PAROLE_CHIAVE_LISTA = {p for p in parole if len(p) > 2}
+    
+    try:
+        intent_classifier = IntentClassifier(
+            lista_keywords=PAROLE_CHIAVE_LISTA,
+            load_lista_func=load_lista
+        )
+        logger.info(f"✅ {len(PAROLE_CHIAVE_LISTA)} keywords estratte")
+    except Exception as e:
+        logger.error(f"❌ Errore creazione classifier: {e}")
+        intent_classifier = IntentClassifier(
+            lista_keywords=set(),
+            load_lista_func=load_lista
+        )
+        logger.warning("⚠️ Classifier inizializzato vuoto")
+    
+    return PAROLE_CHIAVE_LISTA
+
+def calcola_intenzione(text: str) -> str:
+    """Classifica l'intento usando il classifier"""
+    global intent_classifier
+    
+    if intent_classifier is None:
+        logger.warning("⚠️ Classifier non inizializzato, inizializzo...")
+        estrai_parole_chiave_lista()
+    
+    if intent_classifier is None:
+        logger.error("❌ CRITICAL: Classifier ancora None!")
+        return "fallback"
+    
+    try:
+        result = intent_classifier.classify(text)
+        
+        logger.info(f"🎯 Intento: {result.intent.value} (conf: {result.confidence:.2f})")
+        logger.info(f"💡 Ragione: {result.reason}")
+        logger.info(f"🔑 Match: {result.matched_keywords}")
+        
+        intent_map = {
+            IntentType.RICHIESTA_LISTA: "lista",
+            IntentType.INVIO_ORDINE: "ordine",
+            IntentType.DOMANDA_FAQ: "faq",
+            IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
+            IntentType.SALUTO: "fallback",
+            IntentType.FALLBACK: "fallback",
+        }
+        
+        return intent_map.get(result.intent, "fallback")
+        
+    except Exception as e:
+        logger.error(f"❌ Errore classify: {e}")
+        return "fallback"
+
+# ============================================================================
+# HANDLERS: COMANDI
+# ============================================================================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if user is None:
@@ -545,22 +587,25 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i in range(0, len(lista_text), 4000):
         await update.message.reply_text(lista_text[i:i+4000])
 
-# =============================================================================
-# HANDLERS: AMMINISTRAZIONE (SOLO ADMIN_CHAT_ID)
-# =============================================================================
+# ============================================================================
+# HANDLERS: AMMINISTRAZIONE
+# ============================================================================
+
 async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
     msg = (
         "👑 <b>PANNELLO DI CONTROLLO ADMIN</b>\n\n"
-        "<b>🔐 Comandi Admin:</b>\n"
+        "<b>📝 Comandi Admin:</b>\n"
         "• /genera_link - Crea il link per autorizzare nuovi utenti\n"
         "• /cambia_codice - Rigenera il token di sicurezza\n"
         "• /lista_autorizzati - Vedi chi può usare il bot\n"
         "• /revoca ID - Rimuovi un utente dal database\n"
         "• /aggiorna_faq - Scarica le FAQ da JustPaste\n"
         "• /aggiorna_lista - Scarica il listino da JustPaste\n"
-        "• /ordini - Visualizza ordini confermati oggi\n\n"
+        "• /ordini - Visualizza ordini confermati oggi\n"
+        "• /listtags - Vedi clienti registrati con tag\n"
+        "• /removetag ID - Rimuovi tag cliente\n\n"
         "<b>👤 Comandi Utente:</b>\n"
         "• /start - Avvia il bot\n"
         "• /help - Visualizza FAQ e regolamento\n"
@@ -617,7 +662,7 @@ async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ ID non trovato.")
 
 async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mostra all'admin gli ordini confermati oggi (Solo Admin in Privata)"""
+    """Mostra all'admin gli ordini confermati oggi"""
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
     
@@ -639,10 +684,10 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = ordine.get('user_id', 'N/A')
         ora = ordine.get('ora', 'N/A')
         message = ordine.get('message', 'N/A')
-        
-        msg += f"<b>{i}. {user_name}</b> (@{username}) 🆔 ID: <code>{user_id}</code>\n"
-        msg += f"   🕐 Ora: {ora}\n"
-        msg += f"   📝 Messaggio:\n <code>{message[:300]}</code>\n\n"
+        chat_id = ordine.get('chat_id', 'N/A')
+        msg += f"<b>{i}. {user_name}</b> (@{username})    🆔 ID: <code>{user_id}</code>\n"
+        msg += f"   🕐 Ora: {ora}    💬 Chat: <code>{chat_id}</code>\n"
+        msg += f"   📝 Messaggio:\n   <code>{message[:100]}...</code>\n\n"
     
     if len(msg) > 4000:
         for i in range(0, len(msg), 4000):
@@ -650,23 +695,310 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(msg, parse_mode='HTML')
 
-# =============================================================================
-# GESTIONE MESSAGGI: LOGICA UNIFICATA (PRIVATI E GRUPPI)
-# =============================================================================
+async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mostra tutti i clienti registrati con tag - /listtags"""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return
+    
+    tags = load_user_tags()
+    
+    if not tags:
+        await update.message.reply_text("Nessun cliente registrato con tag")
+        return
+    
+    msg = "📋 <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
+    for user_id, tag in tags.items():
+        msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
+    
+    if len(msg) > 4000:
+        for i in range(0, len(msg), 4000):
+            await update.message.reply_text(msg[i:i+4000], parse_mode='HTML')
+    else:
+        await update.message.reply_text(msg, parse_mode='HTML')
+
+async def remove_tag_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Rimuovi tag cliente - /removetag USER_ID"""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return
+    
+    if not context.args:
+        await update.message.reply_text("Uso: /removetag USER_ID")
+        return
+    
+    user_id = context.args[0]
+    if remove_user_tag(user_id):
+        await update.message.reply_text(f"✅ Tag rimosso per user {user_id}")
+    else:
+        await update.message.reply_text(f"❌ User {user_id} non trovato")
+
+# ============================================================================
+# FLASK ROUTES
+# ============================================================================
+
+@app.route('/', methods=['GET'])
+def home():
+    """Homepage con status del bot"""
+    global bot_application
+    status = "✅ ATTIVO" if bot_application else "⏳ INIZIALIZZAZIONE"
+    
+    return f'''
+    🤖 Bot Telegram Business - {status}
+    
+    Endpoint disponibili:
+    - GET  /        → Status page
+    - GET  /health  → Health check  
+    - POST /webhook → Telegram webhook
+    ''', 200
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint per Render"""
+    global bot_application
+    
+    if bot_application:
+        return 'OK - Bot active', 200
+    else:
+        return 'OK - Bot initializing', 200
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Endpoint webhook per ricevere update da Telegram"""
+    global bot_application
+    
+    try:
+        if not bot_application:
+            logger.warning("⚠️ Bot non inizializzato al momento del webhook")
+            return 'Bot not ready', 503
+        
+        json_data = request.get_json(force=True)
+        
+        if not json_data:
+            logger.warning("⚠️ Webhook ricevuto senza dati")
+            return 'No data', 400
+        
+        update = Update.de_json(json_data, bot_application.bot)
+        
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        loop.run_until_complete(bot_application.process_update(update))
+        
+        return 'ok', 200
+        
+    except Exception as e:
+        logger.error(f"❌ Errore webhook: {e}", exc_info=True)
+        return 'Error', 500
+
+# ============================================================================
+# HANDLER BUSINESS MESSAGES (CON SISTEMA /reg)
+# ============================================================================
+
+async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Gestisce messaggi Business con:
+    - Rilevamento automatico admin
+    - Sistema /reg per registrazione clienti
+    - Whitelist basata su tag
+    """
+    message = (
+        update.business_message
+        or update.message
+        or update.edited_message
+    )
+    
+    if not message or not message.text:
+        return
+    
+    business_connection_id = message.business_connection_id
+    text = message.text.strip()
+    text_lower = text.lower()
+    
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    # ========================================
+    # IGNORA BOT
+    # ========================================
+    
+    if message.from_user and message.from_user.is_bot:
+        logger.info(f"🤖 Bot ignorato")
+        return
+    
+    # ========================================
+    # RILEVA ADMIN AUTOMATICAMENTE
+    # ========================================
+    
+    # Se from_user.id != chat.id → Admin sta scrivendo al cliente
+    if user_id != chat_id:
+        logger.info(f"⏭️ Admin (user={user_id}) scrive a cliente (chat={chat_id})")
+        
+        # ECCEZIONE: Comando /reg
+        if text_lower.startswith('/reg'):
+            logger.info(f"✅ Comando /reg dall'admin - ESEGUO")
+            
+            parts = text.split()
+            
+            if len(parts) != 2:
+                await context.bot.send_message(
+                    business_connection_id=business_connection_id,
+                    chat_id=chat_id,
+                    text="❌ Formato: /reg TAG\nEsempio: /reg sp20"
+                )
+                return
+            
+            tag = parts[1].lower()
+            
+            if tag not in ALLOWED_TAGS:
+                await context.bot.send_message(
+                    business_connection_id=business_connection_id,
+                    chat_id=chat_id,
+                    text=f"❌ Tag non valido.\n\nTag disponibili:\n• {chr(10).join(ALLOWED_TAGS)}"
+                )
+                return
+            
+            # Registra il cliente (chat_id = ID del cliente)
+            set_user_tag(chat_id, tag)
+            
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=chat_id,
+                text=f"✅ Cliente registrato con tag: <b>{tag}</b>",
+                parse_mode='HTML'
+            )
+            
+            logger.info(f"👨‍💼 Admin ha registrato cliente {chat_id} con tag {tag}")
+            return
+        
+        # Ignora tutti gli altri messaggi dell'admin (inclusi automatici!)
+        logger.info(f"⏭️ Messaggio admin ignorato")
+        return
+    
+    # ========================================
+    # MESSAGGIO DAL CLIENTE
+    # ========================================
+    
+    logger.info(f"📱 Messaggio da cliente {user_id}: '{text}'")
+    
+    # ========================================
+    # CHECK WHITELIST TAG
+    # ========================================
+    
+    user_tag = get_user_tag(user_id)
+    
+    if not user_tag:
+        logger.info(f"⛔ Cliente {user_id} non registrato - ignoro")
+        return
+    
+    logger.info(f"✅ Cliente con tag: {user_tag}")
+    
+    # ========================================
+    # HELPER INVIO RISPOSTE
+    # ========================================
+    
+    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        try:
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=chat_id,
+                text=text_reply,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+            logger.info(f"✅ Reply inviata")
+        except Exception as e:
+            logger.error(f"❌ Errore invio: {e}")
+    
+    # ========================================
+    # CALCOLA INTENTO E RISPONDI
+    # ========================================
+    
+    intent = calcola_intenzione(text)
+    logger.info(f"🔄 Intent ricevuto: '{intent}'")
+    
+    # 1. LISTA
+    if intent == "lista":
+        logger.info(f"➡️ Entrato in blocco LISTA")
+        lista = load_lista()
+        if lista:
+            # Header personalizzato per tag
+            tag_headers = {
+                'sp20': '🏷️ <b>LISTINO - Sconto SP20</b>\n\n',
+                'aff': '🏷️ <b>LISTINO - Sconto AFF</b>\n\n',
+                'jgor5': '🏷️ <b>LISTINO - Sconto JGOR5</b>\n\n',
+                'ig5': '🏷️ <b>LISTINO - Sconto IG5</b>\n\n',
+            }
+            
+            header = tag_headers.get(user_tag, '📦 <b>LISTINO</b>\n\n')
+            
+            chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    await send_business_reply(header + chunk, parse_mode='HTML')
+                else:
+                    await send_business_reply(chunk, parse_mode=None)
+        return
+    
+    # 2. ORDINE
+    if intent == "ordine":
+        logger.info(f"➡️ Entrato in blocco ORDINE")
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await send_business_reply(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # 3. FAQ
+    if intent == "faq":
+        logger.info(f"➡️ Entrato in blocco FAQ")
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await send_business_reply(
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+            )
+        return
+    
+    # 4. RICERCA PRODOTTI
+    if intent == "ricerca_prodotti":
+        logger.info(f"➡️ Entrato in blocco RICERCA")
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await send_business_reply(
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+            )
+            return
+    
+    # 5. FALLBACK
+    trigger_words = [
+        'ordine', 'lista', 'listino', 'prodotto', 'quanto costa',
+        'spedizione', 'tracking', 'voglio', 'vorrei'
+    ]
+    
+    if any(word in text_lower for word in trigger_words):
+        await send_business_reply(
+            "❓ Non ho capito. Usa /help per le FAQ o scrivi 'lista' per il catalogo."
+        )
+
+# ============================================================================
+# HANDLER MESSAGGI PRIVATI
+# ============================================================================
+
 async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message
     if not message or not message.text:
         return
 
     text = message.text.strip()
-    # OPZIONALE: Analisi dettagliata per debugging
-    if intent_classifier:
-        result = intent_classifier.classify(text)
-        logger.info(f"📊 Analisi dettagliata: {result}")
-    
     intent = calcola_intenzione(text)
     
-    # 1. ROUTER CENTRALE -> Lista
+    # 1. LISTA
     if intent == "lista":
         lista = load_lista()
         if lista:
@@ -687,7 +1019,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
-    # 3. FAQ (solo se conversazionale)
+    # 3. FAQ
     if intent == "faq":
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
@@ -711,6 +1043,10 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     # 5. FALLBACK
     await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
 
+# ============================================================================
+# HANDLER MESSAGGI GRUPPI
+# ============================================================================
+
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.message or update.channel_post
     if not message or not message.text:
@@ -722,7 +1058,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     intent = calcola_intenzione(text)
     chat_id = message.chat.id
 
-    # 1. LISTA COMPLETA
+    # 1. LISTA
     if intent == "lista":
         lista = load_lista()
         if lista:
@@ -774,259 +1110,65 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
     
-    # 5. FALLBACK INTELLIGENTE - Risponde solo se contiene keyword rilevanti
+    # 5. FALLBACK
     trigger_words = [
-        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
-        'quanto costa', 'prezzo', 'disponibilita', 'ne hai', 'hai',
-        'spedizione', 'tracking', 'pacco', 'voglio', 'vorrei', 'avrei bisogno'
+        'ordine', 'lista', 'listino', 'prodotto', 'quanto costa',
+        'spedizione', 'tracking', 'voglio', 'vorrei'
     ]
     
     if any(word in text.lower() for word in trigger_words):
         await context.bot.send_message(
             chat_id=message.chat.id,
-            text="❓ Non ho capito bene. Usa /lista per il catalogo o /help per le FAQ.",
+            text="❓ Non ho capito. Usa /lista o /help.",
             reply_to_message_id=message.message_id
         )
-        
+
+# ============================================================================
+# HANDLER CALLBACK QUERY (BOTTONI)
+# ============================================================================
+
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gestisce i bottoni Inline e salva gli ordini confermati"""
     query = update.callback_query
     await query.answer()
     
-    # ============================================
-    # GESTIONE BOTTONI FAQ E LISTA
-    # ============================================
-    
-    if query.data == "show_lista":
-        logger.info("📋 Bottone LISTA cliccato")     
-        lista = load_lista()
-        is_business = (
-            hasattr(query.message, 'business_connection_id') and 
-            query.message.business_connection_id
-        )
-        
-        if lista:
-            try:
-                # Elimina messaggio con bottoni
-                if is_business:
-                    await context.bot.edit_message_text(
-                        business_connection_id=query.message.business_connection_id,
-                        chat_id=query.message.chat.id,
-                        message_id=query.message.message_id,
-                        text="📋 Ecco il nostro listino prodotti:"
-                    )
-                
-                # Invia lista
-                if is_business:
-                    for i in range(0, len(lista), 4000):
-                        await context.bot.send_message(
-                            business_connection_id=query.message.business_connection_id,
-                            chat_id=query.message.chat.id,
-                            text=lista[i:i+4000]
-                        )
-                        logger.info(f"✅ Lista inviata")
-            except Exception as e:
-                logger.error(f"❌ Errore invio lista: {e}")
-        return
-    
-    elif query.data == "show_faq":
-        logger.info("❓ Bottone FAQ cliccato")
-        
-        faq_data = load_faq()
-        faq_list = faq_data.get("faq", [])
-        is_business = (
-            hasattr(query.message, 'business_connection_id') and 
-            query.message.business_connection_id
-        )
-        
-        if faq_list:
-            full_text = "🗒️ <b>INFORMAZIONI E FAQ</b>\n\n"
-            for item in faq_list:
-                full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
-            
-            try:
-                # Elimina messaggio con bottoni
-                if is_business:
-                    await context.bot.edit_message_text(
-                        business_connection_id=query.message.business_connection_id,
-                        chat_id=query.message.chat.id,
-                        message_id=query.message.message_id,
-                        text="❓ Ecco le nostre FAQ:",
-                        parse_mode='HTML'
-                    )
-                
-                # Invia FAQ
-                if len(full_text) > 4000:
-                    for i in range(0, len(full_text), 4000):
-                        if is_business:
-                            await context.bot.send_message(
-                                business_connection_id=query.message.business_connection_id,
-                                chat_id=query.message.chat.id,
-                                text=full_text[i:i+4000],
-                                parse_mode='HTML'
-                            )
-                            logger.info(f"✅ FAQ inviate (chunk {i//4000 + 1})")
-                else:
-                    if is_business:
-                        await context.bot.send_message(
-                            business_connection_id=query.message.business_connection_id,
-                            chat_id=query.message.chat.id,
-                            text=full_text,
-                            parse_mode='HTML'
-                        )
-                        logger.info("✅ FAQ inviate")
-            except Exception as e:
-                logger.error(f"❌ Errore invio FAQ: {e}")
-        return
-    
-    elif query.data == "show_faq":
-        faq_data = load_faq()
-        faq_list = faq_data.get("faq", [])
-        
-        # Check se è Business
-        is_business = (
-            hasattr(query.message, 'business_connection_id') and 
-            query.message.business_connection_id
-        )
-        
-        if faq_list:
-            full_text = "🗒️ <b>INFORMAZIONI E FAQ</b>\n\n"
-            for item in faq_list:
-                full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
-            
-            try:
-                # Elimina il messaggio con i bottoni
-                if is_business:
-                    await context.bot.delete_message(
-                        business_connection_id=query.message.business_connection_id,
-                        chat_id=query.message.chat.id,
-                        message_id=query.message.message_id
-                    )
-                else:
-                    await query.message.delete()
-                
-                # Invia FAQ
-                if len(full_text) > 4000:
-                    for i in range(0, len(full_text), 4000):
-                        if is_business:
-                            await context.bot.send_message(
-                                business_connection_id=query.message.business_connection_id,
-                                chat_id=query.message.chat.id,
-                                text=full_text[i:i+4000],
-                                parse_mode='HTML'
-                            )
-                        else:
-                            await query.message.reply_text(full_text[i:i+4000], parse_mode='HTML')
-                else:
-                    if is_business:
-                        await context.bot.send_message(
-                            business_connection_id=query.message.business_connection_id,
-                            chat_id=query.message.chat.id,
-                            text=full_text,
-                            parse_mode='HTML'
-                        )
-                    else:
-                        await query.message.reply_text(full_text, parse_mode='HTML')
-            except Exception as e:
-                logger.error(f"❌ Errore invio FAQ: {e}")
-        return
-        
     if query.data.startswith("pay_ok_"):
-        user = query.from_user
-        
-        # Estrai message_id originale dal callback_data
-        try:
-            original_msg_id = int(query.data.split("_")[-1])
-        except:
-            original_msg_id = None
-        
-        # Prova a trovare il messaggio originale
         original_msg = query.message.reply_to_message
-        
-        # Estrai testo ordine
-        if original_msg and hasattr(original_msg, 'text'):
-            # Chat normale con reply
-            order_text = original_msg.text
-        elif original_msg_id and f"order_text_{original_msg_id}" in context.bot_data:
-            # Business - recupera dal bot_data
-            order_text = context.bot_data[f"order_text_{original_msg_id}"]
-            logger.info(f"📝 Testo recuperato da bot_data: {order_text}")
-            # Pulisci bot_data
-            del context.bot_data[f"order_text_{original_msg_id}"]
+        if original_msg:
+            user = query.from_user
+            add_ordine_confermato(
+                user_id=user.id,
+                user_name=user.first_name or "Sconosciuto",
+                username=user.username or "nessuno",
+                message_text=original_msg.text,
+                chat_id=original_msg.chat.id,
+                message_id=original_msg.message_id
+            )
+            
+            await query.edit_message_text(f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile.")
+            
+            # Notifica admin
+            if ADMIN_CHAT_ID:
+                try:
+                    notifica = (
+                        f"📩 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
+                        f"👤 Utente: {user.first_name} (@{user.username})\n"
+                        f"🆔 ID: <code>{user.id}</code>\n"
+                        f"📝 Messaggio:\n<code>{original_msg.text[:200]}</code>"
+                    )
+                    await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
+                except Exception as e:
+                    logger.error(f"Errore notifica admin: {e}")
         else:
-            # Fallback
-            order_text = f"Ordine (msg ID: {original_msg_id})"
-        
-        logger.info(f"📝 Testo ordine finale: {order_text[:100]}")
-        
-        # SALVA l'ordine con il testo corretto
-        add_ordine_confermato(
-            user_id=user.id,
-            user_name=user.first_name or "Sconosciuto",
-            username=user.username or "nessuno",
-            message_text=order_text,  # ← Testo originale!
-            chat_id=query.message.chat.id,
-            message_id=query.message.message_id
-        )
-        
-        logger.info(f"✅ Ordine salvato: {user.first_name} ({user.id})")
-        
-        # Aggiorna messaggio
-        try:
-            # Controlla se è Business
-            is_business = (
-                hasattr(query.message, 'business_connection_id') and 
-                query.message.business_connection_id
-            )
+            await query.edit_message_text("✅ Ottimo!")
             
-            if is_business:
-                await context.bot.edit_message_text(
-                    business_connection_id=query.message.business_connection_id,
-                    chat_id=query.message.chat.id,
-                    message_id=query.message.message_id,
-                    text=f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile."
-                )
-            else:
-                await query.edit_message_text(
-                    f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile."
-                )
-        except Exception as e:
-            logger.error(f"❌ Errore edit message: {e}")
-        
-        # Notifica admin
-        if ADMIN_CHAT_ID:
-            try:
-                notifica = (
-                    f"📢 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
-                    f"👤 Utente: {user.first_name} (@{user.username})\n"
-                    f"🆔 ID: <code>{user.id}</code>\n"
-                    f"💬 Chat: <code>{query.message.chat.id}</code>\n"
-                    f"📝 Testo:\n<code>{order_text[:200]}</code>"
-                )
-                await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
-            except Exception as e:
-                logger.error(f"❌ Errore notifica admin: {e}")
-                
     elif query.data.startswith("pay_no_"):
-        try:
-            is_business = (
-                hasattr(query.message, 'business_connection_id') and 
-                query.message.business_connection_id
-            )
-            
-            if is_business:
-                await context.bot.edit_message_text(
-                    business_connection_id=query.message.business_connection_id,
-                    chat_id=query.message.chat.id,
-                    message_id=query.message.message_id,
-                    text="💡 Per favore, indica il metodo (Bonifico, Crypto)."
-                )
-            else:
-                await query.edit_message_text("💡 Per favore, indica il metodo (Bonifico, Crypto).")
-        except Exception as e:
-            logger.error(f"❌ Errore pay_no: {e}")
-            
-# Benvenuto nuovi membri
+        await query.edit_message_text("💡 Per favore, indica il metodo (Bonifico, Crypto).")
+
+# ============================================================================
+# HANDLER STATUS UPDATES
+# ============================================================================
+
 async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.new_chat_members:
         return
@@ -1057,320 +1199,12 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_chat_member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
-# =============================================================================
+# ============================================================================
 # SETUP BOT
-# =============================================================================
+# ============================================================================
 
-# [FILTRO BUSINESS MESSAGES]
-async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message = (
-        update.business_message
-        or update.message
-        or update.edited_message
-    )
-    
-    if not message or not message.text:
-        return
-        
-    business_connection_id = message.business_connection_id
-    text = message.text.strip() 
-    text_lower = text.lower()
-    
-    # [IGNORA MESSAGGI AUTOMATICI/BOT BUSINESS]
-    
-    # Metodo 1: Check is_bot (per bot veri)    
-    if message.from_user and message.from_user.is_bot:
-        logger.info(f"🤖 Messaggio da bot - IGNORATO")
-        return
-        
-    # Metodo 2: Rileva messaggi automatici dal testo
-    if any(keyword in text.upper() for keyword in [
-        'MESSAGGIO AUTOMATICO', 'RISPONDO DAL LUNEDÌ', 'HO REGISTRATO LA TUA RICHIESTA'
-    ]):
-        logger.info(f"⏭️ Messaggio automatico ignorato")
-        return 
-    
-    # Metodo 3: Ignora messaggi dell'admin (proprietario Business)
-    if message.from_user.id == ADMIN_CHAT_ID:
-        logger.info(f"⏭️ Messaggio da admin ignorato: {message.from_user.first_name}")
-        return
-    
-    logger.info(f"📱 Business message: '{message.text}'")
-
-    # ========================================
-    # SUPER DEBUG - STAMPA JSON RAW COMPLETO
-    # ========================================
-    import json
-    
-    logger.info("=" * 70)
-    logger.info("🔍 JSON RAW UPDATE COMPLETO:")
-    
-    try:
-        # Converti l'update in dict per vedere TUTTO
-        update_dict = update.to_dict()
-        logger.info(json.dumps(update_dict, indent=2, ensure_ascii=False))
-    except Exception as e:
-        logger.error(f"Errore conversione: {e}")
-    
-    logger.info("=" * 70)
-    
-    # ========================================
-    # DEBUG PRIMA DI TUTTO (SPOSTATO QUI!)
-    # ========================================
-    logger.info("=" * 70)
-    logger.info("🔍 DEBUG COMPLETO MESSAGE:")
-    logger.info(f"  from_user.id: {message.from_user.id}")
-    logger.info(f"  from_user.first_name: {message.from_user.first_name}")
-    logger.info(f"  from_user.last_name: {message.from_user.last_name}")
-    logger.info(f"  from_user.username: {message.from_user.username}")
-    logger.info(f"  chat.id: {message.chat.id}")
-    logger.info(f"  chat.type: {message.chat.type}")
-    logger.info(f"  chat.first_name: {getattr(message.chat, 'first_name', 'N/A')}")
-    logger.info(f"  chat.last_name: {getattr(message.chat, 'last_name', 'N/A')}")
-    logger.info(f"  chat.title: {getattr(message.chat, 'title', 'N/A')}")
-    
-    if hasattr(message, 'contact'):
-        logger.info(f"  HAS CONTACT FIELD!")
-        logger.info(f"  contact.first_name: {getattr(message.contact, 'first_name', 'N/A')}")
-        logger.info(f"  contact.last_name: {getattr(message.contact, 'last_name', 'N/A')}")
-        logger.info(f"  contact.phone_number: {getattr(message.contact, 'phone_number', 'N/A')}")
-    else:
-        logger.info(f"  NO CONTACT FIELD")
-    
-    # Stampa TUTTI gli attributi del message (per scoprire campi nascosti)
-    logger.info(f"  ALL MESSAGE ATTRS: {[attr for attr in dir(message) if not attr.startswith('_')][:20]}")
-    
-    logger.info("=" * 70)
-    
-    # ========================================
-    # WHITELIST CHECK
-    # ========================================
-    
-    # ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
-    
-    # Prova prima il nome dal contatto Business (se disponibile)
-    # contact_name = ""
-    
-    # Business messages hanno il contact
-    # if hasattr(message, 'contact') and message.contact:
-    #     contact_name = (message.contact.first_name or "") + " " + (message.contact.last_name or "")
-    #     logger.info(f"📇 Nome contatto Business: '{contact_name}'")
-    # 
-    # Se non c'è contact, usa first_name + last_name standard
-    # if not contact_name:
-    #     contact_name = (message.from_user.first_name or "") + " " + (message.from_user.last_name or "")
-    #     logger.info(f"👤 Nome utente Telegram: '{contact_name}'")
-    # 
-    # Verifica tag nel nome completo
-    # has_tag = any(tag in contact_name.lower() for tag in ALLOWED_TAGS)
-    
-    # if not has_tag:
-    #     logger.info(f"⏭️ Utente senza tag whitelisted: {contact_name.strip()}")
-    #     return
-    
-    # logger.info(f"✅ Utente con tag whitelisted: {contact_name.strip()}")
-    
-    # [GESTISCI COMANDI IN BUSINESS]
-    if text.startswith('/'):
-        command = text.split()[0].lower()
-        
-        logger.info(f"🔧 Comando Business rilevato: {command}")
-        
-        # Helper per rispondere
-        async def send_reply(text_reply, parse_mode='HTML'):
-            try:
-                await context.bot.send_message(
-                    business_connection_id=business_connection_id,
-                    chat_id=message.chat.id,
-                    text=text_reply,
-                    parse_mode=parse_mode
-                )
-            except Exception as e:
-                logger.error(f"❌ Errore reply comando: {e}")
-        
-        # /help - Mostra FAQ
-        if command == '/help':
-            faq_data = load_faq()
-            faq_list = faq_data.get("faq", [])
-            
-            if not faq_list:
-                await send_reply("⚠️ FAQ non ancora configurate.")
-                return
-            
-            full_text = "🗒️ <b>REGOLAMENTO E INFORMAZIONI</b>\n\n"
-            for item in faq_list:
-                full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
-            
-            # Invia in chunks se troppo lungo
-            if len(full_text) > 4000:
-                for i in range(0, len(full_text), 4000):
-                    await send_reply(full_text[i:i+4000])
-            else:
-                await send_reply(full_text)
-            return
-        
-        # /lista - Mostra listino
-        elif command == '/lista':
-            lista = load_lista()
-            if lista:
-                for i in range(0, len(lista), 4000):
-                    await send_reply(lista[i:i+4000], parse_mode=None)
-            else:
-                await send_reply("❌ Lista non disponibile.")
-            return
-        
-        # /start - Messaggio benvenuto
-        elif command == '/start':
-            await send_reply(
-                "👋 <b>Benvenuto!</b>\n\n"
-                "Sono il tuo assistente automatico.\n\n"
-                "Comandi disponibili:\n"
-                "• /help - Mostra FAQ complete\n"
-                "• /lista - Mostra listino prodotti\n"
-                "• Scrivi 'lista' per il catalogo\n"
-                "• Chiedimi info su spedizioni, pagamenti, etc."
-            )
-            return
-        
-        # Altri comandi
-        else:
-            await send_reply(
-                "❓ Comando non riconosciuto.\n\n"
-                "Comandi disponibili:\n"
-                "• /help\n"
-                "• /lista\n"
-                "• /start"
-            )
-            return
-            
-    # [HELPER PER RISPONDERE IN BUSINESS]
-    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
-        try:
-            # Costruisci kwargs con tutti i parametri necessari
-            kwargs = {
-                "chat_id": message.chat.id,
-                "business_connection_id": business_connection_id,
-                "text": text_reply,
-                "parse_mode": parse_mode,
-                "reply_markup": reply_markup
-            }            
-            # Aggiungi message_thread_id se presente
-            if getattr(message, "message_thread_id", None):
-                kwargs["message_thread_id"] = message.message_thread_id
-            
-            await context.bot.send_message(**kwargs)
-            logger.info(f"✅ Business reply inviata")
-        except Exception as e:
-            logger.error(f"❌ Errore Business reply: {e}")
-            
-    intent = calcola_intenzione(text)
-    logger.info(f"🔄 Intent ricevuto: '{intent}'")
-    
-    # 1. LISTA
-    if intent == "lista":
-        logger.info("➡️ Entrato in blocco LISTA")
-        lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000):
-                await send_business_reply(lista[i:i+4000], parse_mode=None)
-        else:
-            await send_business_reply("❌ Lista non disponibile al momento.")
-        return
-    
-    # 2. ORDINE
-    if intent == "ordine":
-        logger.info("➡️ Entrato in blocco ORDINE")
-        context.bot_data[f"order_text_{message.message_id}"] = text
-        keyboard = [[
-            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
-            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-        ]]
-        await send_business_reply(
-            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-    
-    # 3. FAQ
-    if intent == "faq":
-        logger.info("➡️ Entrato in blocco FAQ")
-        faq_data = load_faq()
-        res = fuzzy_search_faq(text, faq_data.get("faq", []))
-        if res.get("match"):
-            await send_business_reply(
-                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
-            )
-            return
-        else:
-            await send_business_reply(
-                "❓ Non ho trovato una risposta specifica. Usa /help per tutte le FAQ."
-            )
-        return
-    
-    # 4. RICERCA PRODOTTI
-    if intent == "ricerca_prodotti":
-        logger.info("➡️ Entrato in blocco RICERCA")
-        l_res = fuzzy_search_lista(text, load_lista())
-        if l_res.get("match"):
-            await send_business_reply(
-                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
-            )
-            return
-            
-    # 5. SALUTO
-    if intent == "saluto":
-        logger.info("➡️ Entrato in blocco SALUTO")
-        # Check se contiene anche "ordinare/ordine"
-        if any(word in text.lower() for word in ['ordinare', 'ordine', 'comprare', 'acquistare']):
-            keyboard = [
-                [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
-                [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
-            ]
-            await send_business_reply(
-                "👋 Buongiorno!\n\n📋 PRODOTTI per vedere cosa abbiamo\n❓ FAQ per domande frequenti",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        else:
-            # Saluto semplice senza intent di ordinare
-            keyboard = [
-                [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
-                [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
-            ]
-            await send_business_reply(
-                "👋 Buongiorno! Come posso aiutarla?",
-                reply_markup=InlineKeyboardMarkup(keyboard)
-            )
-        return
-        
-    # 6. FALLBACK
-    trigger_words = [
-        'ordine', 'ordinare', 'lista', 'listino', 'prodotto', 'prodotti',
-        'quanto costa', 'prezzo', 'hai', 'disponibile'
-    ]
-    
-    if any(word in text.lower() for word in trigger_words):
-        keyboard = [
-            [InlineKeyboardButton("📋 PRODOTTI", callback_data="show_lista")],
-            [InlineKeyboardButton("❓ FAQ", callback_data="show_faq")]
-        ]
-        await send_business_reply(
-            "👋 SALVE!\n\n📋 PRODOTTI per vedere cosa abbiamo\n ❓FAQ per domande frequenti",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
-class BusinessMessageFilter(filters.MessageFilter):
-    """Filtro custom per identificare messaggi Telegram Business"""
-    def filter(self, message):
-        return (
-            hasattr(message, 'business_connection_id') and 
-            message.business_connection_id is not None
-        )
-
-business_filter = BusinessMessageFilter()
-
-async def initialize_bot():
-    """Inizializza il bot - Ottimizzato con file locali"""
-    global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA
+async def setup_bot():
+    global bot_application, initialization_lock, PAROLE_CHIAVE_LISTA, intent_classifier
     
     if initialization_lock:
         return None
@@ -1380,38 +1214,37 @@ async def initialize_bot():
     try:
         logger.info("🔡 Inizializzazione bot...")
         
+        # Inizializza classifier
         try:
-            # [USA FILE LOCALI SE ESISTONO]
-            # FAQ - Verifica e scarica se vuoto
-            if os.path.exists(FAQ_FILE):
-                faq_data = load_faq()
-                if faq_data.get("faq"):
-                    logger.info(f"📋 FAQ da file locale ({len(faq_data['faq'])} elementi)")
-                else:
-                    logger.warning("⚠️ FAQ vuote, scarico da web")
-                    update_faq_from_web()
-            else:
-                logger.info("📥 Download FAQ...")
+            # Prova aggiornamento da web
+            faq_data = load_faq()
+            if not faq_data.get("faq"):
+                logger.warning("⚠️ FAQ vuote, scarico da web")
                 update_faq_from_web()
-                
-            # Lista prodotti
-            if os.path.exists(LISTA_FILE):
-                logger.info("📦 Lista da file locale")
-            else:
-                logger.info("📥 Download lista...")
-                update_lista_from_web()
-                
-            # Estrai Keywords
+            
+            logger.info("📥 Download lista...")
+            update_lista_from_web()
+            
+            # Crea classifier
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
-            logger.info(f"✅ {len(PAROLE_CHIAVE_LISTA)} keywords estratte")
             
         except Exception as e:
-            logger.warning(f"⚠️ Prefetch: {e}")
+            logger.error(f"❌ Errore init: {e}")
+            intent_classifier = IntentClassifier(
+                lista_keywords=set(),
+                load_lista_func=load_lista
+            )
         
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
         get_bot_username.username = bot.username
         logger.info(f"Bot: @{bot.username}")
+        
+        # ========================================
+        # REGISTRAZIONE HANDLER
+        # ========================================
+        
+        # 1. COMANDI
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
         application.add_handler(CommandHandler("genera_link", genera_link_command))
@@ -1423,25 +1256,64 @@ async def initialize_bot():
         application.add_handler(CommandHandler("lista", lista_command))
         application.add_handler(CommandHandler("aggiorna_lista", aggiorna_lista_command))
         application.add_handler(CommandHandler("ordini", ordini_command))
-        application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_user_status))
-        application.add_handler(ChatMemberHandler(handle_chat_member_update, ChatMemberHandler.CHAT_MEMBER))
+        application.add_handler(CommandHandler("listtags", list_tags_command))
+        application.add_handler(CommandHandler("removetag", remove_tag_command))
+        
+        # 2. STATUS UPDATES
+        application.add_handler(MessageHandler(
+            filters.StatusUpdate.NEW_CHAT_MEMBERS, 
+            handle_user_status
+        ))
+        application.add_handler(ChatMemberHandler(
+            handle_chat_member_update, 
+            ChatMemberHandler.CHAT_MEMBER
+        ))
+        
+        # 3. CALLBACK QUERY
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
-        # BUSINESS MESSAGES HANDLER (group=0 = massima priorità)
-        application.add_handler(
-            MessageHandler(
-                business_filter & filters.TEXT & ~filters.COMMAND,
-                handle_business_message
-            ),
-            group=0
-        )
+        # 4. BUSINESS MESSAGES
+        application.add_handler(MessageHandler(
+            business_filter & filters.TEXT & ~filters.COMMAND,
+            handle_business_message
+        ))
         logger.info("✅ Handler Business Messages registrato (priority group=0)")
+        
+        # 5. MESSAGGI GRUPPI
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & (
+                filters.ChatType.GROUP | 
+                filters.ChatType.SUPERGROUP | 
+                filters.ChatType.CHANNEL
+            ),
+            handle_group_message
+        )) 
 
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & (filters.ChatType.GROUP | filters.ChatType.SUPERGROUP | filters.ChatType.CHANNEL), handle_group_message))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_private_message))
+        # 6. MESSAGGI PRIVATI
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE,
+            handle_private_message
+        ))
 
+        # ========================================
+        # WEBHOOK CONFIGURATION
+        # ========================================
         if WEBHOOK_URL:
-            await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
+            await application.bot.set_webhook(
+                url=f"{WEBHOOK_URL}/webhook",
+                allowed_updates=[
+                    "message",
+                    "edited_message", 
+                    "channel_post",
+                    "edited_channel_post",
+                    "callback_query",
+                    "chat_member",
+                    "my_chat_member",
+                    "business_connection",
+                    "business_message",
+                    "edited_business_message"
+                ]
+            )
             logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
 
         await application.initialize()
@@ -1449,50 +1321,10 @@ async def initialize_bot():
         logger.info("🤖 Bot pronto!")
         
         return application
+        
     except Exception as e:
         logger.error(f"❌ Setup error: {e}")
         initialization_lock = False
         raise
 
-
-@app.route('/')
-def index():
-    return "🤖 Bot attivo! ✅", 200
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    global bot_application, bot_initialized
-    
-    if not bot_initialized:
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            bot_application = loop.run_until_complete(initialize_bot())
-            bot_initialized = True
-        except Exception as e:
-            logger.error(f"Webhook init error: {e}")
-            return "Init error", 503
-    
-    if not bot_application:
-        return "Bot not ready", 503
-    
-    try:
-        update = Update.de_json(request.get_json(force=True), bot_application.bot)
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        loop.run_until_complete(bot_application.process_update(update))
-        return "OK", 200
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return "ERROR", 500
-
-@app.route('/health')
-def health():
-    return "OK", 200
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT, debug=False)
-
-#End main.py
+# End main.py
