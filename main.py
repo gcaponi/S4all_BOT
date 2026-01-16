@@ -477,15 +477,8 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_user_authorized(update.effective_user.id):
         return
         
-    update_lista_from_web()
-    lista_text = load_lista()
-    
-    if not lista_text:
-        await update.message.reply_text("❌ Listino non disponibile. Riprova più tardi.")
-        return
-        
-    for i in range(0, len(lista_text), 4000):
-        await update.message.reply_text(lista_text[i:i+4000])
+    lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
+    await update.message.reply_text(lista)
 
 # ============================================================================
 # HANDLERS: AMMINISTRAZIONE
@@ -821,12 +814,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # 1. LISTA
     if intent == "lista":
         logger.info(f"➡️ Entrato in blocco LISTA")
-        lista = load_lista()
-        if lista:
-            # Invia lista senza header
-            chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
-            for chunk in chunks:
-                await send_business_reply(chunk, parse_mode=None)
+        lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
+        await send_business_reply(lista, parse_mode=None)
         return
     
     # 2. ORDINE
@@ -888,10 +877,8 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     
     # 1. LISTA
     if intent == "lista":
-        lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000):
-                await message.reply_text(lista[i:i+4000])
+        lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
+        await message.reply_text(lista)
         return
 
     # 2. ORDINE
@@ -948,14 +935,12 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # 1. LISTA
     if intent == "lista":
-        lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000):
-                await context.bot.send_message(
-                    chat_id=message.chat.id,
-                    text=lista[i:i+4000],
-                    reply_to_message_id=message.message_id
-                )
+        lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            text=lista,
+            reply_to_message_id=message.message_id
+        )
         return
 
     # 2. ORDINE
