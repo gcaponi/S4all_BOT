@@ -72,10 +72,11 @@ initialization_lock = False
 class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
     def filter(self, message):
-        return (
-            hasattr(message, 'business_connection_id') and 
-            message.business_connection_id is not None
-        )
+        has_connection = hasattr(message, 'business_connection_id') and message.business_connection_id is not None
+        logger.info(f"🔍 BusinessFilter check: has_connection={has_connection}")
+        if has_connection:
+            logger.info(f"   ✅ Business message rilevato: {message.business_connection_id}")
+        return has_connection
 
 business_filter = BusinessMessageFilter()
 
@@ -678,6 +679,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     - Sistema /reg per registrazione clienti
     - Whitelist basata su tag
     """
+    logger.info("🚀 HANDLER BUSINESS MESSAGE CHIAMATO!")
+    
     message = (
         update.business_message
         or update.message
