@@ -72,11 +72,10 @@ initialization_lock = False
 class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
     def filter(self, message):
-        has_connection = hasattr(message, 'business_connection_id') and message.business_connection_id is not None
-        logger.info(f"🔍 BusinessFilter check: has_connection={has_connection}")
-        if has_connection:
-            logger.info(f"   ✅ Business message rilevato: {message.business_connection_id}")
-        return has_connection
+        return (
+            hasattr(message, 'business_connection_id') and 
+            message.business_connection_id is not None
+        )
 
 business_filter = BusinessMessageFilter()
 
@@ -535,10 +534,7 @@ async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_T
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
     link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
-    await update.message.reply_text(
-        f"🔗 **Link Autorizzazione:**\n{link}",
-        parse_mode='Markdown'
-    )
+    await update.message.reply_text(f"🔗 <b>Link Autorizzazione:</b>\n<code>{link}</code>", parse_mode='HTML')
 
 async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
@@ -668,6 +664,38 @@ def health():
     else:
         return 'OK - Bot initializing', 200
 
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Endpoint webhook per ricevere update da Telegram"""
+    global bot_application
+    
+    try:
+        if not bot_application:
+            logger.warning("⚠️ Bot non inizializzato al momento del webhook")
+            return 'Bot not ready', 503
+        
+        json_data = request.get_json(force=True)
+        
+        if not json_data:
+            logger.warning("⚠️ Webhook ricevuto senza dati")
+            return 'No data', 400
+        
+        update = Update.de_json(json_data, bot_application.bot)
+        
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        loop.run_until_complete(bot_application.process_update(update))
+        
+        return 'ok', 200
+        
+    except Exception as e:
+        logger.error(f"❌ Errore webhook: {e}", exc_info=True)
+        return 'Error', 500
+
 # ============================================================================
 # HANDLER BUSINESS MESSAGES (CON SISTEMA /reg)
 # ============================================================================
@@ -679,8 +707,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     - Sistema /reg per registrazione clienti
     - Whitelist basata su tag
     """
-    logger.info("🚀 HANDLER BUSINESS MESSAGE CHIAMATO!")
-    
     message = (
         update.business_message
         or update.message
@@ -696,10 +722,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     user_id = message.from_user.id
     chat_id = message.chat.id
-    
-    logger.info(f"📱 Business message - user_id={user_id}, chat_id={chat_id}")
-    logger.info(f"📝 Text: '{text}'")
-    logger.info(f"📝 Text_lower: '{text_lower}'")
     
     # ========================================
     # IGNORA BOT
@@ -1146,7 +1168,7 @@ async def setup_bot():
         
         # 4. BUSINESS MESSAGES
         application.add_handler(MessageHandler(
-            business_filter & filters.TEXT,  # ← RIMOSSO ~filters.COMMAND per permettere /reg
+            business_filter & filters.TEXT,
             handle_business_message
         ))
         logger.info("✅ Handler Business Messages registrato (priority group=0)")
