@@ -333,11 +333,22 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         line_normalized = normalize_text(line)
         
         for keyword in product_keywords:
-            if re.search(r'\b' + re.escape(keyword) + r'\b', line_normalized, re.IGNORECASE):
-                if ('💊' in line or '💉' in line or '€' in line):
-                    matched_lines.append(line.strip())
-                    logger.info(f"  ✅ Match: '{keyword}' in '{line[:50]}'")
-                    break
+            # Per query singole corte (<=5 char), usa substring match
+            # Per query più lunghe, usa word boundary
+            if len(keyword) <= 5 and len(product_keywords) == 1:
+                # Substring match (trova "primo" in "primobolan")
+                if keyword in line_normalized:
+                    if ('💊' in line or '💉' in line or '€' in line):
+                        matched_lines.append(line.strip())
+                        logger.info(f"  ✅ Match (substring): '{keyword}' in '{line[:50]}'")
+                        break
+            else:
+                # Word boundary match (più preciso per query lunghe)
+                if re.search(r'\b' + re.escape(keyword) + r'\b', line_normalized, re.IGNORECASE):
+                    if ('💊' in line or '💉' in line or '€' in line):
+                        matched_lines.append(line.strip())
+                        logger.info(f"  ✅ Match (word boundary): '{keyword}' in '{line[:50]}'")
+                        break
     
     # STEP 4: RISULTATO
     if matched_lines:
@@ -523,7 +534,10 @@ async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_T
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
     link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
-    await update.message.reply_text(f"🔗 <b>Link Autorizzazione:</b>\n<code>{link}</code>", parse_mode='HTML')
+    await update.message.reply_text(
+        f"🔗 **Link Autorizzazione:**\n{link}",
+        parse_mode='Markdown'
+    )
 
 async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
