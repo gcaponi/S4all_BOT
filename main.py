@@ -387,7 +387,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             break
     
     words = user_normalized.split()
-    if len(words) == 1 and len(user_normalized) > 5:
+    if len(words) == 1 and len(user_normalized) >= 4:
         has_explicit_intent = True
         logger.info(f"✅ Query singola: '{user_normalized}'")
     
@@ -918,7 +918,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
             for i, chunk in enumerate(chunks):
                 if i == 0:
-                    await send_business_reply(header + chunk, parse_mode='HTML')
+                    await send_business_reply(chunk, parse_mode='HTML')
                 else:
                     await send_business_reply(chunk, parse_mode=None)
         return
