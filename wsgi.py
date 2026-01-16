@@ -5,13 +5,22 @@ Inizializza il bot all'avvio di Gunicorn
 import asyncio
 import logging
 import json
+import sys
 from flask import request
 
+# FORZA logging su stdout
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO,
+    stream=sys.stdout,
+    force=True
 )
 logger = logging.getLogger(__name__)
+
+# Log di test immediato
+print("=" * 70, flush=True)
+print("🚀 WSGI.PY CARICATO!", flush=True)
+print("=" * 70, flush=True)
 
 logger.info("=" * 70)
 logger.info("🚀 WSGI: Importo app e setup_bot da main.py...")
