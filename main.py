@@ -729,9 +729,11 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     logger.error("🔥 BUSINESS HANDLER OK 🔥")
     
-    # DOPO IL TEST, decommentare il resto dell'handler qui sotto
-    # per ora stoppiamo qui per vedere il log 🔥
-    
+    # Estrai dati dal message
+    business_connection_id = message.business_connection_id
+    text = message.text.strip()
+    text_lower = text.lower()
+
     user_id = message.from_user.id
     chat_id = message.chat.id
     
