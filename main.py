@@ -727,36 +727,34 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 
     user_id = message.from_user.id if message.from_user else None
     chat_id = message.chat.id
-    business_connection_id = message.business_connection_id
+    outgoing = getattr(message, "outgoing", False)
 
     # =========================================================
     # LOG BASE (FONDAMENTALE PER RENDER)
     # =========================================================
     logger.info(
-        f"📩 BUSINESS MSG | user_id={user_id} | chat_id={chat_id} | "
-        f"business_conn={business_connection_id} | text='{text}'"
+        f"📩 BUSINESS MSG | outgoing={outgoing} | user_id={user_id} | "
+        f"chat_id={chat_id} | text='{text}'"
     )
 
     # =========================================================
-    # RICONOSCIMENTO ADMIN BUSINESS
+    # RICONOSCIMENTO ADMIN (OUTGOING = TRUE)
     # =========================================================
     is_admin = business_connection_id is not None
 
     # =========================================================
     # BLOCCO COMANDI ADMIN
     # =========================================================
-    if is_admin:
-        logger.info("👑 Messaggio da ADMIN business")
+    if outgoing:
+        logger.info("👑 Messaggio ADMIN business")
 
-        # ---- /reg TAG ----
         if text_lower.startswith("/reg"):
             parts = text.split()
 
             if len(parts) != 2:
                 await context.bot.send_message(
-                    business_connection_id=business_connection_id,
                     chat_id=chat_id,
-                    text="❌ Formato errato.\nUso corretto:\n/reg TAG\n\nEsempio: /reg sp20"
+                    text="❌ Uso corretto:\n/reg TAG\nEsempio: /reg sp20"
                 )
                 return
 
@@ -764,39 +762,31 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 
             if tag not in ALLOWED_TAGS:
                 await context.bot.send_message(
-                    business_connection_id=business_connection_id,
                     chat_id=chat_id,
-                    text=(
-                        "❌ Tag non valido.\n\n"
-                        "Tag disponibili:\n• " + "\n• ".join(ALLOWED_TAGS)
-                    )
+                    text="❌ Tag non valido.\n\nTag disponibili:\n• " + "\n• ".join(ALLOWED_TAGS)
                 )
                 return
 
             set_user_tag(chat_id, tag)
 
             await context.bot.send_message(
-                business_connection_id=business_connection_id,
                 chat_id=chat_id,
-                text=f"✅ Cliente registrato correttamente con tag: <b>{tag}</b>",
+                text=f"✅ Cliente registrato con tag: <b>{tag}</b>",
                 parse_mode="HTML"
             )
 
             logger.info(f"✅ REG OK | cliente={chat_id} | tag={tag}")
             return
 
-        # ---- altri messaggi admin: IGNORA ----
-        logger.info("⏭️ Messaggio admin ignorato")
+        # altri messaggi admin → ignora
         return
 
     # =========================================================
-    # BLOCCO CLIENTE
+    # CLIENTE (OUTGOING = FALSE)
     # =========================================================
-    logger.info("👤 Messaggio da CLIENTE")
+    logger.info("👤 Messaggio CLIENTE")
 
-    # ---- CHECK REGISTRAZIONE ----
     user_tag = get_user_tag(chat_id)
-
     if not user_tag:
         logger.warning(f"⛔ Cliente {chat_id} NON registrato")
         return
@@ -806,18 +796,13 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # =========================================================
     # HELPER INVIO RISPOSTE
     # =========================================================
-    async def reply(text_reply, parse_mode="HTML", reply_markup=None):
-        try:
-            await context.bot.send_message(
-                business_connection_id=business_connection_id,
-                chat_id=chat_id,
-                text=text_reply,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup
-            )
-            logger.info("📤 Risposta inviata")
-        except Exception as e:
-            logger.error(f"❌ Errore invio risposta: {e}")
+    async def reply(txt, parse_mode="HTML", reply_markup=None):
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=txt,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup
+        )
 
     # =========================================================
     # CALCOLO INTENTO
