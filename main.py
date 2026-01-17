@@ -715,17 +715,17 @@ def webhook():
 # ============================================================================
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Gestisce messaggi Business con:
-    - Rilevamento automatico admin
-    - Sistema /reg per registrazione clienti
-    - Whitelist basata su tag
-    """
+    logger.info(f"🎯 TypeHandler chiamato - type: {type(update)}")
+    logger.info(f"📋 Update dict: {update.to_dict().keys()}")
+    
     # TypeHandler passa tutti gli Update, filtro solo Business
     message = getattr(update, 'business_message', None)
     
+    logger.info(f"📨 business_message: {message}")
+    
     if not message:
-        return  # Non è Business message
+        logger.info(f"⏭️ Non è business message, skip")
+        return
     
     logger.error("🔥 BUSINESS HANDLER OK 🔥")
     
