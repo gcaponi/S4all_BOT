@@ -872,15 +872,37 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # 2. ORDINE
     if intent == "ordine":
         logger.info(f"➡️ Entrato in blocco ORDINE")
-        keyboard = [[
-            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
-            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-        ]]
-        await send_business_reply(
-            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
+    
+        # Salva l'ordine temporaneamente
+        order_data = {
+            'text': text,
+            'user_id': user_id,
+            'chat_id': chat_id,
+            'message_id': message.message_id
+        }
+    
+    # Usa callback_data per passare info
+    callback_data = f"pay_ok_{user_id}_{message.message_id}"
+    
+    keyboard = [[
+        InlineKeyboardButton("✅ Sì", callback_data=callback_data),
+        InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+    ]]
+    
+    # Salva in context per recuperarlo dopo
+    if not hasattr(context, 'bot_data'):
+        context.bot_data = {}
+    if 'pending_orders' not in context.bot_data:
+        context.bot_data['pending_orders'] = {}
+    
+    context.bot_data['pending_orders'][callback_data] = order_data
+    logger.info(f"💾 Ordine temporaneo salvato: {callback_data}")
+    
+    await send_business_reply(
+        "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    return
     
     # 3. FAQ
     if intent == "faq":
@@ -1065,38 +1087,44 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     if query.data.startswith("pay_ok_"):
         logger.info("✅ Bottone 'Sì' premuto")
         
-        # Cerca il messaggio originale
-        original_msg = query.message.reply_to_message if query.message else None
+        # Recupera ordine salvato
+        if not hasattr(context, 'bot_data'):
+            context.bot_data = {}
         
-        if not original_msg:
-            logger.warning("⚠️ Nessun messaggio originale trovato")
+        pending_orders = context.bot_data.get('pending_orders', {})
+        order_data = pending_orders.get(query.data)
+        
+        if not order_data:
+            logger.warning("⚠️ Ordine non trovato in memoria")
             await query.edit_message_text("✅ Ordine confermato!")
             return
         
         user = query.from_user
         
-        # Salva ordine
         add_ordine_confermato(
-            user_id=user.id,
+            user_id=order_data['user_id'],
             user_name=user.first_name or "Sconosciuto",
             username=user.username or "nessuno",
-            message_text=original_msg.text,
-            chat_id=original_msg.chat.id,
-            message_id=original_msg.message_id
+            message_text=order_data['text'],
+            chat_id=order_data['chat_id'],
+            message_id=order_data['message_id']
         )
         
-        logger.info(f"💾 Ordine salvato per user {user.id}")
+        logger.info(f"💾 Ordine salvato per user {order_data['user_id']}")
+        
+        # Rimuovi dalla memoria
+        del pending_orders[query.data]
         
         await query.edit_message_text(f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile.")
         
-        # Notifica admin
         if ADMIN_CHAT_ID:
             try:
                 notifica = (
                     f"📩 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
                     f"👤 Utente: {user.first_name} (@{user.username})\n"
-                    f"🆔 ID: <code>{user.id}</code>\n"
-                    f"📝 Messaggio:\n<code>{original_msg.text[:200]}</code>"
+                    f"🆔 ID: <code>{order_data['user_id']}</code>\n"
+                    f"💬 Chat: <code>{order_data['chat_id']}</code>\n"
+                    f"📝 Messaggio:\n<code>{order_data['text'][:200]}</code>"
                 )
                 await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
                 logger.info("📧 Notifica admin inviata")
