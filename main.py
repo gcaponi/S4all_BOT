@@ -131,12 +131,28 @@ def fetch_markdown_from_html(url: str) -> str:
         return ""
 
 def parse_faq(markdown: str) -> list:
-    """Parsa le FAQ basandosi sui titoli ## del markdown del JustPaste"""
-    pattern = r"^##\s+(.*?)\n(.*?)(?=\n##\s+|\Z)"
+    """Parsa le FAQ basandosi su emoji + titolo + emoji del JustPaste"""
+    
+    # Pattern: emoji, titolo (maiuscolo), emoji, contenuto
+    pattern = r"([🤔📨💵⬛📍])\s*\n([A-ZÀÈÉÌÒÙ\s]+)\s*\n\1\s*\n(.*?)(?=\n[🤔📨💵⬛📍]\s*\n[A-ZÀÈÉÌÒÙ]|\Z)"
+    
     matches = re.findall(pattern, markdown, flags=re.S | re.M)
+    
     if not matches:
-        return []
-    return [{"domanda": d.strip(), "risposta": r.strip()} for d, r in matches]
+        logger.warning("⚠️ Nessun match con pattern emoji. Provo pattern alternativo...")
+        # Fallback: separa per linee vuote doppie
+        sections = markdown.split('\n\n')
+        faq = []
+        for i in range(0, len(sections)-1, 2):
+            if i+1 < len(sections):
+                faq.append({
+                    "domanda": sections[i].strip(),
+                    "risposta": sections[i+1].strip()
+                })
+        return faq
+    
+    return [{"domanda": title.strip(), "risposta": content.strip()} 
+            for emoji, title, content in matches]
 
 def write_faq_json(faq: list, filename: str):
     """Salva le FAQ strutturate in un file JSON locale"""
@@ -1352,6 +1368,23 @@ async def setup_bot():
         await application.initialize()
         await application.start()
         logger.info("🤖 Bot pronto!")
+
+        await application.bot.set_my_commands([
+            ("start", "Avvia il bot"),
+            ("help", "Mostra FAQ e regolamento"),
+            ("lista", "Visualizza il listino prodotti"),
+            ("admin_help", "Pannello comandi admin"),
+            ("genera_link", "Genera link autorizzazione"),
+            ("cambia_codice", "Rigenera codice accesso"),
+            ("lista_autorizzati", "Lista utenti abilitati"),
+            ("revoca", "Rimuovi utente"),
+            ("aggiorna_faq", "Aggiorna FAQ da web"),
+            ("aggiorna_lista", "Aggiorna listino da web"),
+            ("ordini", "Visualizza ordini oggi"),
+            ("listtags", "Lista clienti con tag"),
+            ("removetag", "Rimuovi tag cliente"),
+            ("clearordini", "Cancella ordini vecchi"),
+        ])
         
         return application
         
