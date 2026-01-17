@@ -1,5 +1,5 @@
 # Bot Telegram con supporto Business Messages
-python-telegram-bot==20.8
+python-telegram-bot==21.7
 
 # Web server per webhook
 Flask==3.0.0
