@@ -145,14 +145,27 @@ def write_faq_json(faq: list, filename: str):
 
 def update_faq_from_web():
     """Sincronizza le FAQ scaricandole dal link JustPaste configurato"""
+    logger.info(f"📥 Tentativo download FAQ da: {PASTE_URL}")
+    
     markdown = fetch_markdown_from_html(PASTE_URL)
-    if markdown:
-        faq = parse_faq(markdown)
-        if faq:
-            write_faq_json(faq, FAQ_FILE)
-            logger.info(f"FAQ sincronizzate: {len(faq)} elementi salvati.")
-            return True
-    return False
+    
+    if not markdown:
+        logger.error("❌ Markdown vuoto o errore fetch")
+        return False
+    
+    logger.info(f"✅ Markdown scaricato: {len(markdown)} caratteri")
+    logger.info(f"📄 Prime 200 caratteri: {markdown[:200]}")
+    
+    faq = parse_faq(markdown)
+    
+    if not faq:
+        logger.error(f"❌ Nessuna FAQ trovata. Pattern non matchato.")
+        logger.info(f"🔍 Markdown completo:\n{markdown}")
+        return False
+    
+    write_faq_json(faq, FAQ_FILE)
+    logger.info(f"✅ FAQ sincronizzate: {len(faq)} elementi salvati.")
+    return True
 
 def update_lista_from_web():
     """Scarica il listino prodotti e lo salva nel file locale lista.txt"""
