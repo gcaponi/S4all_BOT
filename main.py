@@ -718,16 +718,19 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     logger.info(f"🎯 TypeHandler chiamato - type: {type(update)}")
     logger.info(f"📋 Update dict: {update.to_dict().keys()}")
     
-    # TypeHandler passa tutti gli Update, filtro solo Business
-    message = getattr(update, 'business_message', None)
+    # ACCESSO DIRETTO AL DIZIONARIO RAW
+    update_dict = update.to_dict()
     
-    logger.info(f"📨 business_message: {message}")
-    
-    if not message:
+    if 'business_message' not in update_dict:
         logger.info(f"⏭️ Non è business message, skip")
         return
     
+    # Ricrea il Message object dal dizionario
+    from telegram import Message
+    message = Message.de_json(update_dict['business_message'], context.bot)
+    
     logger.error("🔥 BUSINESS HANDLER OK 🔥")
+    logger.info(f"📨 Message text: {message.text}")
     
     # Estrai dati dal message
     business_connection_id = message.business_connection_id
