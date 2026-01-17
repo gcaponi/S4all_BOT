@@ -540,7 +540,10 @@ async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_T
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
     link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
-    await update.message.reply_text(f"🔗 <b>Link Autorizzazione:</b>\n<code>{link}</code>", parse_mode='HTML')
+    await update.message.reply_text(
+        f"🔗 <b>Link Autorizzazione:</b>\n<a href='{link}'>{link}</a>",
+        parse_mode='HTML'
+    )
 
 async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
@@ -861,13 +864,12 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 1. LISTA
     if intent == "lista":
-        logger.info(f"➡️ Entrato in blocco LISTA")
-        lista = load_lista()
-        if lista:  
-            chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
-            for chunk in chunks:
-                await send_business_reply(chunk, parse_mode=None)
-        return
+    logger.info(f"➡️ Entrato in blocco LISTA")
+    await send_business_reply(
+        "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
+        parse_mode=None
+    )
+    return
     
     # 2. ORDINE
     if intent == "ordine":
@@ -950,11 +952,10 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     
     # 1. LISTA
     if intent == "lista":
-        lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000):
-                await message.reply_text(lista[i:i+4000])
-        return
+    await message.reply_text(
+        "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk"
+    )
+    return
 
     # 2. ORDINE
     if intent == "ordine":
@@ -1010,15 +1011,12 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # 1. LISTA
     if intent == "lista":
-        lista = load_lista()
-        if lista:
-            for i in range(0, len(lista), 4000):
-                await context.bot.send_message(
-                    chat_id=message.chat.id,
-                    text=lista[i:i+4000],
-                    reply_to_message_id=message.message_id
-                )
-        return
+    await context.bot.send_message(
+        chat_id=message.chat.id,
+        text="Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
+        reply_to_message_id=message.message_id
+    )
+    return
 
     # 2. ORDINE
     if intent == "ordine":
