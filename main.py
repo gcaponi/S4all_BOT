@@ -883,28 +883,28 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             'message_id': message.message_id
         }
     
-    # Usa callback_data per passare info
-    callback_data = f"pay_ok_{user_id}_{message.message_id}"
+        # Usa callback_data per passare info
+        callback_data = f"pay_ok_{user_id}_{message.message_id}"
     
-    keyboard = [[
-        InlineKeyboardButton("✅ Sì", callback_data=callback_data),
-        InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-    ]]
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=callback_data),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
     
-    # Salva in context per recuperarlo dopo
-    if not hasattr(context, 'bot_data'):
-        context.bot_data = {}
-    if 'pending_orders' not in context.bot_data:
-        context.bot_data['pending_orders'] = {}
+        # Salva in context per recuperarlo dopo
+        if not hasattr(context, 'bot_data'):
+            context.bot_data = {}
+        if 'pending_orders' not in context.bot_data:
+            context.bot_data['pending_orders'] = {}
     
-    context.bot_data['pending_orders'][callback_data] = order_data
-    logger.info(f"💾 Ordine temporaneo salvato: {callback_data}")
+        context.bot_data['pending_orders'][callback_data] = order_data
+        logger.info(f"💾 Ordine temporaneo salvato: {callback_data}")
     
-    await send_business_reply(
-        "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-    return
+        await send_business_reply(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
     
     # 3. FAQ
     if intent == "faq":
