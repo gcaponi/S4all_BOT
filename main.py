@@ -952,10 +952,10 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     
     # 1. LISTA
     if intent == "lista":
-    await message.reply_text(
-        "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk"
-    )
-    return
+        await message.reply_text(
+            "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk"
+        )
+        return
 
     # 2. ORDINE
     if intent == "ordine":
@@ -1011,12 +1011,12 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # 1. LISTA
     if intent == "lista":
-    await context.bot.send_message(
-        chat_id=message.chat.id,
-        text="Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
-        reply_to_message_id=message.message_id
-    )
-    return
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            text="Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
+            reply_to_message_id=message.message_id
+        )
+        return
 
     # 2. ORDINE
     if intent == "ordine":
