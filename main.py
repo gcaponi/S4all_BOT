@@ -1156,7 +1156,11 @@ async def setup_bot():
         # ========================================
         # REGISTRAZIONE HANDLER
         # ========================================
-        
+
+        # BUSINESS MESSAGES
+        application.add_handler(TypeHandler(Update, handle_business_message))
+        logger.info("✅ Handler Business Messages registrato (priority group=0)")
+
         # 1. COMANDI
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("help", help_command))
@@ -1184,13 +1188,6 @@ async def setup_bot():
         
         # 3. CALLBACK QUERY
         application.add_handler(CallbackQueryHandler(handle_callback_query))
-        
-        # 4. BUSINESS MESSAGES
-        application.add_handler(MessageHandler(
-            business_filter & filters.TEXT,
-            handle_business_message
-        ))
-        logger.info("✅ Handler Business Messages registrato (priority group=0)")
         
         # 5. MESSAGGI GRUPPI
         application.add_handler(MessageHandler(
