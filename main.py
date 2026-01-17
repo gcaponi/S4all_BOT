@@ -1013,6 +1013,8 @@ async def setup_bot():
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
         # 4. BUSINESS MESSAGES
+        application.add_handler(TypeHandler(Update, handle_business_message))
+        
         # application.add_handler(MessageHandler(
         #     business_filter & filters.TEXT,
         #     handle_business_message
