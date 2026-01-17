@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if not DATABASE_URL:
-    logger.error("❌ DATABASE_URL non trovato nelle variabili ambiente!")
+    logger.error("âŒ DATABASE_URL non trovato nelle variabili ambiente!")
     raise RuntimeError("DATABASE_URL non configurato")
 
 # Fix per Render (usa postgresql:// invece di postgres://)
@@ -44,7 +44,6 @@ class UserTag(Base):
     
     user_id = Column(String(50), primary_key=True, index=True)
     tag = Column(String(20), nullable=False)
-    username = Column(String(100))  # Username Telegram (opzionale)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -88,10 +87,10 @@ def init_db():
     """Crea tutte le tabelle se non esistono"""
     try:
         Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database inizializzato")
+        logger.info("âœ… Database inizializzato")
         return True
     except Exception as e:
-        logger.error(f"❌ Errore inizializzazione database: {e}")
+        logger.error(f"âŒ Errore inizializzazione database: {e}")
         return False
 
 # ============================================================================
@@ -107,30 +106,24 @@ def get_user_tag(user_id: int) -> str:
     finally:
         session.close()
 
-def set_user_tag(user_id: int, tag: str, username: str = None):
-    """Imposta tag per un user (versione robusta con username opzionale)"""
+def set_user_tag(user_id: int, tag: str):
+    """Imposta tag per un user"""
     session = SessionLocal()
     try:
         user = session.query(UserTag).filter_by(user_id=str(user_id)).first()
         
         if user:
-            # Aggiorna esistente
             user.tag = tag
-            if username:
-                user.username = username
             user.updated_at = datetime.utcnow()
         else:
-            # Crea nuovo
-            user = UserTag(user_id=str(user_id), tag=tag, username=username)
+            user = UserTag(user_id=str(user_id), tag=tag)
             session.add(user)
         
         session.commit()
-        logger.info(f"✅ User {user_id} registrato con tag: {tag}")
-        return True
+        logger.info(f"âœ… User {user_id} registrato con tag: {tag}")
     except Exception as e:
         session.rollback()
-        logger.error(f"❌ Errore set_user_tag: {e}")
-        return False
+        logger.error(f"âŒ Errore set_user_tag: {e}")
     finally:
         session.close()
 
@@ -142,18 +135,18 @@ def remove_user_tag(user_id: int) -> bool:
         if user:
             session.delete(user)
             session.commit()
-            logger.info(f"✅ Tag rimosso per user {user_id}")
+            logger.info(f"âœ… Tag rimosso per user {user_id}")
             return True
         return False
     except Exception as e:
         session.rollback()
-        logger.error(f"❌ Errore remove_user_tag: {e}")
+        logger.error(f"âŒ Errore remove_user_tag: {e}")
         return False
     finally:
         session.close()
 
 def load_user_tags() -> dict:
-    """Carica tutti i tag (per compatibilità con vecchio codice)"""
+    """Carica tutti i tag (per compatibilitÃ  con vecchio codice)"""
     session = SessionLocal()
     try:
         users = session.query(UserTag).all()
@@ -166,7 +159,7 @@ def load_user_tags() -> dict:
 # ============================================================================
 
 def is_user_authorized(user_id: int) -> bool:
-    """Verifica se user è autorizzato"""
+    """Verifica se user Ã¨ autorizzato"""
     session = SessionLocal()
     try:
         user = session.query(AuthorizedUser).filter_by(user_id=str(user_id)).first()
@@ -189,18 +182,18 @@ def authorize_user(user_id: int, first_name: str = None, last_name: str = None, 
             )
             session.add(user)
             session.commit()
-            logger.info(f"✅ User {user_id} autorizzato")
+            logger.info(f"âœ… User {user_id} autorizzato")
             return True
         return False
     except Exception as e:
         session.rollback()
-        logger.error(f"❌ Errore authorize_user: {e}")
+        logger.error(f"âŒ Errore authorize_user: {e}")
         return False
     finally:
         session.close()
 
 def load_authorized_users() -> dict:
-    """Carica tutti gli utenti autorizzati (per compatibilità)"""
+    """Carica tutti gli utenti autorizzati (per compatibilitÃ )"""
     session = SessionLocal()
     try:
         users = session.query(AuthorizedUser).all()
@@ -249,10 +242,10 @@ def add_ordine_confermato(user_id: int, user_name: str, username: str,
         )
         session.add(ordine)
         session.commit()
-        logger.info(f"✅ Ordine salvato: {user_name} ({user_id})")
+        logger.info(f"âœ… Ordine salvato: {user_name} ({user_id})")
     except Exception as e:
         session.rollback()
-        logger.error(f"❌ Errore add_ordine: {e}")
+        logger.error(f"âŒ Errore add_ordine: {e}")
     finally:
         session.close()
 
@@ -306,15 +299,15 @@ def set_config(key: str, value: str):
             session.add(config)
         
         session.commit()
-        logger.info(f"✅ Config '{key}' aggiornata")
+        logger.info(f"âœ… Config '{key}' aggiornata")
     except Exception as e:
         session.rollback()
-        logger.error(f"❌ Errore set_config: {e}")
+        logger.error(f"âŒ Errore set_config: {e}")
     finally:
         session.close()
 
 def load_access_code() -> str:
-    """Carica access code (compatibilità)"""
+    """Carica access code (compatibilitÃ )"""
     import secrets
     
     code = get_config('access_code')
@@ -324,19 +317,19 @@ def load_access_code() -> str:
     return code
 
 def save_access_code(code: str):
-    """Salva access code (compatibilità)"""
+    """Salva access code (compatibilitÃ )"""
     set_config('access_code', code)
 
 # ============================================================================
-# COMPATIBILITÃ€ CON JSON (per facilitare migrazione)
+# COMPATIBILITÃƒâ‚¬ CON JSON (per facilitare migrazione)
 # ============================================================================
 
 def save_user_tags(tags_dict):
-    """Compatibilità - non fa nulla, già salvato nel DB"""
+    """CompatibilitÃ  - non fa nulla, giÃ  salvato nel DB"""
     pass
 
 def save_authorized_users(users_dict):
-    """Compatibilità - non fa nulla, già salvato nel DB"""
+    """CompatibilitÃ  - non fa nulla, giÃ  salvato nel DB"""
     pass
 
 # End database.py
