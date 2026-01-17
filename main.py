@@ -50,7 +50,7 @@ PASTE_URL = "https://justpaste.it/faq_4all"
 ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
 
 # Soglie
-FUZZY_THRESHOLD
+FUZZY_THRESHOLD = 0.6
 FAQ_CONFIDENCE_THRESHOLD = 0.65
 LISTA_CONFIDENCE_THRESHOLD = 0.30
 
