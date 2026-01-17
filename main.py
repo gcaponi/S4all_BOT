@@ -90,7 +90,7 @@ class BusinessMessageFilter(filters.UpdateFilter):
 business_filter = BusinessMessageFilter()
 
 # ============================================================================
-# FUNZIONI DATABASE (usa PostgreSQL via database.py)
+# FUNZIONI DATABASE (PostgreSQL via database.py)
 # ============================================================================
 
 # User tags - usa database.py
@@ -507,14 +507,15 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     msg = (
         "👑 <b>PANNELLO DI CONTROLLO ADMIN</b>\n\n"
         "<b>📝 Comandi Admin:</b>\n"
-        "• /genera_link - Crea il link per autorizzare nuovi utenti\n"
-        "• /cambia_codice - Rigenera il token di sicurezza\n"
-        "• /lista_autorizzati - Vedi chi può usare il bot\n"
-        "• /revoca ID - Rimuovi un utente dal database\n"
         "• /aggiorna_faq - Scarica le FAQ da JustPaste\n"
         "• /aggiorna_lista - Scarica il listino da JustPaste\n"
-        "• /ordini - Visualizza ordini confermati oggi\n"
+        "• /cambia_codice - Rigenera il token di sicurezza\n"
+        "• /clearordini [giorni] - Cancella ordini vecchi (default: 1 giorno)\n"
+        "• /genera_link - Crea il link per autorizzare nuovi utenti\n"
+        "• /lista_autorizzati - Vedi chi può usare il bot\n"
         "• /listtags - Vedi clienti registrati con tag\n"
+        "• /ordini - Visualizza ordini confermati oggi\n"
+        "• /revoca ID - Rimuovi un utente dal database\n"
         "• /removetag ID - Rimuovi tag cliente\n\n"
         "<b>👤 Comandi Utente:</b>\n"
         "• /start - Avvia il bot\n"
@@ -595,11 +596,10 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_name = ordine.get('user_name', 'N/A')
         username = ordine.get('username', 'N/A')
         user_id = ordine.get('user_id', 'N/A')
-        ora = ordine.get('ora', 'N/A')
+        day = ordine.get('day', 'N/A')
         message = ordine.get('message', 'N/A')
         chat_id = ordine.get('chat_id', 'N/A')
-        msg += f"<b>{i}. {user_name}</b> (@{username})    🆔 ID: <code>{user_id}</code>\n"
-        msg += f"   🕐 Ora: {ora}    💬 Chat: <code>{chat_id}</code>\n"
+        msg += f"<b>{i}. {user_name}</b> (@{username})    🕐 Giorno: {day}\n"
         msg += f"   📝 Messaggio:\n   <code>{message[:100]}...</code>\n\n"
     
     if len(msg) > 4000:
@@ -620,8 +620,15 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     msg = "📋 <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
+    
     for user_id, tag in tags.items():
-        msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
+        try:
+            user = await context.bot.get_chat(int(user_id))
+            nome = user.first_name or "Sconosciuto"
+            username = f"@{user.username}" if user.username else "nessuno"
+            msg += f"• {nome} ({username}) → <b>{tag}</b>\n"
+        except:
+            msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
     
     if len(msg) > 4000:
         for i in range(0, len(msg), 4000):
@@ -644,6 +651,25 @@ async def remove_tag_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await update.message.reply_text(f"❌ User {user_id} non trovato")
 
+async def clear_ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancella ordini più vecchi di N giorni - /clearordini [giorni]"""
+    if update.effective_user.id != ADMIN_CHAT_ID:
+        return
+    
+    giorni = 1
+    
+    if context.args:
+        try:
+            giorni = int(context.args[0])
+        except:
+            await update.message.reply_text("❌ Uso: /clearordini [giorni]\nEsempio: /clearordini 7")
+            return
+    
+    deleted = db.clear_old_orders(giorni)
+    await update.message.reply_text(
+        f"🗑️ Cancellati {deleted} ordini più vecchi di {giorni} giorn{'o' if giorni == 1 else 'i'}"
+    )
+    
 # ============================================================================
 # FLASK ROUTES
 # ============================================================================
@@ -1258,6 +1284,7 @@ async def setup_bot():
         application.add_handler(CommandHandler("ordini", ordini_command))
         application.add_handler(CommandHandler("listtags", list_tags_command))
         application.add_handler(CommandHandler("removetag", remove_tag_command))
+        application.add_handler(CommandHandler("clearordini", clear_ordini_command))
         
         # 2. STATUS UPDATES
         application.add_handler(MessageHandler(
