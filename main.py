@@ -1060,37 +1060,51 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
+    logger.info(f"🔘 Callback ricevuto: {query.data}")
+    
     if query.data.startswith("pay_ok_"):
-        original_msg = query.message.reply_to_message
-        if original_msg:
-            user = query.from_user
-            add_ordine_confermato(
-                user_id=user.id,
-                user_name=user.first_name or "Sconosciuto",
-                username=user.username or "nessuno",
-                message_text=original_msg.text,
-                chat_id=original_msg.chat.id,
-                message_id=original_msg.message_id
-            )
-            
-            await query.edit_message_text(f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile.")
-            
-            # Notifica admin
-            if ADMIN_CHAT_ID:
-                try:
-                    notifica = (
-                        f"📩 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
-                        f"👤 Utente: {user.first_name} (@{user.username})\n"
-                        f"🆔 ID: <code>{user.id}</code>\n"
-                        f"📝 Messaggio:\n<code>{original_msg.text[:200]}</code>"
-                    )
-                    await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
-                except Exception as e:
-                    logger.error(f"Errore notifica admin: {e}")
-        else:
-            await query.edit_message_text("✅ Ottimo!")
+        logger.info("✅ Bottone 'Sì' premuto")
+        
+        # Cerca il messaggio originale
+        original_msg = query.message.reply_to_message if query.message else None
+        
+        if not original_msg:
+            logger.warning("⚠️ Nessun messaggio originale trovato")
+            await query.edit_message_text("✅ Ordine confermato!")
+            return
+        
+        user = query.from_user
+        
+        # Salva ordine
+        add_ordine_confermato(
+            user_id=user.id,
+            user_name=user.first_name or "Sconosciuto",
+            username=user.username or "nessuno",
+            message_text=original_msg.text,
+            chat_id=original_msg.chat.id,
+            message_id=original_msg.message_id
+        )
+        
+        logger.info(f"💾 Ordine salvato per user {user.id}")
+        
+        await query.edit_message_text(f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile.")
+        
+        # Notifica admin
+        if ADMIN_CHAT_ID:
+            try:
+                notifica = (
+                    f"📩 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
+                    f"👤 Utente: {user.first_name} (@{user.username})\n"
+                    f"🆔 ID: <code>{user.id}</code>\n"
+                    f"📝 Messaggio:\n<code>{original_msg.text[:200]}</code>"
+                )
+                await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
+                logger.info("📧 Notifica admin inviata")
+            except Exception as e:
+                logger.error(f"❌ Errore notifica admin: {e}")
             
     elif query.data.startswith("pay_no_"):
+        logger.info("❌ Bottone 'No' premuto")
         await query.edit_message_text("💡 Per favore, indica il metodo (Bonifico, Crypto).")
 
 # ============================================================================
