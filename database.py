@@ -222,7 +222,7 @@ def revoke_user(user_id: int) -> bool:
         session.close()
 
 # ============================================================================
-# FUNZIONI ORDINI CONFERMATI
+# FUNZIONI ORDINI CONFERMATI - CLEAR ORDINI
 # ============================================================================
 
 def add_ordine_confermato(user_id: int, user_name: str, username: str, 
@@ -271,7 +271,29 @@ def get_ordini_oggi() -> list:
         ]
     finally:
         session.close()
-
+        
+# CLEAR ORDINI
+def clear_old_orders(days=1):
+    """Cancella ordini più vecchi di N giorni"""
+    from datetime import datetime, timedelta
+    
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cutoff_date = datetime.now() - timedelta(days=days)
+    
+    cursor.execute(
+        "DELETE FROM ordini_confermati WHERE timestamp < %s",
+        (cutoff_date,)
+    )
+    
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    
+    logger.info(f"🗑️ Cancellati {deleted} ordini più vecchi di {days} giorni")
+    return deleted
+    
 # ============================================================================
 # FUNZIONI APP CONFIG (access_code, ecc.)
 # ============================================================================
