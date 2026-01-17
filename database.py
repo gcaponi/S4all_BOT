@@ -44,6 +44,7 @@ class UserTag(Base):
     
     user_id = Column(String(50), primary_key=True, index=True)
     tag = Column(String(20), nullable=False)
+    username = Column(String(100))  # Username Telegram (opzionale)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -106,24 +107,30 @@ def get_user_tag(user_id: int) -> str:
     finally:
         session.close()
 
-def set_user_tag(user_id: int, tag: str):
-    """Imposta tag per un user"""
+def set_user_tag(user_id: int, tag: str, username: str = None):
+    """Imposta tag per un user (versione robusta con username opzionale)"""
     session = SessionLocal()
     try:
         user = session.query(UserTag).filter_by(user_id=str(user_id)).first()
         
         if user:
+            # Aggiorna esistente
             user.tag = tag
+            if username:
+                user.username = username
             user.updated_at = datetime.utcnow()
         else:
-            user = UserTag(user_id=str(user_id), tag=tag)
+            # Crea nuovo
+            user = UserTag(user_id=str(user_id), tag=tag, username=username)
             session.add(user)
         
         session.commit()
         logger.info(f"✅ User {user_id} registrato con tag: {tag}")
+        return True
     except Exception as e:
         session.rollback()
         logger.error(f"❌ Errore set_user_tag: {e}")
+        return False
     finally:
         session.close()
 
