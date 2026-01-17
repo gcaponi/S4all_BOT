@@ -738,12 +738,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     )
 
     # =========================================================
-    # RICONOSCIMENTO ADMIN (OUTGOING = TRUE)
-    # =========================================================
-    is_admin = business_connection_id is not None
-
-    # =========================================================
-    # BLOCCO COMANDI ADMIN
+    # ADMIN (OUTGOING = TRUE)
     # =========================================================
     if outgoing:
         logger.info("👑 Messaggio ADMIN business")
