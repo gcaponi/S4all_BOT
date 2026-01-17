@@ -609,10 +609,10 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_name = ordine.get('user_name', 'N/A')
         username = ordine.get('username', 'N/A')
         user_id = ordine.get('user_id', 'N/A')
-        day = ordine.get('day', 'N/A')
+        data = ordine.get('data', 'N/A')
         message = ordine.get('message', 'N/A')
         chat_id = ordine.get('chat_id', 'N/A')
-        msg += f"<b>{i}. {user_name}</b> (@{username})    🕐 Giorno: {day}\n"
+        msg += f"<b>{i}. {user_name}</b> (@{username})    🕐 {data}\n"
         msg += f"   📝 Messaggio:\n   <code>{message[:100]}...</code>\n\n"
     
     if len(msg) > 4000:
