@@ -251,6 +251,11 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     """Cerca la risposta più pertinente nelle FAQ con score"""
     user_normalized = normalize_text(user_message)
     
+    # DEBUG
+    logger.info(f"🔍 FAQ disponibili: {len(faq_list)}")
+    for i, faq in enumerate(faq_list[:3]):  # Primi 3
+        logger.info(f"  FAQ {i+1}: '{faq.get('domanda', 'N/A')[:50]}'")
+        
     keywords_map = {
         "ordinare": ["come ordinare", "procedura", "quantità", "marca", "bloccare", "acquisti", "ordine"],
         "spedizione": ["spedizione", "corriere", "pacco", "consegna", "costo spedizione", "garanzia", "smarrimento", "danneggiamento", "giacenza"],
