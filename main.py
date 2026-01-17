@@ -69,12 +69,12 @@ initialization_lock = False
 # FILTRO CUSTOM PER BUSINESS MESSAGES
 # ============================================================================
 
-class BusinessMessageFilter(filters.MessageFilter):
+class BusinessMessageFilter(filters.UpdateFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
-    def filter(self, message):
+    def filter(self, update):
         return (
-            hasattr(message, 'business_connection_id') and 
-            message.business_connection_id is not None
+            hasattr(update, 'business_message') and 
+            update.business_message is not None
         )
 
 business_filter = BusinessMessageFilter()
@@ -288,7 +288,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             break
     
     words = user_normalized.split()
-    if len(words) == 1 and len(user_normalized) >= 4:  # Fix: >= 4 invece di > 5
+    if len(words) == 1 and len(user_normalized) >= 4:
         has_explicit_intent = True
         logger.info(f"✅ Query singola: '{user_normalized}'")
     
@@ -306,7 +306,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     
     product_keywords = [
         w for w in words 
-        if len(w) >= 4 and w not in stopwords  # Fix: >= 4 invece di > 4
+        if len(w) >= 4 and w not in stopwords
     ]
     
     if not product_keywords:
@@ -333,7 +333,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         line_normalized = normalize_text(line)
         
         for keyword in product_keywords:
-            if re.search(r'\b' + re.escape(keyword) + r'\b', line_normalized, re.IGNORECASE):
+            if keyword in line_normalized:
                 if ('💊' in line or '💉' in line or '€' in line):
                     matched_lines.append(line.strip())
                     logger.info(f"  ✅ Match: '{keyword}' in '{line[:50]}'")
@@ -666,6 +666,10 @@ def webhook():
     global bot_application
     
     try:
+        logger.info("=" * 60)
+        logger.info("🔔 WEBHOOK RICEVUTO")
+        logger.info("=" * 60)
+        
         if not bot_application:
             logger.warning("⚠️ Bot non inizializzato al momento del webhook")
             return 'Bot not ready', 503
@@ -676,6 +680,18 @@ def webhook():
             logger.warning("⚠️ Webhook ricevuto senza dati")
             return 'No data', 400
         
+        # Log tipo update
+        if 'business_message' in json_data:
+            msg = json_data['business_message']
+            logger.info(f"💼 Business message")
+            logger.info(f"   User: {msg.get('from', {}).get('id')} - Chat: {msg.get('chat', {}).get('id')}")
+            logger.info(f"   Text: {msg.get('text', 'N/A')}")
+        elif 'message' in json_data:
+            msg = json_data['message']
+            logger.info(f"💬 Private message")
+            logger.info(f"   User: {msg.get('from', {}).get('id')}")
+            logger.info(f"   Text: {msg.get('text', 'N/A')}")
+        
         update = Update.de_json(json_data, bot_application.bot)
         
         try:
@@ -684,7 +700,9 @@ def webhook():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
+        logger.info("⚙️ Processing update...")
         loop.run_until_complete(bot_application.process_update(update))
+        logger.info("✅ Update processato")
         
         return 'ok', 200
         
@@ -822,8 +840,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     if intent == "lista":
         logger.info(f"➡️ Entrato in blocco LISTA")
         lista = load_lista()
-        if lista:
-            # Invia lista senza header
+        if lista:  
             chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
             for chunk in chunks:
                 await send_business_reply(chunk, parse_mode=None)
@@ -1172,7 +1189,7 @@ async def setup_bot():
         
         # 4. BUSINESS MESSAGES
         application.add_handler(MessageHandler(
-            business_filter & filters.TEXT & ~filters.COMMAND,
+            business_filter & filters.TEXT,
             handle_business_message
         ))
         logger.info("✅ Handler Business Messages registrato (priority group=0)")
