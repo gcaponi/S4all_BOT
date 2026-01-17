@@ -1191,7 +1191,7 @@ async def setup_bot():
                 self.callback = callback
     
             def check_update(self, update):
-            """Verifica se è un business message"""
+                """Verifica se è un business message"""
                 if not update:
                     return False        
                 # Escludi callback_query
