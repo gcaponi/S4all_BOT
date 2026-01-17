@@ -715,26 +715,36 @@ def webhook():
 # ============================================================================
 
 async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"🎯 TypeHandler chiamato - type: {type(update)}")
-    logger.info(f"📋 Update dict: {update.to_dict().keys()}")
+    """
+    Gestisce messaggi Business con:
+    - Rilevamento automatico admin
+    - Sistema /reg per registrazione clienti
+    - Whitelist basata su tag
+    """
+    from telegram import Message  # ← AGGIUNGI QUESTO IMPORT
     
-    # ACCESSO DIRETTO AL DIZIONARIO RAW
+    logger.info(f"🎯 TypeHandler chiamato")
+    
+    # Accesso diretto al dizionario raw
     update_dict = update.to_dict()
     
     if 'business_message' not in update_dict:
-        logger.info(f"⏭️ Non è business message, skip")
-        return
+        return  # Non è Business message
     
     # Ricrea il Message object dal dizionario
     from telegram import Message
     message = Message.de_json(update_dict['business_message'], context.bot)
     
-    logger.error("🔥 BUSINESS HANDLER OK 🔥")
-    logger.info(f"📨 Message text: {message.text}")
+    logger.info("🔥 BUSINESS MESSAGE RILEVATO 🔥")
     
     # Estrai dati dal message
     business_connection_id = message.business_connection_id
-    text = message.text.strip()
+    text = message.text.strip() if message.text else ""
+    
+    if not text:
+        logger.info("⏭️ Messaggio vuoto, skip")
+        return
+    
     text_lower = text.lower()
 
     user_id = message.from_user.id
