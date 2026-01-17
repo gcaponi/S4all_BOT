@@ -251,17 +251,17 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     """Cerca la risposta più pertinente nelle FAQ con score"""
     user_normalized = normalize_text(user_message)
     
-keywords_map = {
-    "ordinare": ["come ordinare", "procedura", "quantità", "marca", "bloccare", "acquisti", "ordine"],
-    "spedizione": ["spedizione", "corriere", "pacco", "consegna", "costo spedizione", "12€", "garanzia extra", "smarrimento", "danneggiamento", "giacenza"],
-    "tracking": ["tracking", "numero tracking", "tracciare", "tracciabilità", "codice", "dove si trova"],
-    "tempi": ["quando arriva", "giorni lavorativi", "tempistiche", "quando spedisci", "ricevo", "festivi", "orario risposta", "urgente"],
-    "pagamento": ["pagamento", "bitcoin", "crypto", "bonifico", "usdt", "usdc", "xmr", "eth", "supplemento", "commissioni", "dati pagamento"],
-    "prodotti": ["disponibilità", "rosso", "terminati", "consiglio", "massa", "grasso", "3+", "medico", "doping", "integratori"],
-    "sconto": ["sconto", "sconti", "promozione", "promo", "email", "riduzione prezzo"],
-    "rimborso": ["rimborso", "rimborsi", "cambi", "aggiunte", "analisi", "hplc", "test", "non funziona"],
-    "regole_servizio": ["minimo", "70 euro", "fuori italia", "estero", "maggiorenne", "supervisione medica"]
-}
+    keywords_map = {
+        "ordinare": ["come ordinare", "procedura", "quantità", "marca", "bloccare", "acquisti", "ordine"],
+        "spedizione": ["spedizione", "corriere", "pacco", "consegna", "costo spedizione", "garanzia", "smarrimento", "danneggiamento", "giacenza"],
+        "tracking": ["tracking", "numero tracking", "tracciare", "tracciabilità", "codice", "dove si trova"],
+        "tempi": ["quando arriva", "giorni lavorativi", "tempistiche", "quando spedisci", "ricevo", "festivi", "orario risposta", "urgente"],
+        "pagamento": ["pagamento", "bitcoin", "crypto", "bonifico", "usdt", "usdc", "xmr", "eth", "supplemento", "commissioni", "dati pagamento"],
+        "prodotti": ["disponibilità", "rosso", "terminati", "consiglio", "massa", "grasso", "3+", "medico", "doping", "integratori"],
+        "sconto": ["sconto", "sconti", "promozione", "promo", "email", "riduzione prezzo"],
+        "rimborso": ["rimborso", "rimborsi", "cambi", "aggiunte", "analisi", "hplc", "test", "non funziona"],
+        "regole_servizio": ["minimo", "70 euro", "fuori italia", "estero", "maggiorenne", "supervisione medica"]
+    }
 
     for item in faq_list:
         domanda_norm = normalize_text(item["domanda"])
