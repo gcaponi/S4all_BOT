@@ -3,7 +3,7 @@ import json
 import logging
 from flask import Flask, request
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ChatMemberHandler, filters, ContextTypes, TypeHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ChatMemberHandler, filters, ContextTypes
 import secrets
 import re
 import requests
@@ -69,15 +69,15 @@ initialization_lock = False
 # FILTRO CUSTOM PER BUSINESS MESSAGES
 # ============================================================================
 
-# class BusinessMessageFilter(filters.UpdateFilter):
-#     """Filtro custom per identificare messaggi Telegram Business"""
-#     def filter(self, update):
-#         return (
-#             hasattr(update, 'business_message') and 
-#             update.business_message is not None
-#         )
+class BusinessMessageFilter(filters.UpdateFilter):
+    """Filtro custom per identificare messaggi Telegram Business"""
+    def filter(self, update):
+        return (
+            hasattr(update, 'business_message') and 
+            update.business_message is not None
+        )
 
-# business_filter = BusinessMessageFilter()
+business_filter = BusinessMessageFilter()
 
 # ============================================================================
 # FUNZIONI DATABASE (usa PostgreSQL via database.py)
@@ -288,7 +288,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             break
     
     words = user_normalized.split()
-    if len(words) == 1 and len(user_normalized) >= 4:
+    if len(words) == 1 and len(user_normalized) >= 4:  # Fix: >= 4 invece di > 5
         has_explicit_intent = True
         logger.info(f"✅ Query singola: '{user_normalized}'")
     
@@ -710,12 +710,185 @@ def webhook():
         logger.error(f"❌ Errore webhook: {e}", exc_info=True)
         return 'Error', 500
 
-async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.business_message:
-        return
+# ============================================================================
+# HANDLER BUSINESS MESSAGES (CON SISTEMA /reg)
+# ============================================================================
 
+async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Gestisce messaggi Business con:
+    - Rilevamento automatico admin
+    - Sistema /reg per registrazione clienti
+    - Whitelist basata su tag
+    """
+    # TypeHandler passa tutti gli Update, filtro solo Business
+    message = getattr(update, 'business_message', None)
+    
+    if not message:
+        return  # Non è Business message
+    
     logger.error("🔥 BUSINESS HANDLER OK 🔥")
     
+    # DOPO IL TEST, decommentare il resto dell'handler qui sotto
+    # per ora stoppiamo qui per vedere il log 🔥
+    
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    
+    # ========================================
+    # IGNORA BOT
+    # ========================================
+    
+    if message.from_user and message.from_user.is_bot:
+        logger.info(f"🤖 Bot ignorato")
+        return
+    
+    # ========================================
+    # RILEVA ADMIN AUTOMATICAMENTE
+    # ========================================
+    
+    # Se from_user.id != chat.id → Admin sta scrivendo al cliente
+    if user_id != chat_id:
+        logger.info(f"⏭️ Admin (user={user_id}) scrive a cliente (chat={chat_id})")
+        
+        # ECCEZIONE: Comando /reg
+        if text_lower.startswith('/reg'):
+            logger.info(f"✅ Comando /reg dall'admin - ESEGUO")
+            
+            parts = text.split()
+            
+            if len(parts) != 2:
+                await context.bot.send_message(
+                    business_connection_id=business_connection_id,
+                    chat_id=chat_id,
+                    text="❌ Formato: /reg TAG\nEsempio: /reg sp20"
+                )
+                return
+            
+            tag = parts[1].lower()
+            
+            if tag not in ALLOWED_TAGS:
+                await context.bot.send_message(
+                    business_connection_id=business_connection_id,
+                    chat_id=chat_id,
+                    text=f"❌ Tag non valido.\n\nTag disponibili:\n• {chr(10).join(ALLOWED_TAGS)}"
+                )
+                return
+            
+            # Registra il cliente (chat_id = ID del cliente)
+            set_user_tag(chat_id, tag)
+            
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=chat_id,
+                text=f"✅ Cliente registrato con tag: <b>{tag}</b>",
+                parse_mode='HTML'
+            )
+            
+            logger.info(f"👨‍💼 Admin ha registrato cliente {chat_id} con tag {tag}")
+            return
+        
+        # Ignora tutti gli altri messaggi dell'admin (inclusi automatici!)
+        logger.info(f"⏭️ Messaggio admin ignorato")
+        return
+    
+    # ========================================
+    # MESSAGGIO DAL CLIENTE
+    # ========================================
+    
+    logger.info(f"📱 Messaggio da cliente {user_id}: '{text}'")
+    
+    # ========================================
+    # CHECK WHITELIST TAG
+    # ========================================
+    
+    user_tag = get_user_tag(user_id)
+    
+    if not user_tag:
+        logger.info(f"⛔ Cliente {user_id} non registrato - ignoro")
+        return
+    
+    logger.info(f"✅ Cliente con tag: {user_tag}")
+    
+    # ========================================
+    # HELPER INVIO RISPOSTE
+    # ========================================
+    
+    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        try:
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=chat_id,
+                text=text_reply,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+            logger.info(f"✅ Reply inviata")
+        except Exception as e:
+            logger.error(f"❌ Errore invio: {e}")
+    
+    # ========================================
+    # CALCOLA INTENTO E RISPONDI
+    # ========================================
+    
+    intent = calcola_intenzione(text)
+    logger.info(f"🔄 Intent ricevuto: '{intent}'")
+    
+    # 1. LISTA
+    if intent == "lista":
+        logger.info(f"➡️ Entrato in blocco LISTA")
+        lista = load_lista()
+        if lista:  
+            chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
+            for chunk in chunks:
+                await send_business_reply(chunk, parse_mode=None)
+        return
+    
+    # 2. ORDINE
+    if intent == "ordine":
+        logger.info(f"➡️ Entrato in blocco ORDINE")
+        keyboard = [[
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
+        ]]
+        await send_business_reply(
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+    
+    # 3. FAQ
+    if intent == "faq":
+        logger.info(f"➡️ Entrato in blocco FAQ")
+        faq_data = load_faq()
+        res = fuzzy_search_faq(text, faq_data.get("faq", []))
+        if res.get("match"):
+            await send_business_reply(
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+            )
+        return
+    
+    # 4. RICERCA PRODOTTI
+    if intent == "ricerca_prodotti":
+        logger.info(f"➡️ Entrato in blocco RICERCA")
+        l_res = fuzzy_search_lista(text, load_lista())
+        if l_res.get("match"):
+            await send_business_reply(
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+            )
+            return
+    
+    # 5. FALLBACK
+    trigger_words = [
+        'ordine', 'lista', 'listino', 'prodotto', 'quanto costa',
+        'spedizione', 'tracking', 'voglio', 'vorrei'
+    ]
+    
+    if any(word in text_lower for word in trigger_words):
+        await send_business_reply(
+            "❓ Non ho capito. Usa /help per le FAQ o scrivi 'lista' per il catalogo."
+        )
+
 # ============================================================================
 # HANDLER MESSAGGI PRIVATI
 # ============================================================================
@@ -1013,13 +1186,11 @@ async def setup_bot():
         application.add_handler(CallbackQueryHandler(handle_callback_query))
         
         # 4. BUSINESS MESSAGES
-        application.add_handler(TypeHandler(Update, handle_business_message))
-        
-        # application.add_handler(MessageHandler(
-        #     business_filter & filters.TEXT,
-        #     handle_business_message
-        # ))
-        # logger.info("✅ Handler Business Messages registrato (priority group=0)")
+        application.add_handler(MessageHandler(
+            business_filter & filters.TEXT,
+            handle_business_message
+        ))
+        logger.info("✅ Handler Business Messages registrato (priority group=0)")
         
         # 5. MESSAGGI GRUPPI
         application.add_handler(MessageHandler(
