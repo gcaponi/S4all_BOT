@@ -70,12 +70,22 @@ initialization_lock = False
 # ============================================================================
 
 class BusinessMessageFilter(filters.UpdateFilter):
-    """Filtro custom per identificare messaggi Telegram Business"""
+    """Filtro custom per identificare SOLO messaggi Telegram Business (no callback)"""
     def filter(self, update):
-        return (
-            hasattr(update, 'business_message') and 
-            update.business_message is not None
-        )
+        # Escludi callback_query (bottoni)
+        if hasattr(update, 'callback_query') and update.callback_query is not None:
+            return False
+        
+        # Escludi altri tipi di update
+        if hasattr(update, 'edited_message') and update.edited_message is not None:
+            return False
+        
+        if hasattr(update, 'channel_post') and update.channel_post is not None:
+            return False
+        
+        # Accetta SOLO business_message
+        update_dict = update.to_dict()
+        return 'business_message' in update_dict
 
 business_filter = BusinessMessageFilter()
 
@@ -1173,7 +1183,25 @@ async def setup_bot():
         # ========================================
 
         # BUSINESS MESSAGES
-        application.add_handler(TypeHandler(Update, handle_business_message))
+        from telegram.ext import BaseHandler
+        class BusinessMessageHandler(BaseHandler):
+            """Handler custom per Business Messages"""
+            def __init__(self, callback):
+                super().__init__(callback)
+                self.callback = callback
+    
+            def check_update(self, update):
+            """Verifica se è un business message"""
+                if not update:
+                    return False        
+                # Escludi callback_query
+                if hasattr(update, 'callback_query') and update.callback_query:
+                    return False        
+                # Verifica business_message
+                update_dict = update.to_dict()
+                return 'business_message' in update_dict
+        # Registrazione
+        application.add_handler(BusinessMessageHandler(handle_business_message), group=0)
         logger.info("✅ Handler Business Messages registrato (priority group=0)")
 
         # 1. COMANDI
