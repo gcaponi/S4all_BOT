@@ -613,7 +613,7 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message = ordine.get('message', 'N/A')
         chat_id = ordine.get('chat_id', 'N/A')
         msg += f"<b>{i}. {user_name}</b> (@{username})    🕐 {data}\n"
-        msg += f"   📝 Messaggio:\n   <code>{message[:100]}...</code>\n\n"
+        msg += f"  📝 Messaggio:\n  <code>{message[:100]}...</code>\n\n"
     
     if len(msg) > 4000:
         for i in range(0, len(msg), 4000):
