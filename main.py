@@ -131,28 +131,35 @@ def fetch_markdown_from_html(url: str) -> str:
         return ""
 
 def parse_faq(markdown: str) -> list:
-    """Parsa le FAQ basandosi su emoji + titolo + emoji del JustPaste"""
+    """Parsa FAQ con sezioni emoji e domande 📍🔘"""
+    faq_list = []
     
-    # Pattern: emoji, titolo (maiuscolo), emoji, contenuto
-    pattern = r"([🤔📨💵⬛📍])\s*\n([A-ZÀÈÉÌÒÙ\s]+)\s*\n\1\s*\n(.*?)(?=\n[🤔📨💵⬛📍]\s*\n[A-ZÀÈÉÌÒÙ]|\Z)"
+    # PATTERN 1: Sezioni principali (🤔TITOLO🤔 + contenuto)
+    sezioni_pattern = r'([🤔📨💵])\s*([A-ZÀÈÉÌÒÙ\s]+)\1\s*(.*?)(?=\n[🤔📨💵⬛]|$)'
+    sezioni = re.findall(sezioni_pattern, markdown, flags=re.S | re.M)
     
-    matches = re.findall(pattern, markdown, flags=re.S | re.M)
+    for emoji, titolo, contenuto in sezioni:
+        if contenuto.strip():
+            faq_list.append({
+                "domanda": titolo.strip(),
+                "risposta": contenuto.strip()
+            })
     
-    if not matches:
-        logger.warning("⚠️ Nessun match con pattern emoji. Provo pattern alternativo...")
-        # Fallback: separa per linee vuote doppie
-        sections = markdown.split('\n\n')
-        faq = []
-        for i in range(0, len(sections)-1, 2):
-            if i+1 < len(sections):
-                faq.append({
-                    "domanda": sections[i].strip(),
-                    "risposta": sections[i+1].strip()
-                })
-        return faq
+    # PATTERN 2: Domande specifiche (📍 + domanda + 🔘 + risposta)
+    domande_pattern = r'📍\s*(.*?)\s*\n\s*🔘\s*(.*?)(?=\n📍|\n\n|$)'
+    domande = re.findall(domande_pattern, markdown, flags=re.S | re.M)
     
-    return [{"domanda": title.strip(), "risposta": content.strip()} 
-            for emoji, title, content in matches]
+    for domanda, risposta in domande:
+        faq_list.append({
+            "domanda": domanda.strip(),
+            "risposta": risposta.strip()
+        })
+    
+    logger.info(f"✅ Parsate {len(faq_list)} FAQ totali")
+    for i, faq in enumerate(faq_list[:5], 1):
+        logger.info(f"  FAQ {i}: '{faq['domanda'][:50]}'")
+    
+    return faq_list
 
 def write_faq_json(faq: list, filename: str):
     """Salva le FAQ strutturate in un file JSON locale"""
@@ -248,53 +255,73 @@ def normalize_text(text: str) -> str:
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
-    """Cerca la risposta più pertinente nelle FAQ con score"""
+    """Cerca FAQ con pattern specifici per le tue domande"""
     user_normalized = normalize_text(user_message)
+    text_lower = user_message.lower()
     
-    # DEBUG
-    logger.info(f"🔍 FAQ disponibili: {len(faq_list)}")
-    for i, faq in enumerate(faq_list[:3]):  # Primi 3
-        logger.info(f"  FAQ {i+1}: '{faq.get('domanda', 'N/A')[:50]}'")
-        
-    keywords_map = {
-        "ordinare": ["come ordinare", "procedura", "quantità", "marca", "bloccare", "acquisti", "ordine"],
-        "spedizione": ["spedizione", "corriere", "pacco", "consegna", "costo spedizione", "garanzia", "smarrimento", "danneggiamento", "giacenza"],
-        "tracking": ["tracking", "numero tracking", "tracciare", "tracciabilità", "codice", "dove si trova"],
-        "tempi": ["quando arriva", "giorni lavorativi", "tempistiche", "quando spedisci", "ricevo", "festivi", "orario risposta", "urgente"],
-        "pagamento": ["pagamento", "bitcoin", "crypto", "bonifico", "usdt", "usdc", "xmr", "eth", "supplemento", "commissioni", "dati pagamento"],
-        "prodotti": ["disponibilità", "rosso", "terminati", "consiglio", "massa", "grasso", "3+", "medico", "doping", "integratori"],
-        "sconto": ["sconto", "sconti", "promozione", "promo", "email", "riduzione prezzo"],
-        "rimborso": ["rimborso", "rimborsi", "cambi", "aggiunte", "analisi", "hplc", "test", "non funziona"],
-        "regole_servizio": ["minimo", "70 euro", "fuori italia", "estero", "maggiorenne", "supervisione medica"]
+    # Pattern specifici basati sulle tue FAQ reali
+    faq_patterns = {
+        "tracking": {
+            "keywords": ["tracking", "tracciamento", "codice", "numero", "traccia", "dove", "pacco"],
+            "match_in": ["dopo quanto ricevo", "quando spedisci", "tracking"]
+        },
+        "spedizione": {
+            "keywords": ["spedizione", "spedito", "spedire", "corriere", "consegna", "arriva", "giorni"],
+            "match_in": ["dopo quanto ricevo", "quando spedisci", "costo spedizione"]
+        },
+        "tempi": {
+            "keywords": ["quanto tempo", "quando arriva", "dopo quanto", "tempistiche", "giorni"],
+            "match_in": ["dopo quanto ricevo", "quando spedisci"]
+        },
+        "pagamento": {
+            "keywords": ["pagamento", "pagare", "bonifico", "crypto", "bitcoin", "usdt", "metodi"],
+            "match_in": ["metodi di pagamento"]
+        },
+        "sconto": {
+            "keywords": ["sconto", "sconti", "promozione", "offerta", "riduzione"],
+            "match_in": ["sconto"]
+        },
+        "ordine": {
+            "keywords": ["ordinare", "ordine", "come ordino", "procedura"],
+            "match_in": ["come ordinare"]
+        },
+        "minimo": {
+            "keywords": ["minimo", "ordine minimo", "quanto minimo"],
+            "match_in": ["minimo"]
+        },
+        "rimborso": {
+            "keywords": ["rimborso", "rimborsi", "garanzia", "restituire"],
+            "match_in": ["rimborsi"]
+        }
     }
-
-    for item in faq_list:
-        domanda_norm = normalize_text(item["domanda"])
-        risposta_norm = normalize_text(item["risposta"])
-        
-        for root, synonyms in keywords_map.items():
-            if any(syn in user_normalized for syn in synonyms):
-                if root in domanda_norm or root in risposta_norm:
-                    logger.info(f"✅ FAQ Match (keyword): {root} → score: 1.0")
-                    return {'match': True, 'item': item, 'score': 1.0, 'method': 'keyword'}
-
+    
+    # STEP 1: Match esatto su pattern
+    for tema, config in faq_patterns.items():
+        if any(kw in text_lower for kw in config["keywords"]):
+            for faq in faq_list:
+                domanda_norm = normalize_text(faq["domanda"])
+                if any(phrase in domanda_norm for phrase in config["match_in"]):
+                    logger.info(f"✅ FAQ Match (pattern {tema}): score 1.0")
+                    return {'match': True, 'item': faq, 'score': 1.0, 'method': 'pattern'}
+    
+    # STEP 2: Similarity search (fallback)
     best_match = None
     best_score = 0
     
-    for item in faq_list:
-        domanda_norm = normalize_text(item["domanda"])
+    for faq in faq_list:
+        domanda_norm = normalize_text(faq["domanda"])
         
         if user_normalized in domanda_norm or domanda_norm in user_normalized:
-            logger.info(f"✅ FAQ Match (exact): score: 1.0")
-            return {'match': True, 'item': item, 'score': 1.0, 'method': 'exact'}
+            logger.info(f"✅ FAQ Match (substring): score 1.0")
+            return {'match': True, 'item': faq, 'score': 1.0, 'method': 'substring'}
         
         score = calculate_similarity(user_normalized, domanda_norm)
         if score > best_score:
             best_score = score
-            best_match = item
+            best_match = faq
     
-    if best_score >= FAQ_CONFIDENCE_THRESHOLD:
-        logger.info(f"✅ FAQ Match (fuzzy): score: {best_score:.2f}")
+    if best_score >= 0.50:  # Soglia abbassata
+        logger.info(f"✅ FAQ Match (similarity): score {best_score:.2f}")
         return {'match': True, 'item': best_match, 'score': best_score, 'method': 'similarity'}
     
     logger.info(f"❌ FAQ: No match (best score: {best_score:.2f})")
