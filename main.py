@@ -69,13 +69,19 @@ initialization_lock = False
 # FILTRO CUSTOM PER BUSINESS MESSAGES
 # ============================================================================
 
-class BusinessMessageFilter(filters.MessageFilter):
+class BusinessMessageFilter(filters.UpdateFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
-    def filter(self, message):
-        return (
-            hasattr(message, 'business_connection_id') and 
-            message.business_connection_id is not None
-        )
+    def filter(self, update):
+        logger.info(f"🔍 BusinessFilter - check update")
+        logger.info(f"🔍 BusinessFilter - hasattr business_message: {hasattr(update, 'business_message')}")
+        
+        if hasattr(update, 'business_message') and update.business_message is not None:
+            logger.info(f"🔍 BusinessFilter - business_message exists!")
+            logger.info(f"🔍 BusinessFilter - RESULT: True")
+            return True
+        
+        logger.info(f"🔍 BusinessFilter - RESULT: False")
+        return False
 
 business_filter = BusinessMessageFilter()
 
@@ -674,13 +680,19 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     - Sistema /reg per registrazione clienti
     - Whitelist basata su tag
     """
+    logger.info("🚀🚀🚀 HANDLER BUSINESS MESSAGE CHIAMATO!")
+    
     message = (
         update.business_message
         or update.message
         or update.edited_message
     )
     
+    logger.info(f"📋 Message object: {type(message)}")
+    logger.info(f"📋 Has text: {hasattr(message, 'text') if message else 'No message'}")
+    
     if not message or not message.text:
+        logger.info("⚠️ Handler exit: no message or no text")
         return
     
     business_connection_id = message.business_connection_id
@@ -1102,6 +1114,29 @@ async def setup_bot():
         logger.info(f"Bot: @{bot.username}")
         
         # ========================================
+        # 🔍 DEBUG: CATCH-ALL HANDLER (RIMUOVERE DOPO DEBUG)
+        # ========================================
+        async def debug_catch_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            logger.info("🔍🔍🔍 CATCH-ALL: Update ricevuto!")
+            logger.info(f"   Update type: {type(update)}")
+            logger.info(f"   Has business_message: {hasattr(update, 'business_message')}")
+            logger.info(f"   Has message: {hasattr(update, 'message')}")
+            
+            if hasattr(update, 'business_message') and update.business_message:
+                logger.info(f"   ✅ business_message presente!")
+                logger.info(f"   Text: {update.business_message.text if update.business_message.text else 'No text'}")
+            
+            if hasattr(update, 'message') and update.message:
+                logger.info(f"   ✅ message presente!")
+                logger.info(f"   Text: {update.message.text if update.message.text else 'No text'}")
+        
+        application.add_handler(MessageHandler(
+            filters.ALL,
+            debug_catch_all
+        ), group=-1)  # Group -1 = prima di tutti
+        logger.info("🔍 DEBUG Catch-all handler registrato")
+        
+        # ========================================
         # REGISTRAZIONE HANDLER
         # ========================================
         
@@ -1135,7 +1170,7 @@ async def setup_bot():
         
         # 4. BUSINESS MESSAGES
         application.add_handler(MessageHandler(
-            business_filter & filters.TEXT,
+            business_filter,  # Solo il nostro filtro UpdateFilter
             handle_business_message
         ))
         logger.info("✅ Handler Business Messages registrato (priority group=0)")
