@@ -864,12 +864,12 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 1. LISTA
     if intent == "lista":
-    logger.info(f"➡️ Entrato in blocco LISTA")
-    await send_business_reply(
-        "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
-        parse_mode=None
-    )
-    return
+        logger.info(f"➡️ Entrato in blocco LISTA")
+        await send_business_reply(
+            "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
+            parse_mode=None
+        )
+        return
     
     # 2. ORDINE
     if intent == "ordine":
