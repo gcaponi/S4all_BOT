@@ -44,13 +44,13 @@ USER_TAGS_FILE = 'user_tags.json'  # ← NUOVO
 
 # Link JustPaste.it
 LISTA_URL = "https://justpaste.it/lista_4all"
-PASTE_URL = "https://justpaste.it/lista_4all"
+PASTE_URL = "https://justpaste.it/faq_4all"
 
 # Tag clienti consentiti
 ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
 
 # Soglie
-FUZZY_THRESHOLD = 0.6
+FUZZY_THRESHOLD
 FAQ_CONFIDENCE_THRESHOLD = 0.65
 LISTA_CONFIDENCE_THRESHOLD = 0.30
 
@@ -69,19 +69,13 @@ initialization_lock = False
 # FILTRO CUSTOM PER BUSINESS MESSAGES
 # ============================================================================
 
-class BusinessMessageFilter(filters.UpdateFilter):
+class BusinessMessageFilter(filters.MessageFilter):
     """Filtro custom per identificare messaggi Telegram Business"""
-    def filter(self, update):
-        logger.info(f"🔍 BusinessFilter - check update")
-        logger.info(f"🔍 BusinessFilter - hasattr business_message: {hasattr(update, 'business_message')}")
-        
-        if hasattr(update, 'business_message') and update.business_message is not None:
-            logger.info(f"🔍 BusinessFilter - business_message exists!")
-            logger.info(f"🔍 BusinessFilter - RESULT: True")
-            return True
-        
-        logger.info(f"🔍 BusinessFilter - RESULT: False")
-        return False
+    def filter(self, message):
+        return (
+            hasattr(message, 'business_connection_id') and 
+            message.business_connection_id is not None
+        )
 
 business_filter = BusinessMessageFilter()
 
@@ -190,16 +184,97 @@ def save_json_file(filename, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # ============================================================================
-# GESTIONE FAQ (rimane JSON - viene scaricato da web)
+# GESTIONE AUTORIZZAZIONI E UTENTI
 # ============================================================================
+
+def load_authorized_users():
+    """Carica il database degli utenti che hanno usato il link segreto"""
+    data = load_json_file(AUTHORIZED_USERS_FILE, default={})
+    if isinstance(data, list):
+        return {str(uid): {"id": uid, "name": "Utente", "username": None} for uid in data}
+    return data
+
+def save_authorized_users(users):
+    """Salva il database aggiornato degli utenti autorizzati"""
+    save_json_file(AUTHORIZED_USERS_FILE, users)
+
+def load_access_code():
+    """Recupera il codice segreto o ne crea uno nuovo al primo avvio"""
+    data = load_json_file(ACCESS_CODE_FILE, default={})
+    if not data.get('code'):
+        code = secrets.token_urlsafe(12)
+        save_json_file(ACCESS_CODE_FILE, {'code': code})
+        return code
+    return data['code']
+
+def save_access_code(code):
+    """Aggiorna manualmente il codice di accesso"""
+    save_json_file(ACCESS_CODE_FILE, {'code': code})
 
 def load_faq():
     """Carica le FAQ dal database locale JSON"""
     return load_json_file(FAQ_FILE, default={"faq": []})
 
+def is_user_authorized(user_id):
+    """Verifica se l'ID Telegram è presente tra gli autorizzati"""
+    return str(user_id) in load_authorized_users()
+
+def authorize_user(user_id, first_name=None, last_name=None, username=None):
+    """Registra un nuovo utente nel database degli autorizzati"""
+    users = load_authorized_users()
+    user_id_str = str(user_id)
+    if user_id_str not in users:
+        full_name = f"{first_name or ''} {last_name or ''}".strip() or "Sconosciuto"
+        users[user_id_str] = {
+            "id": user_id, 
+            "name": full_name, 
+            "username": username
+        }
+        save_authorized_users(users)
+        return True
+    return False
+
 def get_bot_username():
     """Utility per ottenere lo username del bot per comporre link dinamici"""
     return getattr(get_bot_username, 'username', 'tuobot')
+
+# ============================================================================
+# GESTIONE ORDINI CONFERMATI
+# ============================================================================
+
+def load_ordini():
+    """Carica il database degli ordini confermati"""
+    return load_json_file(ORDINI_FILE, default=[])
+
+def save_ordini(ordini):
+    """Salva il database degli ordini confermati"""
+    save_json_file(ORDINI_FILE, ordini)
+
+def add_ordine_confermato(user_id, user_name, username, message_text, chat_id, message_id):
+    """Registra un ordine confermato nel database"""
+    ordini = load_ordini()
+    
+    ordine = {
+        "user_id": user_id,
+        "user_name": user_name,
+        "username": username,
+        "message": message_text,
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "timestamp": datetime.now().isoformat(),
+        "data": datetime.now().strftime("%Y-%m-%d"),
+        "ora": datetime.now().strftime("%H:%M:%S")
+    }
+    
+    ordini.append(ordine)
+    save_ordini(ordini)
+    logger.info(f"Ordine confermato salvato: {user_name} ({user_id})")
+
+def get_ordini_oggi():
+    """Recupera tutti gli ordini confermati di oggi"""
+    ordini = load_ordini()
+    oggi = datetime.now().strftime("%Y-%m-%d")
+    return [o for o in ordini if o.get("data") == oggi]
 
 # ============================================================================
 # LOGICHE DI RICERCA INTELLIGENTE
@@ -261,7 +336,6 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     """
     Cerca prodotti nel listino con pattern ULTRA-SPECIFICI.
-    Risponde SOLO a richieste esplicite di prodotti.
     """
     if not lista_text:
         return {'match': False, 'snippet': None, 'score': 0}
@@ -294,7 +368,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             break
     
     words = user_normalized.split()
-    if len(words) == 1 and len(user_normalized) >= 4:  # Fix: >= 4 invece di > 5
+    if len(words) == 1 and len(user_normalized) >= 4:
         has_explicit_intent = True
         logger.info(f"✅ Query singola: '{user_normalized}'")
     
@@ -312,7 +386,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     
     product_keywords = [
         w for w in words 
-        if len(w) >= 4 and w not in stopwords  # Fix: >= 4 invece di > 4
+        if len(w) >= 4 and w not in stopwords
     ]
     
     if not product_keywords:
@@ -339,21 +413,11 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         line_normalized = normalize_text(line)
         
         for keyword in product_keywords:
-            # Per query singole corte (<=5 char), usa substring match
-            if len(keyword) <= 5 and len(product_keywords) == 1:
-                # Substring match (trova "primo" in "primobolan")
-                if keyword in line_normalized:
-                    if ('💊' in line or '💉' in line or '€' in line):
-                        matched_lines.append(line.strip())
-                        logger.info(f"  ✅ Match (substring): '{keyword}' in '{line[:50]}'")
-                        break
-            else:
-                # Word boundary match (più preciso)
-                if re.search(r'\b' + re.escape(keyword) + r'\b', line_normalized, re.IGNORECASE):
-                    if ('💊' in line or '💉' in line or '€' in line):
-                        matched_lines.append(line.strip())
-                        logger.info(f"  ✅ Match (word boundary): '{keyword}' in '{line[:50]}'")
-                        break
+            if keyword in line_normalized:
+                if ('💊' in line or '💉' in line or '€' in line):
+                    matched_lines.append(line.strip())
+                    logger.info(f"  ✅ Match: '{keyword}' in '{line[:50]}'")
+                    break
     
     # STEP 4: RISULTATO
     if matched_lines:
@@ -493,8 +557,15 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_user_authorized(update.effective_user.id):
         return
         
-    lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
-    await update.message.reply_text(lista)
+    update_lista_from_web()
+    lista_text = load_lista()
+    
+    if not lista_text:
+        await update.message.reply_text("❌ Listino non disponibile. Riprova più tardi.")
+        return
+        
+    for i in range(0, len(lista_text), 4000):
+        await update.message.reply_text(lista_text[i:i+4000])
 
 # ============================================================================
 # HANDLERS: AMMINISTRAZIONE
@@ -669,6 +740,38 @@ def health():
     else:
         return 'OK - Bot initializing', 200
 
+# @app.route('/webhook', methods=['POST'])
+# def webhook():
+#     """Endpoint webhook per ricevere update da Telegram"""
+#     global bot_application
+    
+#     try:
+#         if not bot_application:
+#             logger.warning("⚠️ Bot non inizializzato al momento del webhook")
+#             return 'Bot not ready', 503
+        
+#         json_data = request.get_json(force=True)
+        
+#         if not json_data:
+#             logger.warning("⚠️ Webhook ricevuto senza dati")
+#             return 'No data', 400
+        
+#         update = Update.de_json(json_data, bot_application.bot)
+        
+#         try:
+#             loop = asyncio.get_event_loop()
+#         except RuntimeError:
+#             loop = asyncio.new_event_loop()
+#             asyncio.set_event_loop(loop)
+        
+#         loop.run_until_complete(bot_application.process_update(update))
+        
+#         return 'ok', 200
+        
+#     except Exception as e:
+#         logger.error(f"❌ Errore webhook: {e}", exc_info=True)
+#         return 'Error', 500
+
 # ============================================================================
 # HANDLER BUSINESS MESSAGES (CON SISTEMA /reg)
 # ============================================================================
@@ -680,19 +783,13 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     - Sistema /reg per registrazione clienti
     - Whitelist basata su tag
     """
-    logger.info("🚀🚀🚀 HANDLER BUSINESS MESSAGE CHIAMATO!")
-    
     message = (
         update.business_message
         or update.message
         or update.edited_message
     )
     
-    logger.info(f"📋 Message object: {type(message)}")
-    logger.info(f"📋 Has text: {hasattr(message, 'text') if message else 'No message'}")
-    
     if not message or not message.text:
-        logger.info("⚠️ Handler exit: no message or no text")
         return
     
     business_connection_id = message.business_connection_id
@@ -744,13 +841,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             
             # Registra il cliente (chat_id = ID del cliente)
             set_user_tag(chat_id, tag)
-            
-            await context.bot.send_message(
-                business_connection_id=business_connection_id,
-                chat_id=chat_id,
-                text=f"✅ Cliente registrato con tag: <b>{tag}</b>",
-                parse_mode='HTML'
-            )
             
             logger.info(f"👨‍💼 Admin ha registrato cliente {chat_id} con tag {tag}")
             return
@@ -804,8 +894,14 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # 1. LISTA
     if intent == "lista":
         logger.info(f"➡️ Entrato in blocco LISTA")
-        lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
-        await send_business_reply(lista, parse_mode=None)
+        lista = load_lista()
+        if lista:            
+            chunks = [lista[i:i+3900] for i in range(0, len(lista), 3900)]
+            for i, chunk in enumerate(chunks):
+                if i == 0:
+                    await send_business_reply(chunk, parse_mode='HTML')
+                else:
+                    await send_business_reply(chunk, parse_mode=None)
         return
     
     # 2. ORDINE
@@ -867,8 +963,10 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     
     # 1. LISTA
     if intent == "lista":
-        lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
-        await message.reply_text(lista)
+        lista = load_lista()
+        if lista:
+            for i in range(0, len(lista), 4000):
+                await message.reply_text(lista[i:i+4000])
         return
 
     # 2. ORDINE
@@ -925,12 +1023,14 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # 1. LISTA
     if intent == "lista":
-        lista = 'Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk'
-        await context.bot.send_message(
-            chat_id=message.chat.id,
-            text=lista,
-            reply_to_message_id=message.message_id
-        )
+        lista = load_lista()
+        if lista:
+            for i in range(0, len(lista), 4000):
+                await context.bot.send_message(
+                    chat_id=message.chat.id,
+                    text=lista[i:i+4000],
+                    reply_to_message_id=message.message_id
+                )
         return
 
     # 2. ORDINE
@@ -1147,7 +1247,7 @@ async def setup_bot():
         
         # 4. BUSINESS MESSAGES
         application.add_handler(MessageHandler(
-            business_filter,  # Solo il nostro filtro UpdateFilter
+            business_filter & filters.TEXT & ~filters.COMMAND,
             handle_business_message
         ))
         logger.info("✅ Handler Business Messages registrato (priority group=0)")
