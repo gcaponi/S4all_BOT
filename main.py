@@ -44,7 +44,7 @@ USER_TAGS_FILE = 'user_tags.json'  # ← NUOVO
 
 # Link JustPaste.it
 LISTA_URL = "https://justpaste.it/lista_4all"
-PASTE_URL = "https://justpaste.it/faq_4all"
+PASTE_URL = "https://justpaste.it/lista_4all"
 
 # Tag clienti consentiti
 ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
@@ -662,38 +662,6 @@ def health():
         return 'OK - Bot active', 200
     else:
         return 'OK - Bot initializing', 200
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    """Endpoint webhook per ricevere update da Telegram"""
-    global bot_application
-    
-    try:
-        if not bot_application:
-            logger.warning("⚠️ Bot non inizializzato al momento del webhook")
-            return 'Bot not ready', 503
-        
-        json_data = request.get_json(force=True)
-        
-        if not json_data:
-            logger.warning("⚠️ Webhook ricevuto senza dati")
-            return 'No data', 400
-        
-        update = Update.de_json(json_data, bot_application.bot)
-        
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        loop.run_until_complete(bot_application.process_update(update))
-        
-        return 'ok', 200
-        
-    except Exception as e:
-        logger.error(f"❌ Errore webhook: {e}", exc_info=True)
-        return 'Error', 500
 
 # ============================================================================
 # HANDLER BUSINESS MESSAGES (CON SISTEMA /reg)
