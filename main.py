@@ -1114,29 +1114,6 @@ async def setup_bot():
         logger.info(f"Bot: @{bot.username}")
         
         # ========================================
-        # 🔍 DEBUG: CATCH-ALL HANDLER (RIMUOVERE DOPO DEBUG)
-        # ========================================
-        async def debug_catch_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
-            logger.info("🔍🔍🔍 CATCH-ALL: Update ricevuto!")
-            logger.info(f"   Update type: {type(update)}")
-            logger.info(f"   Has business_message: {hasattr(update, 'business_message')}")
-            logger.info(f"   Has message: {hasattr(update, 'message')}")
-            
-            if hasattr(update, 'business_message') and update.business_message:
-                logger.info(f"   ✅ business_message presente!")
-                logger.info(f"   Text: {update.business_message.text if update.business_message.text else 'No text'}")
-            
-            if hasattr(update, 'message') and update.message:
-                logger.info(f"   ✅ message presente!")
-                logger.info(f"   Text: {update.message.text if update.message.text else 'No text'}")
-        
-        application.add_handler(MessageHandler(
-            filters.ALL,
-            debug_catch_all
-        ), group=-1)  # Group -1 = prima di tutti
-        logger.info("🔍 DEBUG Catch-all handler registrato")
-        
-        # ========================================
         # REGISTRAZIONE HANDLER
         # ========================================
         
