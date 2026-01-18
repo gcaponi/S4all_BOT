@@ -503,62 +503,62 @@ class IntentClassifier:
     
         parole = text_lower.split()
     
-    # Pattern FORTI per tempi di spedizione (NUOVO)
-    spedizione_patterns = [
-        r'\bquando\s+(riusci|riesci|puoi|puo)\s+.*spedi',
-        r'\btempi\s+(di\s+)?spedizione',
-        r'\bquanto\s+tempo.*spedi',
-        r'\bdopo\s+quanto.*spedi',
-        r'\bquando\s+parti',
-        r'\bquando\s+mandi',
-    ]
-    
-    for pattern in spedizione_patterns:
-        if re.search(pattern, text_lower, re.I):
-            score += 0.7
-            matched.append("spedizione_pattern")
-            logger.info(f"   ✓ Pattern spedizione forte: {pattern[:40]}")
-            break
-    
-    for interrogativa in self.faq_indicators['parole_interrogative']:
-        if interrogativa in parole:
-            score += 0.3
-            matched.append(f"interrogativa:{interrogativa}")
-            break
-    
-    for frase in self.faq_indicators['richieste_info']:
-        if frase in text_lower:
-            score += 0.3
-            matched.append(f"richiesta_info:{frase}")
-            break
-    
-    for tema, keywords in self.faq_indicators['temi_faq'].items():
-        if any(kw in text_lower for kw in keywords):
-            score += 0.5
-            matched.append(f"tema:{tema}")
-            break
-    
-    if '?' in text_norm:
-        score += 0.2
-        matched.append("punto_interrogativo")
-    
-    faq_strong_patterns = [
-        r'\b(inviato|spedito|mandato|ricevuto)\b.*\b(ordine|pacco|prodotto)\b',
-        r'\b(ordine|pacco|prodotto)\b.*\b(inviato|spedito|mandato|ricevuto)\b',
-        r'\bgia\s+(inviato|spedito|mandato)\b',
-        r'\bquando\s+(arriva|parte|spedisci)\b',
-        r'\bdove\s+(e|è)\s+(il|mio|l)\b.*\b(ordine|pacco)\b',
-    ]
-    
-    for pattern in faq_strong_patterns:
-        if re.search(pattern, text_lower, re.I):
-            score += 0.6
-            matched.append("faq_strong_pattern")
-            break
-    
-    confidence = min(score, 1.0)
-    
-    return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
+        # Pattern FORTI per tempi di spedizione (NUOVO)
+        spedizione_patterns = [
+            r'\bquando\s+(riusci|riesci|puoi|puo)\s+.*spedi',
+            r'\btempi\s+(di\s+)?spedizione',
+            r'\bquanto\s+tempo.*spedi',
+            r'\bdopo\s+quanto.*spedi',
+            r'\bquando\s+parti',
+            r'\bquando\s+mandi',
+        ]
+        
+        for pattern in spedizione_patterns:
+            if re.search(pattern, text_lower, re.I):
+                score += 0.7
+                matched.append("spedizione_pattern")
+                logger.info(f"   ✓ Pattern spedizione forte: {pattern[:40]}")
+                break
+        
+        for interrogativa in self.faq_indicators['parole_interrogative']:
+            if interrogativa in parole:
+                score += 0.3
+                matched.append(f"interrogativa:{interrogativa}")
+                break
+        
+        for frase in self.faq_indicators['richieste_info']:
+            if frase in text_lower:
+                score += 0.3
+                matched.append(f"richiesta_info:{frase}")
+                break
+        
+        for tema, keywords in self.faq_indicators['temi_faq'].items():
+            if any(kw in text_lower for kw in keywords):
+                score += 0.5
+                matched.append(f"tema:{tema}")
+                break
+        
+        if '?' in text_norm:
+            score += 0.2
+            matched.append("punto_interrogativo")
+        
+        faq_strong_patterns = [
+            r'\b(inviato|spedito|mandato|ricevuto)\b.*\b(ordine|pacco|prodotto)\b',
+            r'\b(ordine|pacco|prodotto)\b.*\b(inviato|spedito|mandato|ricevuto)\b',
+            r'\bgia\s+(inviato|spedito|mandato)\b',
+            r'\bquando\s+(arriva|parte|spedisci)\b',
+            r'\bdove\s+(e|è)\s+(il|mio|l)\b.*\b(ordine|pacco)\b',
+        ]
+        
+        for pattern in faq_strong_patterns:
+            if re.search(pattern, text_lower, re.I):
+                score += 0.6
+                matched.append("faq_strong_pattern")
+                break
+        
+        confidence = min(score, 1.0)
+        
+        return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
     
     def _check_ricerca_prodotto(self, text_norm: str, text_lower: str) -> IntentResult:
         """Controlla ricerca prodotto"""
