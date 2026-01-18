@@ -225,35 +225,57 @@ class IntentClassifier:
         return IntentResult(IntentType.FALLBACK, 0.0, "Nessun intento riconosciuto", [])
     
     def _check_richiesta_lista(self, text_norm: str, text_lower: str) -> IntentResult:
-        """Controlla richiesta lista"""
+        """Controlla richiesta lista con pattern espliciti migliorati"""
         matched = []
         score = 0.0
-        
-        for category, patterns in self.richiesta_lista_patterns.items():
-            for pattern in patterns:
-                if re.search(pattern, text_norm, re.I):
-                    matched.append(category)
-                    score = 1.0
-                    return IntentResult(
-                        IntentType.RICHIESTA_LISTA,
-                        score,
-                        f"Richiesta esplicita lista: {category}",
-                        matched
-                    )
-        
-        parole = text_lower.split()
-        if any(kw in parole for kw in ['lista', 'listino', 'catalogo', 'prezzi']):
-            if len(parole) <= 5:
+    
+        # Pattern espliciti ALTA PRIORITÀ (aggiunti nuovi)
+        lista_patterns_explicit = [
+            r'\blista\s+(prodott|complet|prezz|aggiorn)',
+            r'(hai|invia|manda|vorrei)\s+(la\s+)?lista',
+            r'\bprodotti\s+(disponibil|che\s+hai|attual)',
+            r'(che|quali)\s+prodotti\s+hai',
+            r'cosa\s+(hai|vendi|c\'è)\s+disponibil',
+            r'^\s*hai\s+la\s+lista\s*\??$',  # "Hai la lista?"
+        ]
+    
+        for pattern in lista_patterns_explicit:
+            if re.search(pattern, text_norm, re.I):
+                matched.append('pattern_esplicito_lista')
+                logger.info(f"   ✓ Match lista esplicita: {pattern[:40]}")
                 return IntentResult(
                     IntentType.RICHIESTA_LISTA,
-                    0.85,
-                    "Keyword lista in frase breve",
-                    ['lista_keyword']
+                    0.95,
+                    "Richiesta esplicita lista prodotti",
+                    matched
                 )
-            score = 0.5
-            matched.append('lista_keyword')
-        
-        return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
+    
+    # Pattern già esistenti
+    for category, patterns in self.richiesta_lista_patterns.items():
+        for pattern in patterns:
+            if re.search(pattern, text_norm, re.I):
+                matched.append(category)
+                score = 1.0
+                return IntentResult(
+                    IntentType.RICHIESTA_LISTA,
+                    score,
+                    f"Richiesta esplicita lista: {category}",
+                    matched
+                )
+    
+    parole = text_lower.split()
+    if any(kw in parole for kw in ['lista', 'listino', 'catalogo', 'prezzi']):
+        if len(parole) <= 5:
+            return IntentResult(
+                IntentType.RICHIESTA_LISTA,
+                0.85,
+                "Keyword lista in frase breve",
+                ['lista_keyword']
+            )
+        score = 0.5
+        matched.append('lista_keyword')
+    
+    return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
     
     def _check_ordine_reale(self, text: str, text_lower: str) -> IntentResult:
         """Controlla ordine con quantità testuali e pattern intelligenti"""
@@ -397,7 +419,14 @@ class IntentClassifier:
             order_indicators += 1
             matched.append('keyword_ordine')
             logger.info(f"  ✓ Keyword ordine (+1 punto)")
-        
+
+        # BLACKLIST: Parole comuni che NON sono prodotti
+        PRODUCT_EXCLUSIONS = {
+            'quando', 'dove', 'come', 'quanto', 'perché', 'chi', 'cosa',
+            'prodotti', 'prodotto', 'disponibile', 'disponibili',
+            'spedire', 'spedizione', 'pagare', 'pagamento', 'ordine'
+        }
+
         # 6. Prodotti dalla lista (CON FUZZY MATCHING) - ESCLUDI "ordine"
         if self.load_lista_func:
             try:
@@ -406,7 +435,8 @@ class IntentClassifier:
                     lista_lines = [line.strip().lower() for line in lista_text.split('\n') 
                                    if line.strip() and len(line.strip()) > 3]
                     SKIP_WORDS = {'ordine', 'richiede', 'secondo', 'tantum', 'momento', 'attimo'}
-                    text_words = [w for w in text_lower.split() if len(w) > 4 and w not in SKIP_WORDS]
+                    text_words = [w for w in text_lower.split() 
+                                  if len(w) > 4 and w not in SKIP_WORDS and w not in PRODUCT_EXCLUSIONS]
                     
                     product_found = False
                     for word in text_words:
@@ -416,7 +446,7 @@ class IntentClassifier:
                             continue
                             
                         for line in lista_lines:
-                            if word in line:
+                            if word in line and word not in PRODUCT_EXCLUSIONS:
                                 order_indicators += 2
                                 matched.append(f'prodotto_lista:{word}')
                                 product_found = True
@@ -467,51 +497,68 @@ class IntentClassifier:
         return IntentResult(IntentType.INVIO_ORDINE, confidence, f"Score: {order_indicators} punti", matched)
     
     def _check_faq(self, text_norm: str, text_lower: str) -> IntentResult:
-        """Controlla FAQ"""
+        """Controlla FAQ con migliore rilevamento tempi spedizione"""
         score = 0.0
         matched = []
-        
+    
         parole = text_lower.split()
-        
-        for interrogativa in self.faq_indicators['parole_interrogative']:
-            if interrogativa in parole:
-                score += 0.3
-                matched.append(f"interrogativa:{interrogativa}")
-                break
-        
-        for frase in self.faq_indicators['richieste_info']:
-            if frase in text_lower:
-                score += 0.3
-                matched.append(f"richiesta_info:{frase}")
-                break
-        
-        for tema, keywords in self.faq_indicators['temi_faq'].items():
-            if any(kw in text_lower for kw in keywords):
-                score += 0.5
-                matched.append(f"tema:{tema}")
-                break
-        
-        if '?' in text_norm:
-            score += 0.2
-            matched.append("punto_interrogativo")
-        
-        faq_strong_patterns = [
-            r'\b(inviato|spedito|mandato|ricevuto)\b.*\b(ordine|pacco|prodotto)\b',
-            r'\b(ordine|pacco|prodotto)\b.*\b(inviato|spedito|mandato|ricevuto)\b',
-            r'\bgia\s+(inviato|spedito|mandato)\b',
-            r'\bquando\s+(arriva|parte|spedisci)\b',
-            r'\bdove\s+(e|è)\s+(il|mio|l)\b.*\b(ordine|pacco)\b',
-        ]
-        
-        for pattern in faq_strong_patterns:
-            if re.search(pattern, text_lower, re.I):
-                score += 0.6
-                matched.append("faq_strong_pattern")
-                break
-        
-        confidence = min(score, 1.0)
-        
-        return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
+    
+    # Pattern FORTI per tempi di spedizione (NUOVO)
+    spedizione_patterns = [
+        r'\bquando\s+(riusci|riesci|puoi|puo)\s+.*spedi',
+        r'\btempi\s+(di\s+)?spedizione',
+        r'\bquanto\s+tempo.*spedi',
+        r'\bdopo\s+quanto.*spedi',
+        r'\bquando\s+parti',
+        r'\bquando\s+mandi',
+    ]
+    
+    for pattern in spedizione_patterns:
+        if re.search(pattern, text_lower, re.I):
+            score += 0.7
+            matched.append("spedizione_pattern")
+            logger.info(f"   ✓ Pattern spedizione forte: {pattern[:40]}")
+            break
+    
+    for interrogativa in self.faq_indicators['parole_interrogative']:
+        if interrogativa in parole:
+            score += 0.3
+            matched.append(f"interrogativa:{interrogativa}")
+            break
+    
+    for frase in self.faq_indicators['richieste_info']:
+        if frase in text_lower:
+            score += 0.3
+            matched.append(f"richiesta_info:{frase}")
+            break
+    
+    for tema, keywords in self.faq_indicators['temi_faq'].items():
+        if any(kw in text_lower for kw in keywords):
+            score += 0.5
+            matched.append(f"tema:{tema}")
+            break
+    
+    if '?' in text_norm:
+        score += 0.2
+        matched.append("punto_interrogativo")
+    
+    faq_strong_patterns = [
+        r'\b(inviato|spedito|mandato|ricevuto)\b.*\b(ordine|pacco|prodotto)\b',
+        r'\b(ordine|pacco|prodotto)\b.*\b(inviato|spedito|mandato|ricevuto)\b',
+        r'\bgia\s+(inviato|spedito|mandato)\b',
+        r'\bquando\s+(arriva|parte|spedisci)\b',
+        r'\bdove\s+(e|è)\s+(il|mio|l)\b.*\b(ordine|pacco)\b',
+    ]
+    
+    for pattern in faq_strong_patterns:
+        if re.search(pattern, text_lower, re.I):
+            score += 0.6
+            matched.append("faq_strong_pattern")
+            break
+    
+    confidence = min(score, 1.0)
+    
+    return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
     
     def _check_ricerca_prodotto(self, text_norm: str, text_lower: str) -> IntentResult:
         """Controlla ricerca prodotto"""
