@@ -250,32 +250,32 @@ class IntentClassifier:
                     matched
                 )
     
-    # Pattern già esistenti
-    for category, patterns in self.richiesta_lista_patterns.items():
-        for pattern in patterns:
-            if re.search(pattern, text_norm, re.I):
-                matched.append(category)
-                score = 1.0
+        # Pattern già esistenti
+        for category, patterns in self.richiesta_lista_patterns.items():
+            for pattern in patterns:
+                if re.search(pattern, text_norm, re.I):
+                    matched.append(category)
+                    score = 1.0
+                    return IntentResult(
+                        IntentType.RICHIESTA_LISTA,
+                        score,
+                        f"Richiesta esplicita lista: {category}",
+                        matched
+                    )
+        
+        parole = text_lower.split()
+        if any(kw in parole for kw in ['lista', 'listino', 'catalogo', 'prezzi']):
+            if len(parole) <= 5:
                 return IntentResult(
                     IntentType.RICHIESTA_LISTA,
-                    score,
-                    f"Richiesta esplicita lista: {category}",
-                    matched
+                    0.85,
+                    "Keyword lista in frase breve",
+                    ['lista_keyword']
                 )
-    
-    parole = text_lower.split()
-    if any(kw in parole for kw in ['lista', 'listino', 'catalogo', 'prezzi']):
-        if len(parole) <= 5:
-            return IntentResult(
-                IntentType.RICHIESTA_LISTA,
-                0.85,
-                "Keyword lista in frase breve",
-                ['lista_keyword']
-            )
-        score = 0.5
-        matched.append('lista_keyword')
-    
-    return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
+            score = 0.5
+            matched.append('lista_keyword')
+        
+        return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
     
     def _check_ordine_reale(self, text: str, text_lower: str) -> IntentResult:
         """Controlla ordine con quantità testuali e pattern intelligenti"""
