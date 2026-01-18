@@ -558,7 +558,7 @@ class IntentClassifier:
         
         confidence = min(score, 1.0)
         
-    return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
+        return IntentResult(IntentType.DOMANDA_FAQ, confidence, f"FAQ score: {confidence:.2f}", matched)
     
     def _check_ricerca_prodotto(self, text_norm: str, text_lower: str) -> IntentResult:
         """Controlla ricerca prodotto"""
