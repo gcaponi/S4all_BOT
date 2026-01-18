@@ -664,7 +664,7 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = ordine.get('data', 'N/A')
         message = ordine.get('message', 'N/A')
         chat_id = ordine.get('chat_id', 'N/A')
-        msg += f"<b>{i}. {user_name}</b> (@{username})    🕐 {data}\n"
+        msg += f"<b>{i}. {user_name}</b> (@{username}) 🕐 {data}\n"
         msg += f"  📝 Messaggio:\n  <code>{message[:100]}...</code>\n\n"
     
     if len(msg) > 4000:
@@ -1210,9 +1210,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 notifica = (
                     f"📩 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
-                    f"👤 Utente: {user.first_name} (@{user.username})\n"
-                    f"🆔 ID: <code>{order_data['user_id']}</code>\n"
-                    f"💬 Chat: <code>{order_data['chat_id']}</code>\n"
+                    f"👤 Utente: {user.first_name} (@{user.username})  🕐 {data}\n"
                     f"📝 Messaggio:\n<code>{order_data['text'][:200]}</code>"
                 )
                 await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
