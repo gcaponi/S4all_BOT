@@ -505,7 +505,7 @@ class IntentClassifier:
     
         # Pattern FORTI per tempi di spedizione (NUOVO)
         spedizione_patterns = [
-            r'\bquando\s+(riusci|riesci|puoi|puo)\s+.*spedi',
+            r'\bquando\s+(riusci|riesci|riuscivi|puoi|puo|potevi)\s+.*spedi',
             r'\btempi\s+(di\s+)?spedizione',
             r'\bquanto\s+tempo.*spedi',
             r'\bdopo\s+quanto.*spedi',
