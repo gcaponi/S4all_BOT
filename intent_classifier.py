@@ -145,13 +145,14 @@ class IntentClassifier:
         
         # PRIORITÀ 4: Ricerca prodotto
         self.ricerca_indicators = [
-            r'\bhai\s+(la|il|dello|della)\s+\w+\b',
+            r'\bhai\s+(la|il|dello|della|l\'|dei|delle)?\s*\w+\b',  # MIGLIORATO: "hai olio?" funziona
             r'\bce\s+(la|il|dello|della)\s+\w+\b',
             r'\bcosto\s+(di|del|della)\s+\w+\b',
             r'\bprezzo\s+(di|del|della)\s+\w+\b',
             r'\bquanto\s+costa\s+\w+\b',
             r'\bvendete\s+\w+\b',
             r'\bavete\s+\w+\b',
+            r'\bce\s*(l\')?avete\s+\w+\b',  # AGGIUNTO: "ce l'avete..."
         ]
 
     def classify(self, text: str) -> IntentResult:
@@ -274,7 +275,24 @@ class IntentClassifier:
                 )
             score = 0.5
             matched.append('lista_keyword')
-        
+
+        # FUZZY MATCHING per typo (NUOVO)
+        # Se nessun match esatto, prova con similarità
+        if score == 0.0:
+            PAROLE_CHIAVE_LISTA = ['lista', 'listino', 'catalogo', 'prezzi']
+            for parola in parole:
+                if len(parola) >= 4:  # Solo parole di almeno 4 caratteri
+                    for keyword in PAROLE_CHIAVE_LISTA:
+                        similarity = calculate_similarity(parola, keyword)
+                        if similarity >= 0.75:  # 75% similarità
+                            logger.info(f"   ✓ Fuzzy match: '{parola}' ~ '{keyword}' ({similarity:.2f})")
+                            return IntentResult(
+                                IntentType.RICHIESTA_LISTA,
+                                0.80,  # Confidence leggermente più bassa per fuzzy
+                                f"Fuzzy match: {parola} ~ {keyword}",
+                                ['fuzzy_match_lista']
+                            )
+
         return IntentResult(IntentType.RICHIESTA_LISTA, score, "Check lista", matched)
     
     def _check_ordine_reale(self, text: str, text_lower: str) -> IntentResult:
@@ -472,13 +490,32 @@ class IntentClassifier:
             except Exception as e:
                 logger.warning(f"Errore caricamento lista: {e}")
         
-        # 7. Metodi di pagamento
+        # 7. Metodi di pagamento (PESO AUMENTATO: 2 → 3)
         payment_keywords = ['bonifico', 'usdt', 'crypto', 'bitcoin', 'btc', 'eth', 'usdc', 'xmr']
         if any(kw in text_lower for kw in payment_keywords):
-            order_indicators += 2
+            order_indicators += 3  # AUMENTATO da 2 a 3
             matched.append('pagamento')
-            logger.info(f"  ✓ Metodo pagamento (+2 punti)")
-        
+            logger.info(f"  ✓ Metodo pagamento (+3 punti)")
+
+        # 7b. Pattern "pago con..." (NUOVO - per messaggi parziali)
+        if re.search(r'\bpag[oa]\s+(con|in|tramite)\b', text_lower):
+            order_indicators += 2
+            matched.append('pago_con')
+            logger.info(f"  ✓ Pattern 'pago con...' (+2 punti)")
+
+        # 7c. Pattern "spedire/consegna a..." (NUOVO - per messaggi parziali)
+        partial_order_patterns = [
+            r'\bspedir[ei]\s+(a|in)\b',
+            r'\bconsegn[ao]\s+(a|in)\b',
+            r'\bmandare\s+(a|in)\b',
+        ]
+        for pattern in partial_order_patterns:
+            if re.search(pattern, text_lower):
+                order_indicators += 2
+                matched.append('ordine_parziale')
+                logger.info(f"  ✓ Messaggio parziale ordine (+2 punti)")
+                break
+
         logger.info(f"📊 ORDINE TOTALE: {order_indicators} punti")
         logger.info(f"📊 ORDINE MATCHED: {matched}")
         
@@ -564,24 +601,32 @@ class IntentClassifier:
         """Controlla ricerca prodotto"""
         score = 0.0
         matched = []
-        
+
         for pattern in self.ricerca_indicators:
             if re.search(pattern, text_norm, re.I):
                 score += 0.4
                 matched.append(f"pattern")
-        
+
         parole = text_lower.split()
         prodotti_trovati = [p for p in parole if p in self.lista_keywords and len(p) > 3]
         if prodotti_trovati:
             score += 0.3 * min(len(prodotti_trovati), 2)
             matched.extend([f"prodotto:{p}" for p in prodotti_trovati[:3]])
-        
+
+        # FIX BUG SALUTI: Escludere saluti comuni dal single_word_query match
+        # per evitare che "ciao", "buongiorno" vengano classificati come RICERCA
+        SALUTI_COMUNI = {'ciao', 'buongiorno', 'buonasera', 'salve', 'hey', 'hello', 'hi', 'salut', 'hola'}
+
         if len(parole) == 1 and 3 <= len(text_lower) <= 20:
-            score += 0.5
-            matched.append("single_word_query")
-        
+            # Rimuovi punteggiatura per controllo saluti (fix "Ciao!" vs "ciao")
+            text_no_punct = re.sub(r'[^\w\s]', '', text_lower)
+            # Solo se non è un saluto
+            if text_no_punct not in SALUTI_COMUNI:
+                score += 0.5
+                matched.append("single_word_query")
+
         confidence = min(score, 1.0)
-        
+
         return IntentResult(IntentType.RICERCA_PRODOTTO, confidence, f"Ricerca prodotto score: {confidence:.2f}", matched)
     
     def _has_strong_faq_signals(self, text: str) -> bool:
@@ -635,9 +680,12 @@ class IntentClassifier:
     def _is_saluto(self, text: str) -> bool:
         """Controlla se è saluto"""
         saluti = ['ciao', 'buongiorno', 'buonasera', 'salve', 'hey', 'hello', 'hi']
-        parole = text.split()
-        
-        if len(parole) <= 3 and any(s in text for s in saluti):
+
+        # Rimuovi punteggiatura per controllo
+        text_clean = re.sub(r'[^\w\s]', '', text)
+        parole = text_clean.split()
+
+        if len(parole) <= 3 and any(s in text_clean for s in saluti):
             return True
         return False
     

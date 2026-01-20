@@ -4,9 +4,9 @@
       "messaggio": "Ciao!",
       "contesto": "Cliente saluta per iniziare conversazione",
       "expected": "saluto",
-      "received": "ricerca",
-      "confidence": 0.5,
-      "status": "FAIL"
+      "received": "saluto",
+      "confidence": 0.95,
+      "status": "OK"
     },
     {
       "messaggio": "Sono nuovo, cosa vendete?",
@@ -38,9 +38,9 @@
       "messaggio": "Buongiorno",
       "contesto": "Cliente inizia con saluto formale",
       "expected": "saluto",
-      "received": "ricerca",
-      "confidence": 0.5,
-      "status": "FAIL"
+      "received": "saluto",
+      "confidence": 0.95,
+      "status": "OK"
     },
     {
       "messaggio": "Vorrei ordinare 2 oli extra vergine bio",
@@ -54,17 +54,17 @@
       "messaggio": "Spedire a Via Garibaldi 25, Roma",
       "contesto": "Cliente fornisce indirizzo",
       "expected": "ordine",
-      "received": "fallback",
-      "confidence": 0.0,
-      "status": "WARN"
+      "received": "ordine",
+      "confidence": 0.4,
+      "status": "OK"
     },
     {
       "messaggio": "Pago con bonifico bancario",
       "contesto": "Cliente specifica metodo pagamento",
       "expected": "ordine",
-      "received": "faq",
+      "received": "ordine",
       "confidence": 0.5,
-      "status": "FAIL"
+      "status": "OK"
     }
   ],
   "Cliente con Domande": [
@@ -72,9 +72,9 @@
       "messaggio": "Buonasera",
       "contesto": "Saluto serale",
       "expected": "saluto",
-      "received": "ricerca",
-      "confidence": 0.5,
-      "status": "FAIL"
+      "received": "saluto",
+      "confidence": 0.95,
+      "status": "OK"
     },
     {
       "messaggio": "Quanto tempo ci vuole per la spedizione?",
@@ -156,9 +156,9 @@
       "messaggio": "hai olio?",
       "contesto": "Ricerca disponibilità prodotto",
       "expected": "ricerca",
-      "received": "fallback",
-      "confidence": 0.0,
-      "status": "WARN"
+      "received": "ricerca",
+      "confidence": 0.4,
+      "status": "OK"
     }
   ],
   "Ordini Complessi": [
@@ -175,7 +175,7 @@
       "contesto": "Ordine completo in un messaggio",
       "expected": "ordine",
       "received": "ordine",
-      "confidence": 0.9,
+      "confidence": 1.0,
       "status": "OK"
     }
   ],
@@ -184,17 +184,17 @@
       "messaggio": "vorrei la lsta",
       "contesto": "Typo su 'lista'",
       "expected": "lista",
-      "received": "fallback",
-      "confidence": 0.0,
-      "status": "WARN"
+      "received": "lista",
+      "confidence": 0.8,
+      "status": "OK"
     },
     {
       "messaggio": "liste prodotti",
       "contesto": "Plurale invece di singolare",
       "expected": "lista",
-      "received": "fallback",
-      "confidence": 0.0,
-      "status": "WARN"
+      "received": "lista",
+      "confidence": 0.8,
+      "status": "OK"
     }
   ]
 }
