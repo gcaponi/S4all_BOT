@@ -1,0 +1,200 @@
+{
+  "Conversazione Cliente Nuovo": [
+    {
+      "messaggio": "Ciao!",
+      "contesto": "Cliente saluta per iniziare conversazione",
+      "expected": "saluto",
+      "received": "ricerca",
+      "confidence": 0.5,
+      "status": "FAIL"
+    },
+    {
+      "messaggio": "Sono nuovo, cosa vendete?",
+      "contesto": "Cliente chiede info sui prodotti",
+      "expected": "lista",
+      "received": "lista",
+      "confidence": 1.0,
+      "status": "OK"
+    },
+    {
+      "messaggio": "Avete integratori?",
+      "contesto": "Cliente cerca prodotto specifico",
+      "expected": "ricerca",
+      "received": "ricerca",
+      "confidence": 0.4,
+      "status": "OK"
+    },
+    {
+      "messaggio": "Quanto costa l'integratore multivitaminico?",
+      "contesto": "Cliente chiede prezzo",
+      "expected": "faq",
+      "received": "faq",
+      "confidence": 0.5,
+      "status": "OK"
+    }
+  ],
+  "Ordine Diretto": [
+    {
+      "messaggio": "Buongiorno",
+      "contesto": "Cliente inizia con saluto formale",
+      "expected": "saluto",
+      "received": "ricerca",
+      "confidence": 0.5,
+      "status": "FAIL"
+    },
+    {
+      "messaggio": "Vorrei ordinare 2 oli extra vergine bio",
+      "contesto": "Ordine con quantità e prodotto",
+      "expected": "ordine",
+      "received": "ordine",
+      "confidence": 0.4,
+      "status": "OK"
+    },
+    {
+      "messaggio": "Spedire a Via Garibaldi 25, Roma",
+      "contesto": "Cliente fornisce indirizzo",
+      "expected": "ordine",
+      "received": "fallback",
+      "confidence": 0.0,
+      "status": "WARN"
+    },
+    {
+      "messaggio": "Pago con bonifico bancario",
+      "contesto": "Cliente specifica metodo pagamento",
+      "expected": "ordine",
+      "received": "faq",
+      "confidence": 0.5,
+      "status": "FAIL"
+    }
+  ],
+  "Cliente con Domande": [
+    {
+      "messaggio": "Buonasera",
+      "contesto": "Saluto serale",
+      "expected": "saluto",
+      "received": "ricerca",
+      "confidence": 0.5,
+      "status": "FAIL"
+    },
+    {
+      "messaggio": "Quanto tempo ci vuole per la spedizione?",
+      "contesto": "Domanda su tempi spedizione",
+      "expected": "faq",
+      "received": "faq",
+      "confidence": 1.0,
+      "status": "OK"
+    },
+    {
+      "messaggio": "Accettate pagamenti in crypto?",
+      "contesto": "Domanda su metodi pagamento",
+      "expected": "faq",
+      "received": "faq",
+      "confidence": 0.7,
+      "status": "OK"
+    },
+    {
+      "messaggio": "Come faccio a tracciare il pacco?",
+      "contesto": "Domanda su tracking",
+      "expected": "faq",
+      "received": "faq",
+      "confidence": 1.0,
+      "status": "OK"
+    }
+  ],
+  "Messaggi Brevi e Diretti": [
+    {
+      "messaggio": "lista",
+      "contesto": "Richiesta diretta lista",
+      "expected": "lista",
+      "received": "lista",
+      "confidence": 1.0,
+      "status": "OK"
+    },
+    {
+      "messaggio": "prezzi",
+      "contesto": "Richiesta prezzi",
+      "expected": "lista",
+      "received": "lista",
+      "confidence": 1.0,
+      "status": "OK"
+    },
+    {
+      "messaggio": "catalogo",
+      "contesto": "Richiesta catalogo",
+      "expected": "lista",
+      "received": "lista",
+      "confidence": 1.0,
+      "status": "OK"
+    }
+  ],
+  "Casi Ambigui e Difficili": [
+    {
+      "messaggio": "voglio ordinare",
+      "contesto": "Intenzione di ordinare ma senza dettagli",
+      "expected": "fallback",
+      "received": "fallback",
+      "confidence": 0.0,
+      "status": "OK"
+    },
+    {
+      "messaggio": "ne prendo 2",
+      "contesto": "Quantità senza specificare cosa",
+      "expected": "fallback",
+      "received": "fallback",
+      "confidence": 0.0,
+      "status": "OK"
+    },
+    {
+      "messaggio": "quanto costa?",
+      "contesto": "Domanda prezzo senza specificare prodotto",
+      "expected": "faq",
+      "received": "faq",
+      "confidence": 0.5,
+      "status": "OK"
+    },
+    {
+      "messaggio": "hai olio?",
+      "contesto": "Ricerca disponibilità prodotto",
+      "expected": "ricerca",
+      "received": "fallback",
+      "confidence": 0.0,
+      "status": "WARN"
+    }
+  ],
+  "Ordini Complessi": [
+    {
+      "messaggio": "Vorrei ordinare:\n- 2 oli extra vergine\n- 1 miele biologico\n- 3 tisane",
+      "contesto": "Ordine multiprodotto formattato",
+      "expected": "ordine",
+      "received": "ordine",
+      "confidence": 0.5,
+      "status": "OK"
+    },
+    {
+      "messaggio": "Voglio 1 crema viso, spedire a Milano, pago con crypto",
+      "contesto": "Ordine completo in un messaggio",
+      "expected": "ordine",
+      "received": "ordine",
+      "confidence": 0.9,
+      "status": "OK"
+    }
+  ],
+  "Typo e Errori Comuni": [
+    {
+      "messaggio": "vorrei la lsta",
+      "contesto": "Typo su 'lista'",
+      "expected": "lista",
+      "received": "fallback",
+      "confidence": 0.0,
+      "status": "WARN"
+    },
+    {
+      "messaggio": "liste prodotti",
+      "contesto": "Plurale invece di singolare",
+      "expected": "lista",
+      "received": "fallback",
+      "confidence": 0.0,
+      "status": "WARN"
+    }
+  ]
+}
