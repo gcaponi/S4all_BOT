@@ -456,22 +456,10 @@ def estrai_parole_chiave_lista():
         testo_norm = re.sub(r'[^\w\s]', ' ', testo.lower())
         parole = set(testo_norm.split())
         PAROLE_CHIAVE_LISTA = {p for p in parole if len(p) > 2}
-    
-    try:
-        intent_classifier = IntentClassifier(
-            lista_keywords=PAROLE_CHIAVE_LISTA,
-            load_lista_func=load_lista
-        )
         logger.info(f"✅ {len(PAROLE_CHIAVE_LISTA)} keywords estratte")
-    except Exception as e:
-        logger.error(f"❌ Errore creazione classifier: {e}")
-        intent_classifier = IntentClassifier(
-            lista_keywords=set(),
-            load_lista_func=load_lista
-        )
-        logger.warning("⚠️ Classifier inizializzato vuoto")
     
     return PAROLE_CHIAVE_LISTA
+
 
 def init_classifier():
     """Inizializza il classificatore una sola volta"""
@@ -1367,12 +1355,9 @@ async def setup_bot():
             # Crea classifier
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
             
+            
         except Exception as e:
             logger.error(f"❌ Errore init: {e}")
-            intent_classifier = IntentClassifier(
-                lista_keywords=set(),
-                load_lista_func=load_lista
-            )
         
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
