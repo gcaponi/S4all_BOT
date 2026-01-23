@@ -1355,6 +1355,9 @@ async def setup_bot():
             # Crea classifier
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
             
+            logger.info("🔧 Inizializzazione classificatore...")
+            classifier = init_classifier()
+            logger.info("✅ Classificatore pronto")
             
         except Exception as e:
             logger.error(f"❌ Errore init: {e}")
