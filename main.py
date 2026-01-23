@@ -7,14 +7,17 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 import secrets
 import re
 import requests
+import pickle
+import asyncio
+from intent_classifier import EnhancedIntentClassifier, IntentType
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
-import asyncio
 from datetime import datetime
-from intent_classifier import IntentClassifier, IntentType
 
 # Import database module (PostgreSQL)
 import database as db
+
+classifier_instance = None
 
 # ============================================================================
 # CONFIGURAZIONE LOGGING
@@ -470,39 +473,86 @@ def estrai_parole_chiave_lista():
     
     return PAROLE_CHIAVE_LISTA
 
-def calcola_intenzione(text: str) -> str:
-    """Classifica l'intento usando il classifier"""
+def init_classifier():
+    """Inizializza il classificatore una sola volta"""
+    global classifier_instance
+    if classifier_instance is None:
+        classifier_instance = EnhancedIntentClassifier()
+        # Carica il modello addestrato se esiste
+        try:
+            if os.path.exists('intent_classifier_model.pkl'):
+                classifier_instance.load_model('intent_classifier_model.pkl')
+                logger.info("✅ Classificatore caricato da file")
+            else:
+                logger.info("⚠️  Nessun modello pre-addestrato, uso classificatore di base")
+        except Exception as e:
+            logger.error(f"❌ Errore nel caricamento modello: {e}")
+            classifier_instance = EnhancedIntentClassifier()
+    return classifier_instance
+
+def calcola_intenzione(text):
+    """
+    Versione migliorata che usa EnhancedIntentClassifier
+    Mantiene compatibilità con gli intent esistenti nel codice
+    """
+    try:
+        # Inizializza se necessario
+        classifier = init_classifier()
+        
+        # Classifica il messaggio
+        intent_classificato, confidence = classifier.classify(text)
+        
+        logger.info(f"🔍 Classificazione: '{text}' -> {intent_classificato} ({confidence:.2f})")
+        
+        # Mappa gli intent del nuovo classificatore agli intent del vecchio sistema
+        intent_map = {
+            "list": "lista",           # list -> lista
+            "order": "ordine",         # order -> ordine
+            "faq": "faq",              # faq -> faq
+            "search": "ricerca_prodotti",  # search -> ricerca_prodotti
+            "saluto": "saluto",        # saluto -> saluto
+            "contact": "contact",      # contact -> contact (se necessario)
+            "fallback": "fallback"     # fallback -> fallback
+        }
+        
+        # Converti l'intent
+        intent_finale = intent_map.get(intent_classificato, "fallback")
+        
+        # Se confidence è troppo bassa, forza fallback
+        if confidence < 0.4:
+            intent_finale = "fallback"
+        
+        # Log dettagliato per debug
+        if intent_finale == "fallback":
+            logger.warning(f"⚠️  Fallback per: '{text}' (confidence: {confidence:.2f})")
+        else:
+            logger.info(f"✅ Intent riconosciuto: {intent_finale}")
+        
+        # Restituisci l'intent (solo stringa, per compatibilità)
+        return intent_finale
+        
+    except Exception as e:
+        logger.error(f"❌ Errore in calcola_intenzione: {e}")
+        return "fallback"
+
+    def debug_intent(text: str):
+        """Funzione di debug per vedere come viene classificato il testo"""
     global intent_classifier
     
     if intent_classifier is None:
-        logger.warning("⚠️ Classifier non inizializzato, inizializzo...")
         estrai_parole_chiave_lista()
     
-    if intent_classifier is None:
-        logger.error("❌ CRITICAL: Classifier ancora None!")
-        return "fallback"
+    result = intent_classifier.classify(text)
     
-    try:
-        result = intent_classifier.classify(text)
-        
-        logger.info(f"🎯 Intento: {result.intent.value} (conf: {result.confidence:.2f})")
-        logger.info(f"💡 Ragione: {result.reason}")
-        logger.info(f"🔑 Match: {result.matched_keywords}")
-        
-        intent_map = {
-            IntentType.RICHIESTA_LISTA: "lista",
-            IntentType.INVIO_ORDINE: "ordine",
-            IntentType.DOMANDA_FAQ: "faq",
-            IntentType.RICERCA_PRODOTTO: "ricerca_prodotti",
-            IntentType.SALUTO: "fallback",
-            IntentType.FALLBACK: "fallback",
-        }
-        
-        return intent_map.get(result.intent, "fallback")
-        
-    except Exception as e:
-        logger.error(f"❌ Errore classify: {e}")
-        return "fallback"
+    print("\n" + "="*60)
+    print(f"🔍 DEBUG INTENT: '{text}'")
+    print(f"🎯 Risultato: {result.intent.value}")
+    print(f"📊 Confidence: {result.confidence:.2f}")
+    print(f"💡 Reason: {result.reason}")
+    print(f"🔑 Matched: {result.matched_keywords}")
+    print("="*60 + "\n")
+    
+    return result.intent.value
 
 # ============================================================================
 # HANDLERS: COMANDI
@@ -1019,15 +1069,37 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             return
     
     # 5. FALLBACK
-    trigger_words = [
-        'ordine', 'lista', 'listino', 'prodotto', 'quanto costa',
-        'spedizione', 'tracking', 'voglio', 'vorrei'
-    ]
+    if intent == "fallback":
+        logger.info(f"➡️ Entrato in blocco FALLBACK")
     
-    if any(word in text_lower for word in trigger_words):
+    # Suggerimenti intelligenti basati su parole chiave
+    text_lower = text.lower()
+    
+    if any(word in text_lower for word in ['listino', 'catalogo', 'prezzi', 'prodotti']):
         await send_business_reply(
-            "❓ Non ho capito. Usa /help per le FAQ o scrivi 'lista' per il catalogo."
+            "📋 Vuoi vedere il listino completo? Scrivi 'lista'"
         )
+    elif any(word in text_lower for word in ['ordina', 'compra', 'acquista', 'voglio']):
+        await send_business_reply(
+            "🛒 Per fare un ordine, scrivi cosa vorresti acquistare, es: 'voglio 2 fiale di susta'"
+        )
+    elif any(word in text_lower for word in ['costa', 'prezzo', 'quanto']):
+        await send_business_reply(
+            "💰 Per sapere il prezzo di un prodotto, scrivi ad esempio: 'quanto costa testo?'"
+        )
+    elif any(word in text_lower for word in ['spedizione', 'consegna', 'tempo', 'giorni']):
+        await send_business_reply(
+            "🚚 Per info sulle spedizioni, scrivi 'spedizione'"
+        )
+    else:
+        await send_business_reply(
+            "❓ Non ho capito. Prova con:\n"
+            "• 'lista' per il catalogo\n"
+            "• 'quanto costa X' per un prodotto\n"
+            "• Info su spedizioni e pagamenti\n"
+            "• Scrivi direttamente cosa vorresti"
+        )
+    return
 
 # ============================================================================
 # HANDLER MESSAGGI PRIVATI
