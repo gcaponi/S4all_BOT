@@ -9,7 +9,7 @@ import re
 import requests
 import pickle
 import asyncio
-from intent_classifier import EnhancedIntentClassifier, IntentType
+from intent_classifier import EnhancedIntentClassifier
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from datetime import datetime
