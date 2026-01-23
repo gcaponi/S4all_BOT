@@ -1,9 +1,13 @@
+# Requirements per Intent Classifier V2
+# Con supporto embeddings semantici
+
 # Bot Telegram con supporto Business Messages
 python-telegram-bot==21.7
 
 # Web server per webhook
 Flask==3.0.0
 gunicorn==21.2.0
+requests>=2.31.0
 
 # Parsing e scraping
 beautifulsoup4==4.12.2
@@ -12,14 +16,23 @@ requests==2.31.0
 # Utilities
 python-dotenv==1.0.0
 
-# Database PostgreSQL
-psycopg2-binary==2.9.9
-sqlalchemy==2.0.23
+# Machine Learning - Base (SOLO scikit-learn per Render Free)
+scikit-learn>=1.5.2
+numpy>=1.24.3
 
-# Testing
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
-pytest-cov>=4.1.0
-pytest-mock>=3.12.0
+# ❌ RIMOSSO: sentence-transformers e torch (troppo pesanti per 512 MB)
+# Il classificatore usa SOLO scikit-learn (Naive Bayes + CountVectorizer)
+# Questo è sufficiente per accuracy 77%+ e sta nei 512 MB di Render free
+
+# Database PostgreSQL
+psycopg2-binary==2.9.7 # PostgreSQL
+sqlalchemy==2.0.46
+
+# Development/Testing
+pytest>=7.4.3
+pytest-asyncio>=0.22.0
+
+# Optional (per performance)
+# faiss-cpu>=1.7.4  # Ricerca veloce embeddings (opzionale)
 
 # End requiremnts.txt
