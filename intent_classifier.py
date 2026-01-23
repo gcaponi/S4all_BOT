@@ -572,8 +572,17 @@ class EnhancedIntentClassifier:
             self.wish_verbs = data.get('wish_verbs', self.wish_verbs)
             self.question_words = data.get('question_words', self.question_words)
             self.faq_keywords = data.get('faq_keywords', self.faq_keywords)
-            self.stats = data.get('stats', self.stats)
-            self.confusion_matrix = data.get('confusion_matrix', self.confusion_matrix)
+            self.contact_keywords = data.get('contact_keywords', self.contact_keywords)
+            self.list_keywords = data.get('list_keywords', self.list_keywords)
+            
+            # Converti dict in defaultdict per evitare KeyError
+            stats_data = data.get('stats', {})
+            self.stats = defaultdict(int, stats_data)
+            
+            confusion_data = data.get('confusion_matrix', {})
+            self.confusion_matrix = defaultdict(lambda: defaultdict(int))
+            for key, value in confusion_data.items():
+                self.confusion_matrix[key] = defaultdict(int, value)
             
             print(f"✅ Modello caricato da {path}")
             return True
@@ -647,3 +656,5 @@ class EnhancedIntentClassifier:
             print("\n📈 MATRICE DI CONFUSIONE:")
             for true_intent, pred_counts in self.confusion_matrix.items():
                 print(f"  {true_intent}: {dict(pred_counts)}")
+
+# End intent_classifier.py
