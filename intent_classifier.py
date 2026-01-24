@@ -284,6 +284,12 @@ class EnhancedIntentClassifier:
             if has_product or has_category:
                 return "search", 0.88  # "prezzo deca" = search
         
+        # 2.5 ANALISI ORDINE IMPLICITO (Sistema a punteggio avanzato)
+        # Sostituisce la vecchia logica semplice con _analyze_implicit_order
+        implicit_order_confidence = self._analyze_implicit_order(message, message.lower())
+        if implicit_order_confidence > 0:
+            return "order", implicit_order_confidence
+        
         # 3. WISH VERBS + PRODOTTO = ORDER (CORRETTO!)
         if any(verb in message for verb in self.wish_verbs):
             if has_product or has_category:
@@ -298,6 +304,92 @@ class EnhancedIntentClassifier:
         if any(verb in message for verb in self.order_verbs):
             # "prendo quello che hai detto" = order anche senza prodotto
             return "order", 0.85
+            
+    def _analyze_implicit_order(self, text: str, text_lower: str) -> float:
+        """
+        Analizza se il testo è un ordine implicito usando un sistema a punteggio.
+        Adattato dalla vecchia funzione _check_ordine_reale.
+        Returns: confidence score (0.0 - 1.0)
+        """
+        # Filtro lunghezza minima
+        if len(text.strip()) < 5:
+            return 0.0
+            
+        # ESCLUSIONI FORTI
+        strong_exclusions = [
+            r'\bcome\s+(faccio|posso|si\s+fa)\s+(a\s+)?ordinar',
+            r'\bcome\s+ordino\b',
+            r'\bcome\s+si\s+ordina\b',
+            r'\bprocedura\s+per\s+ordinar',
+            r'\bper\s+ordinar.*\bcome\b',
+            r'\baiuto.*\border',
+            r'\bvorrei\s+(fare|effettuare)\s+(un[ao]?)?\s*ordine\s*$',
+            r'\bvoglio\s+(fare|effettuare)\s+(un[ao]?)?\s*ordine\s*$',
+            r'\bvorrei\s+ordinar[ei]\s*$',
+            r'\bvoglio\s+ordinar[ei]\s*$',
+        ]
+        
+        for pattern in strong_exclusions:
+            if re.search(pattern, text_lower, re.I):
+                return 0.0
+
+        score = 0
+        matched_indicators = []
+        
+        # 1. Simboli valuta o prezzi (Es: "25$")
+        if re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
+            score += 3
+            matched_indicators.append('prezzo')
+        
+        # 2. Quantità chiare (Es: "2 x testo", "3 pezzi")
+        quantita_patterns = [
+            r'\d+\s*x\s*\w+',
+            r'\d+\s+[a-z]{3,}', # "1 testo"
+            r'\b\d+\s*pezz[io]',
+            r'\b\d+\s*confezioni',
+            r'\bun[ao]?\s+(confezione|scatola|pezzo|flacone|fiala|boccetta)',
+            r'\bdue\s+(confezioni|scatole|pezzi|fiale)',
+            r'\btre\s+(confezioni|scatole|pezzi|fiale)',
+        ]
+        
+        for pattern in quantita_patterns:
+            if re.search(pattern, text_lower):
+                score += 2
+                matched_indicators.append('quantita')
+                break
+                
+        # 3. Separatori di lista (Es: ",", ";", a capo)
+        if text.count(',') >= 1 or text.count(';') >= 1 or text.count('\n') >= 1:
+            score += 1
+            matched_indicators.append('separatori')
+            
+        # 4. Spedizione/Indirizzo
+        if re.search(r'\b(via|piazza|spedizione|consegna|cap)\b', text_lower):
+            score += 1
+            matched_indicators.append('spedizione')
+            
+        # 5. Keyword ordine implicito
+        if any(kw in text_lower for kw in ['prendo', 'voglio', 'mi serve', 'aggiungi']):
+            score += 1
+            matched_indicators.append('keyword_implicit')
+            
+        # CALCOLO CONFIDENZA
+        # Soglia minima: 2 punti (es: "1 testo" = 2pt) -> confidence 0.85
+        # 3 punti (es: "1 testo 25$") -> confidence 0.90
+        # 4+ punti -> confidence 0.95
+        
+        if score >= 4:
+            return 0.95
+        elif score >= 3:
+            return 0.90
+        elif score >= 2:
+            # Se ha solo 2 punti, deve avere almeno un prodotto valido per essere sicuro
+            has_prod = any(p in text_lower for p in self.product_keywords)
+            if has_prod:
+                return 0.88
+            return 0.75 # Meno sicuro senza prodotto noto
+            
+        return 0.0
         
         # 4. PRODOTTI con domande -> SEARCH
         if has_product or has_category:
