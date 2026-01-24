@@ -49,15 +49,17 @@ class EnhancedIntentClassifier:
                 # NUOVI pattern ordini impliciti
                 r'\b(voglio|vorrei|mi\s+serve)\s+\w+',
                 r'\b(prendo|prenoto|ordino)\s+\w+',
-                r'^\w+\s+(grazie|per\s+favore)$'
+                r'^\w+\s+(grazie|per\s+favore)$',
+                r'^(voglio|vorrei|mi\s+serve)\s+\d+\s+di\s+\w+'  # "voglio 2 di quelle"
             ],
             
             "search": [
                 r'\b(hai|avete|ce l\'hai|c\'è|vendete)\b.*\??',
                 r'^(hai|avete|ce l\'hai|c\'è|vendete)\??$',
-                r'\b(quanto|costa|prezzo)\b.*\??',
-                r'^(quanto|costa|prezzo)\??$',
-                r'prezzo\s+\w+',
+                r'\b(quanto|costa|prezzo|prezzzo)\b.*\??',  # typo prezzzo
+                r'^(quanto|costa|prezzo|prezzzo)\??$',      # typo prezzzo
+                r'prezz[zo]+\s+\w+',                         # typo prezzzo
+
                 r'^(orali|sarms|pct|peptidi|ai|sex|viagra|cialis|levitra|cut|bulk|massa|definizione)\??$',
                 r'\b(consigli|meglio|confronto|quale|cosa)\b.*\??',
                 r'^(che hai|cosa c\'è|novità|disponibile|stock)\??$',
@@ -88,18 +90,19 @@ class EnhancedIntentClassifier:
             ],
             
             "list": [
-                r'^(lista|catalogo|listino|prezzi|tutto|mostra|manda|prodotti|offerte|stock)$',
+                r'^(lista|catalogo|listino|prezzi|tutto|mostra|manda|prodotti|offerte|stock|disponibile)$',
                 r'^(che avete|cosa vendete|mostra tutto|manda lista)$',
                 r'\b(lista|catalogo|listino|prezzi|prodotti|offerte)\b',
                 r'^(fammi vedere|mostrami|visualizza)\s+(cosa|tutto)',
                 r'\b(che|cosa)\s+(avete|hai|c\'è)\s+(in\s+)?stock\b',
-                r'^(che|cosa)\s+(hai|avete)\??$'
+                r'^(che|cosa)\s+(hai|avete)\??$',
+                r'\b(disponibilit[àa])\b'
             ],
             
             "contact": [
                 r'\b(contatto|numero|telefono|email|whatsapp|telegram|instagram)\b.*\??',
                 r'^(contatto|numero|telefono|email|whatsapp)\??$',
-                r'\b(scrivi|chiama|messaggio|dm)\b',
+                r'\b(scrivi|chiama|messaggio|dm|parlare|umano)\b',
                 r'numero\s+(di\s+)?(telefono|cellulare)',
                 r'hai\s+(whatsapp|telegram|numero)'
             ],
@@ -132,8 +135,8 @@ class EnhancedIntentClassifier:
         self.faq_keywords = ['spedizione', 'consegna', 'pagamento', 'bonifico', 'crypto', 
                             'contrassegno', 'tempo', 'giorni', 'settimane', 'sicuro', 
                             'discreto', 'garanzia', 'minimo', 'sconto', 'offerta']
-        self.contact_keywords = ['contatto', 'numero', 'telefono', 'whatsapp', 'telegram', 'email']
-        self.list_keywords = ['lista', 'catalogo', 'listino', 'stock', 'prodotti']
+        self.contact_keywords = ['contatto', 'parlare', 'umano', 'assistenza', 'supporto', 'admin', 'numero', 'telefono', 'whatsapp']
+        self.list_keywords = ['lista', 'catalogo', 'listino', 'stock', 'disponibile', 'disponibili']
     
     def _init_ml_model(self):
         """Inizializza il modello ML"""
@@ -299,7 +302,7 @@ class EnhancedIntentClassifier:
             # Se chiede numero/telefono/whatsapp → contact
             if any(w in message for w in ['numero', 'telefono', 'whatsapp', 'telegram', 'email']):
                 if 'tracking' not in message:  # Eccezione: "numero tracking" = FAQ
-                    return "contact", 0.90
+                    return "contact", 0.98
         
         # 1. FAQ KEYWORDS (priorità massima per domande procedurali)
         faq_strong_keywords = ['spedizione', 'consegna', 'pagamento', 'bonifico', 
@@ -320,7 +323,7 @@ class EnhancedIntentClassifier:
         # Sostituisce la vecchia logica semplice con _analyze_implicit_order
         implicit_order_confidence = self._analyze_implicit_order(message, message.lower())
         if implicit_order_confidence > 0:
-            return "order", implicit_order_confidence
+            return "order", max(0.98, implicit_order_confidence)
         
         # 3. WISH VERBS + PRODOTTO = ORDER (CORRETTO!)
         if any(verb in message for verb in self.wish_verbs):
@@ -463,24 +466,19 @@ class EnhancedIntentClassifier:
     
     def _calculate_regex_confidence(self, message, intent, pattern):
         """Calcola confidence score per match regex"""
-        base_score = 0.7
+        # Aumentata base score per garantire priorità su ML
+        # Se c'è un match regex, vogliamo che vinca quasi sempre (0.95 - 1.0)
+        base_score = 0.95
         
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
             matched_text = match.group()
             match_ratio = len(matched_text) / len(message)
-            base_score += match_ratio * 0.2
+            # Bonus per match più lunghi, max 1.0
+            bonus = match_ratio * 0.05
+            return min(1.0, base_score + bonus)
         
-        if intent == "saluto" and len(message.split()) <= 2:
-            base_score += 0.15
-        
-        if intent == "order" and any(verb in message for verb in self.order_verbs):
-            base_score += 0.1
-        
-        if intent in ["search", "faq"] and '?' in message:
-            base_score += 0.05
-        
-        return min(max(base_score, 0.3), 0.95)
+        return base_score
     
     def batch_classify(self, messages):
         """Classifica una lista di messaggi"""
