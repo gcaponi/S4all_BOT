@@ -177,19 +177,23 @@ class EnhancedIntentClassifier:
     
     def classify(self, message, debug=False):
         """
-        Classifica un messaggio usando approccio ibrido
+        Classifica un messaggio usando approccio ibrido BEST MATCH
         Returns: (intent, confidence)
         """
         message_lower = message.strip().lower()
         self.stats['total_requests'] += 1
         
-        # 1. REGOLE REGEX
+        # RACCOLTA TUTTI I RISULTATI
+        all_results = []
+        
+        # 1. REGOLE REGEX (priorità alta)
         regex_result = self._classify_by_regex(message_lower, debug)
         if regex_result:
             intent, confidence = regex_result
             if confidence >= self.MIN_CONFIDENCE:
-                self.stats['regex_classifications'] += 1
-                return intent, confidence
+                all_results.append(("regex", intent, confidence))
+                if debug:
+                    print(f"🔍 Regex match: {intent} ({confidence:.2f})")
         
         # 2. MODELLO ML
         if self.is_trained and self.USE_HYBRID:
@@ -197,19 +201,47 @@ class EnhancedIntentClassifier:
             if ml_result:
                 intent, confidence = ml_result
                 if confidence >= self.FALLBACK_THRESHOLD:
-                    self.stats['ml_classifications'] += 1
-                    return intent, confidence
+                    all_results.append(("ml", intent, confidence))
+                    if debug:
+                        print(f"🔍 ML prediction: {intent} ({confidence:.2f})")
         
         # 3. REGOLE SEMPLICI
         simple_result = self._classify_by_simple_rules(message_lower, debug)
         if simple_result:
             intent, confidence = simple_result
             if confidence >= self.FALLBACK_THRESHOLD:
+                all_results.append(("simple", intent, confidence))
+                if debug:
+                    print(f"🔍 Simple rules: {intent} ({confidence:.2f})")
+        
+        # SELEZIONE BEST MATCH
+        if all_results:
+            # Ordina per confidence (decrescente)
+            all_results.sort(key=lambda x: x[2], reverse=True)
+            
+            best_method, best_intent, best_confidence = all_results[0]
+            
+            # Log per debug
+            if debug and len(all_results) > 1:
+                print(f"🏆 Best Match Comparison:")
+                for i, (method, intent, conf) in enumerate(all_results, 1):
+                    indicator = "✅" if i == 1 else "  "
+                    print(f"   {indicator} {method}: {intent} ({conf:.2f})")
+            
+            # Aggiorna statistiche
+            if best_method == "regex":
+                self.stats['regex_classifications'] += 1
+            elif best_method == "ml":
+                self.stats['ml_classifications'] += 1
+            elif best_method == "simple":
                 self.stats['simple_classifications'] += 1
-                return intent, confidence
+            
+            return best_intent, best_confidence
         
         # 4. FALLBACK
         self.stats['fallback_classifications'] += 1
+        if debug:
+            print(f"🔍 No match found → fallback")
         return "fallback", 0.0
     
     def _classify_by_regex(self, message, debug=False):
