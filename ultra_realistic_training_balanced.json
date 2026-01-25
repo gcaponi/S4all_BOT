@@ -61,11 +61,11 @@
       "intent": "list"
     },
     {
-      "message": "che c'Ã¨?",
+      "message": "che c'ÃƒÂ¨?",
       "intent": "list"
     },
     {
-      "message": "cosa c'Ã¨ di nuovo?",
+      "message": "cosa c'ÃƒÂ¨ di nuovo?",
       "intent": "list"
     },
     {
@@ -97,7 +97,7 @@
       "intent": "list"
     },
     {
-      "message": "disponibilitÃ ?",
+      "message": "disponibilitÃƒÂ ?",
       "intent": "list"
     },
     {
@@ -253,7 +253,7 @@
       "intent": "search"
     },
     {
-      "message": "c'Ã¨ susta?",
+      "message": "c'ÃƒÂ¨ susta?",
       "intent": "search"
     },
     {
@@ -337,7 +337,7 @@
       "intent": "search"
     },
     {
-      "message": "quale testo Ã¨ meglio?",
+      "message": "quale testo ÃƒÂ¨ meglio?",
       "intent": "search"
     },
     {
@@ -353,7 +353,7 @@
       "intent": "search"
     },
     {
-      "message": "Ã¨ disponibile primobolan?",
+      "message": "ÃƒÂ¨ disponibile primobolan?",
       "intent": "search"
     },
     {
@@ -393,7 +393,7 @@
       "intent": "search"
     },
     {
-      "message": "novitÃ ?",
+      "message": "novitÃƒÂ ?",
       "intent": "search"
     },
     {
@@ -489,7 +489,7 @@
       "intent": "faq"
     },
     {
-      "message": "c'Ã¨ un minimo di ordine?",
+      "message": "c'ÃƒÂ¨ un minimo di ordine?",
       "intent": "faq"
     },
     {
@@ -521,7 +521,7 @@
       "intent": "faq"
     },
     {
-      "message": "Ã¨ sicuro?",
+      "message": "ÃƒÂ¨ sicuro?",
       "intent": "faq"
     },
     {
@@ -597,7 +597,7 @@
       "intent": "faq"
     },
     {
-      "message": "se prendo 10 fiale c'Ã¨ sconto?",
+      "message": "se prendo 10 fiale c'ÃƒÂ¨ sconto?",
       "intent": "faq"
     },
     {
@@ -641,7 +641,7 @@
       "intent": "faq"
     },
     {
-      "message": "tempi con crypto piÃ¹ veloci?",
+      "message": "tempi con crypto piÃƒÂ¹ veloci?",
       "intent": "faq"
     },
     {
@@ -673,7 +673,7 @@
       "intent": "fallback"
     },
     {
-      "message": "cos'Ã¨ questo?",
+      "message": "cos'ÃƒÂ¨ questo?",
       "intent": "fallback"
     },
     {
@@ -817,7 +817,7 @@
       "intent": "list"
     },
     {
-      "message": "che c'Ã¨ in stock?",
+      "message": "che c'ÃƒÂ¨ in stock?",
       "intent": "list"
     },
     {
@@ -921,11 +921,11 @@
       "intent": "contact"
     },
     {
-      "message": "cosa c'Ã¨ in stock?",
+      "message": "cosa c'ÃƒÂ¨ in stock?",
       "intent": "list"
     },
     {
-      "message": "disponibilitÃ ?",
+      "message": "disponibilitÃƒÂ ?",
       "intent": "list"
     },
     {
