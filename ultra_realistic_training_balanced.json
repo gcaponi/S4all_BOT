@@ -1,0 +1,972 @@
+{
+  "conversations": [
+    {
+      "message": "ciao",
+      "intent": "saluto"
+    },
+    {
+      "message": "hey!",
+      "intent": "saluto"
+    },
+    {
+      "message": "Buongiorno",
+      "intent": "saluto"
+    },
+    {
+      "message": "salve",
+      "intent": "saluto"
+    },
+    {
+      "message": "ciao bro",
+      "intent": "saluto"
+    },
+    {
+      "message": "hey fra",
+      "intent": "saluto"
+    },
+    {
+      "message": "lista",
+      "intent": "list"
+    },
+    {
+      "message": "LISTA",
+      "intent": "list"
+    },
+    {
+      "message": "Lista?",
+      "intent": "list"
+    },
+    {
+      "message": "listino",
+      "intent": "list"
+    },
+    {
+      "message": "LISTINO",
+      "intent": "list"
+    },
+    {
+      "message": "mandami la lista",
+      "intent": "list"
+    },
+    {
+      "message": "fammi vedere la lista",
+      "intent": "list"
+    },
+    {
+      "message": "che hai?",
+      "intent": "list"
+    },
+    {
+      "message": "cosa hai?",
+      "intent": "list"
+    },
+    {
+      "message": "che c'Ã¨?",
+      "intent": "list"
+    },
+    {
+      "message": "cosa c'Ã¨ di nuovo?",
+      "intent": "list"
+    },
+    {
+      "message": "mostrami tutto",
+      "intent": "list"
+    },
+    {
+      "message": "catalogo",
+      "intent": "list"
+    },
+    {
+      "message": "prezzi aggiornati?",
+      "intent": "list"
+    },
+    {
+      "message": "manda lista pls",
+      "intent": "list"
+    },
+    {
+      "message": "che avete in stock?",
+      "intent": "list"
+    },
+    {
+      "message": "cosa avete in stock?",
+      "intent": "list"
+    },
+    {
+      "message": "stock?",
+      "intent": "list"
+    },
+    {
+      "message": "disponibilitÃ ?",
+      "intent": "list"
+    },
+    {
+      "message": "che avete?",
+      "intent": "list"
+    },
+    {
+      "message": "voglio testo",
+      "intent": "order"
+    },
+    {
+      "message": "mi serve anavar",
+      "intent": "order"
+    },
+    {
+      "message": "prendo 2 susta",
+      "intent": "order"
+    },
+    {
+      "message": "ordino deca",
+      "intent": "order"
+    },
+    {
+      "message": "vorrei trenbolone",
+      "intent": "order"
+    },
+    {
+      "message": "dammi 3 winny",
+      "intent": "order"
+    },
+    {
+      "message": "vorrei ordinare Testost. Enantato 250mg",
+      "intent": "order"
+    },
+    {
+      "message": "prendo 2 Anavar-Oxandrolo. 100x10mg e 1 Winstrol 100x10mg",
+      "intent": "order"
+    },
+    {
+      "message": "mi serve urgente testo prop",
+      "intent": "order"
+    },
+    {
+      "message": "ne prendo 3 di masteron",
+      "intent": "order"
+    },
+    {
+      "message": "ordino subito susta 250",
+      "intent": "order"
+    },
+    {
+      "message": "compro clomid",
+      "intent": "order"
+    },
+    {
+      "message": "prenoto 2 hcg",
+      "intent": "order"
+    },
+    {
+      "message": "susta e basta",
+      "intent": "order"
+    },
+    {
+      "message": "testo grazie",
+      "intent": "order"
+    },
+    {
+      "message": "2 anavar per favore",
+      "intent": "order"
+    },
+    {
+      "message": "voglio 5 fiale di deca",
+      "intent": "order"
+    },
+    {
+      "message": "dammi kamagra",
+      "intent": "order"
+    },
+    {
+      "message": "prendo tutto il testo che hai",
+      "intent": "order"
+    },
+    {
+      "message": "mi servono 10 dianabol",
+      "intent": "order"
+    },
+    {
+      "message": "vorrei prendere clenbuterolo",
+      "intent": "order"
+    },
+    {
+      "message": "ok procedi",
+      "intent": "order"
+    },
+    {
+      "message": "si vai",
+      "intent": "order"
+    },
+    {
+      "message": "fatto pago ora",
+      "intent": "order"
+    },
+    {
+      "message": "manda tutto!",
+      "intent": "order"
+    },
+    {
+      "message": "spediscimi 3 testo e 2 deca",
+      "intent": "order"
+    },
+    {
+      "message": "mandami 1 kamagra subito",
+      "intent": "order"
+    },
+    {
+      "message": "consegnami il pacco appena puoi",
+      "intent": "order"
+    },
+    {
+      "message": "voglio 2 di quelle cose per massa",
+      "intent": "order"
+    },
+    {
+      "message": "prendo quello che hai detto prima",
+      "intent": "order"
+    },
+    {
+      "message": "dammi tipo 5 o 6 di quelli",
+      "intent": "order"
+    },
+    {
+      "message": "voglio 3 di quelli",
+      "intent": "order"
+    },
+    {
+      "message": "prendo 2 di quei prodotti",
+      "intent": "order"
+    },
+    {
+      "message": "voglio quella roba",
+      "intent": "order"
+    },
+    {
+      "message": "prendo quello",
+      "intent": "order"
+    },
+    {
+      "message": "hai anavar?",
+      "intent": "search"
+    },
+    {
+      "message": "avete tren?",
+      "intent": "search"
+    },
+    {
+      "message": "c'Ã¨ susta?",
+      "intent": "search"
+    },
+    {
+      "message": "vendete masteron?",
+      "intent": "search"
+    },
+    {
+      "message": "quanto costa testo?",
+      "intent": "search"
+    },
+    {
+      "message": "prezzo anavar",
+      "intent": "search"
+    },
+    {
+      "message": "quanto viene winny?",
+      "intent": "search"
+    },
+    {
+      "message": "prezzzo deca",
+      "intent": "search"
+    },
+    {
+      "message": "prezzo susta",
+      "intent": "search"
+    },
+    {
+      "message": "costo testo",
+      "intent": "search"
+    },
+    {
+      "message": "quanto costa anavar?",
+      "intent": "search"
+    },
+    {
+      "message": "testo",
+      "intent": "search"
+    },
+    {
+      "message": "anavar",
+      "intent": "search"
+    },
+    {
+      "message": "deca",
+      "intent": "search"
+    },
+    {
+      "message": "orali",
+      "intent": "search"
+    },
+    {
+      "message": "sarms",
+      "intent": "search"
+    },
+    {
+      "message": "pct",
+      "intent": "search"
+    },
+    {
+      "message": "peptidi",
+      "intent": "search"
+    },
+    {
+      "message": "sex pills",
+      "intent": "search"
+    },
+    {
+      "message": "cosa avete per massa?",
+      "intent": "search"
+    },
+    {
+      "message": "roba per definizione?",
+      "intent": "search"
+    },
+    {
+      "message": "prodotti per bulk?",
+      "intent": "search"
+    },
+    {
+      "message": "che hai per cut?",
+      "intent": "search"
+    },
+    {
+      "message": "quale testo Ã¨ meglio?",
+      "intent": "search"
+    },
+    {
+      "message": "meglio deca o boldo?",
+      "intent": "search"
+    },
+    {
+      "message": "consigli per primo ciclo?",
+      "intent": "search"
+    },
+    {
+      "message": "info su trenbolone",
+      "intent": "search"
+    },
+    {
+      "message": "Ã¨ disponibile primobolan?",
+      "intent": "search"
+    },
+    {
+      "message": "ce l'hai il dbol?",
+      "intent": "search"
+    },
+    {
+      "message": "cercavo viagra",
+      "intent": "search"
+    },
+    {
+      "message": "vorrei sapere il costo di susta",
+      "intent": "search"
+    },
+    {
+      "message": "info cialis",
+      "intent": "search"
+    },
+    {
+      "message": "dettagli su clenbuterolo",
+      "intent": "search"
+    },
+    {
+      "message": "prezzo di testo enantato?",
+      "intent": "search"
+    },
+    {
+      "message": "hai roba per forza?",
+      "intent": "search"
+    },
+    {
+      "message": "cosa mi consigli per massa pulita?",
+      "intent": "search"
+    },
+    {
+      "message": "che prodotti hai per pct?",
+      "intent": "search"
+    },
+    {
+      "message": "novitÃ ?",
+      "intent": "search"
+    },
+    {
+      "message": "testo e anavar insieme?",
+      "intent": "search"
+    },
+    {
+      "message": "meglio susta o testo enantato?",
+      "intent": "search"
+    },
+    {
+      "message": "deca va bene con tren?",
+      "intent": "search"
+    },
+    {
+      "message": "primo ciclo testo + deca?",
+      "intent": "search"
+    },
+    {
+      "message": "hai quella roba per il sesso?",
+      "intent": "search"
+    },
+    {
+      "message": "viagra o kamagra?",
+      "intent": "search"
+    },
+    {
+      "message": "sex pills quali hai?",
+      "intent": "search"
+    },
+    {
+      "message": "come si ordina?",
+      "intent": "faq"
+    },
+    {
+      "message": "come faccio a ordinare?",
+      "intent": "faq"
+    },
+    {
+      "message": "procedura ordine?",
+      "intent": "faq"
+    },
+    {
+      "message": "posso ordinare?",
+      "intent": "faq"
+    },
+    {
+      "message": "quando spedisci?",
+      "intent": "faq"
+    },
+    {
+      "message": "dopo quanto arriva?",
+      "intent": "faq"
+    },
+    {
+      "message": "tempi di spedizione?",
+      "intent": "faq"
+    },
+    {
+      "message": "quanto tempo per la consegna?",
+      "intent": "faq"
+    },
+    {
+      "message": "quando arriva il pacco?",
+      "intent": "faq"
+    },
+    {
+      "message": "tracking?",
+      "intent": "faq"
+    },
+    {
+      "message": "come si paga?",
+      "intent": "faq"
+    },
+    {
+      "message": "metodi di pagamento?",
+      "intent": "faq"
+    },
+    {
+      "message": "accettate bonifico?",
+      "intent": "faq"
+    },
+    {
+      "message": "posso pagare con crypto?",
+      "intent": "faq"
+    },
+    {
+      "message": "fate bitcoin?",
+      "intent": "faq"
+    },
+    {
+      "message": "usdt va bene?",
+      "intent": "faq"
+    },
+    {
+      "message": "c'Ã¨ un minimo di ordine?",
+      "intent": "faq"
+    },
+    {
+      "message": "ordine minimo?",
+      "intent": "faq"
+    },
+    {
+      "message": "minimo?",
+      "intent": "faq"
+    },
+    {
+      "message": "fate sconti?",
+      "intent": "faq"
+    },
+    {
+      "message": "ci sono promozioni?",
+      "intent": "faq"
+    },
+    {
+      "message": "come funziona lo sconto 3+?",
+      "intent": "faq"
+    },
+    {
+      "message": "spedite in tutta italia?",
+      "intent": "faq"
+    },
+    {
+      "message": "spedizione discreta?",
+      "intent": "faq"
+    },
+    {
+      "message": "Ã¨ sicuro?",
+      "intent": "faq"
+    },
+    {
+      "message": "garanzia?",
+      "intent": "faq"
+    },
+    {
+      "message": "privacy?",
+      "intent": "faq"
+    },
+    {
+      "message": "rimborsi?",
+      "intent": "faq"
+    },
+    {
+      "message": "posso cambiare ordine?",
+      "intent": "faq"
+    },
+    {
+      "message": "problemi con l'ordine",
+      "intent": "faq"
+    },
+    {
+      "message": "help",
+      "intent": "faq"
+    },
+    {
+      "message": "aiuto!",
+      "intent": "faq"
+    },
+    {
+      "message": "ho bisogno di assistenza",
+      "intent": "faq"
+    },
+    {
+      "message": "quanto costa la spedizione?",
+      "intent": "faq"
+    },
+    {
+      "message": "costo spedizione?",
+      "intent": "faq"
+    },
+    {
+      "message": "spedizione quanto costa?",
+      "intent": "faq"
+    },
+    {
+      "message": "voglio ordinare ma non so come",
+      "intent": "faq"
+    },
+    {
+      "message": "primo ordine, come funziona?",
+      "intent": "faq"
+    },
+    {
+      "message": "sono nuovo, mi spieghi?",
+      "intent": "faq"
+    },
+    {
+      "message": "dopo quanto ricevo il tracking?",
+      "intent": "faq"
+    },
+    {
+      "message": "numeri di tracciamento quando arrivano?",
+      "intent": "faq"
+    },
+    {
+      "message": "codice tracking dopo il pagamento?",
+      "intent": "faq"
+    },
+    {
+      "message": "sconto per ordine grande?",
+      "intent": "faq"
+    },
+    {
+      "message": "se prendo 10 fiale c'Ã¨ sconto?",
+      "intent": "faq"
+    },
+    {
+      "message": "promozioni in corso?",
+      "intent": "faq"
+    },
+    {
+      "message": "pago con bonifico va bene?",
+      "intent": "faq"
+    },
+    {
+      "message": "crypto quale accettate?",
+      "intent": "faq"
+    },
+    {
+      "message": "usdt trc20 o erc20?",
+      "intent": "faq"
+    },
+    {
+      "message": "btc va bene?",
+      "intent": "faq"
+    },
+    {
+      "message": "spedite anonimi?",
+      "intent": "faq"
+    },
+    {
+      "message": "pacco discreto garantito?",
+      "intent": "faq"
+    },
+    {
+      "message": "come arriva il pacco?",
+      "intent": "faq"
+    },
+    {
+      "message": "quanto ci mette da quando pago?",
+      "intent": "faq"
+    },
+    {
+      "message": "giorni di spedizione dopo bonifico?",
+      "intent": "faq"
+    },
+    {
+      "message": "tempi con crypto piÃ¹ veloci?",
+      "intent": "faq"
+    },
+    {
+      "message": "quando ariva?",
+      "intent": "faq"
+    },
+    {
+      "message": "tempi di spedizzione?",
+      "intent": "faq"
+    },
+    {
+      "message": "come si paga??",
+      "intent": "faq"
+    },
+    {
+      "message": "fate crypto??",
+      "intent": "faq"
+    },
+    {
+      "message": "c'e un minimo?",
+      "intent": "faq"
+    },
+    {
+      "message": "boh non ho capito",
+      "intent": "fallback"
+    },
+    {
+      "message": "????",
+      "intent": "fallback"
+    },
+    {
+      "message": "cos'Ã¨ questo?",
+      "intent": "fallback"
+    },
+    {
+      "message": "chi sei?",
+      "intent": "fallback"
+    },
+    {
+      "message": "bot?",
+      "intent": "fallback"
+    },
+    {
+      "message": "??",
+      "intent": "fallback"
+    },
+    {
+      "message": "boh",
+      "intent": "fallback"
+    },
+    {
+      "message": "non ho capito",
+      "intent": "fallback"
+    },
+    {
+      "message": "come ti contatto?",
+      "intent": "contact"
+    },
+    {
+      "message": "hai whatsapp?",
+      "intent": "contact"
+    },
+    {
+      "message": "telegram?",
+      "intent": "contact"
+    },
+    {
+      "message": "numero di telefono?",
+      "intent": "contact"
+    },
+    {
+      "message": "numero?",
+      "intent": "contact"
+    },
+    {
+      "message": "contatto?",
+      "intent": "contact"
+    },
+    {
+      "message": "telefono?",
+      "intent": "contact"
+    },
+    {
+      "message": "whatsapp",
+      "intent": "contact"
+    },
+    {
+      "message": "voglio testosterrone enantato",
+      "intent": "order"
+    },
+    {
+      "message": "mi serve anavarr",
+      "intent": "order"
+    },
+    {
+      "message": "vorrei 3 sustaa",
+      "intent": "order"
+    },
+    {
+      "message": "prendo winstroll",
+      "intent": "order"
+    },
+    {
+      "message": "ordino clenn",
+      "intent": "order"
+    },
+    {
+      "message": "dammi kama grazie",
+      "intent": "order"
+    },
+    {
+      "message": "spediscimi cialiss",
+      "intent": "order"
+    },
+    {
+      "message": "vorrei 2 testo 1 deca 3 anavar",
+      "intent": "order"
+    },
+    {
+      "message": "prendo tutto: susta, winny, clomid",
+      "intent": "order"
+    },
+    {
+      "message": "mi servono testo enantato 250mg x3 e deca x2",
+      "intent": "order"
+    },
+    {
+      "message": "quanto costa testoo?",
+      "intent": "search"
+    },
+    {
+      "message": "hai anavaar?",
+      "intent": "search"
+    },
+    {
+      "message": "ce l'ai il sustanon?",
+      "intent": "search"
+    },
+    {
+      "message": "vendete tren ace?",
+      "intent": "search"
+    },
+    {
+      "message": "fra voglio testo",
+      "intent": "order"
+    },
+    {
+      "message": "bro dammi anavar",
+      "intent": "order"
+    },
+    {
+      "message": "zi prendo deca",
+      "intent": "order"
+    },
+    {
+      "message": "fra quanto costa susta",
+      "intent": "search"
+    },
+    {
+      "message": "bro hai winny?",
+      "intent": "search"
+    },
+    {
+      "message": "Lista pls",
+      "intent": "list"
+    },
+    {
+      "message": "MANDAMI LISTA",
+      "intent": "list"
+    },
+    {
+      "message": "lista subito",
+      "intent": "list"
+    },
+    {
+      "message": "che c'Ã¨ in stock?",
+      "intent": "list"
+    },
+    {
+      "message": "ok perfetto procedi",
+      "intent": "order"
+    },
+    {
+      "message": "va benissimo vai",
+      "intent": "order"
+    },
+    {
+      "message": "tutto ok manda",
+      "intent": "order"
+    },
+    {
+      "message": "si confermo",
+      "intent": "order"
+    },
+    {
+      "message": "yo bro",
+      "intent": "saluto"
+    },
+    {
+      "message": "ehi fra",
+      "intent": "saluto"
+    },
+    {
+      "message": "zi ciao",
+      "intent": "saluto"
+    },
+    {
+      "message": "bro!",
+      "intent": "saluto"
+    },
+    {
+      "message": "ciao boss",
+      "intent": "saluto"
+    },
+    {
+      "message": "mah",
+      "intent": "fallback"
+    },
+    {
+      "message": "eh?",
+      "intent": "fallback"
+    },
+    {
+      "message": "non capisco",
+      "intent": "fallback"
+    },
+    {
+      "message": "cosa?",
+      "intent": "fallback"
+    },
+    {
+      "message": "bah",
+      "intent": "fallback"
+    },
+    {
+      "message": "che dici",
+      "intent": "fallback"
+    },
+    {
+      "message": "???",
+      "intent": "fallback"
+    },
+    {
+      "message": "voglio tipo 3 o 4",
+      "intent": "order"
+    },
+    {
+      "message": "prendo quei prodotti",
+      "intent": "order"
+    },
+    {
+      "message": "dammi quelle cose",
+      "intent": "order"
+    },
+    {
+      "message": "voglio quella roba li",
+      "intent": "order"
+    },
+    {
+      "message": "mi serve quello che hai detto",
+      "intent": "order"
+    },
+    {
+      "message": "prendo 5 di quei",
+      "intent": "order"
+    },
+    {
+      "message": "come posso contattarti?",
+      "intent": "contact"
+    },
+    {
+      "message": "dammi il numero",
+      "intent": "contact"
+    },
+    {
+      "message": "hai un contatto diretto?",
+      "intent": "contact"
+    },
+    {
+      "message": "cosa c'Ã¨ in stock?",
+      "intent": "list"
+    },
+    {
+      "message": "disponibilitÃ ?",
+      "intent": "list"
+    },
+    {
+      "message": "Bonifico effettuato",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "Pagamento completato",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "Ho pagato ora",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "F_21 jgor5",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "Pagato a nome di Mario Rossi",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "Indirizzo di consegna: Via Roma 10",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "VIA GARIBALDI, numero 25, CAP 20100",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "Intestato a GIUSEPPE VERDI",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "Bonifico fatto",
+      "intent": "order_confirmation"
+    },
+    {
+      "message": "Pagamento effettuato a nome di LUCA BIANCHI",
+      "intent": "order_confirmation"
+    }
+  ]
+}
