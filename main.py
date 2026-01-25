@@ -332,30 +332,32 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
 
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     """
-    Cerca prodotti nel listino con pattern ULTRA-SPECIFICI.
-    Risponde SOLO a richieste esplicite di prodotti.
+    Cerca prodotti nel listino con pattern FUZZY (ricerca intelligente).
+    Non usa dizionari hardcoded ma confronta le parole chiave con il testo.
     """
     if not lista_text:
         return {'match': False, 'snippet': None, 'score': 0}
     
     text_lower = user_message.lower()
-    user_normalized = normalize_text(user_message)
+    # Normalizzazione base (trattini e spazi)
+    text_lower = text_lower.replace("-", " ") 
+    user_normalized = normalize_text(text_lower)
     
-    # STEP 1: VERIFICA INTENT ESPLICITO
+    # STEP 1: VERIFICA INTENT ESPLICITO (Pattern forti)
     explicit_request_patterns = [
-        r'\bhai\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',
-        r'\bvendete\s+\w{4,}',
-        r'\bavete\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',
-        r'\bquanto\s+costa\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{4,}',
-        r'\bprezzo\s+(di|del|della|dello)\s+\w{4,}',
-        r'\bcosto\s+(di|del|della|dello)\s+\w{4,}',
-        r'\bdisponibile\s+\w{4,}',
-        r'\bdisponibilità\s+(di|del|della)\s+\w{4,}',
-        r'\bin\s+stock\s+\w{4,}',
-        r'\bce\s+(la|il|l\'|hai|avete)\s*\w{4,}',
-        r'\bvorrei\s+(il|la|dello|della|un[ao]?)\s*\w{4,}',
-        r'\bcerco\s+\w{4,}',
-        r'\bmi\s+serve\s+(il|la|un[ao]?)\s*\w{4,}',
+        r'\bhai\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{3,}',
+        r'\bvendete\s+\w{3,}',
+        r'\bavete\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{3,}',
+        r'\bquanto\s+costa\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{3,}',
+        r'\bprezzo\s+(di|del|della|dello)\s+\w{3,}',
+        r'\bcosto\s+(di|del|della|dello)\s+\w{3,}',
+        r'\bdisponibile\s+\w{3,}',
+        r'\bdisponibilità\s+(di|del|della)\s+\w{3,}',
+        r'\bin\s+stock\s+\w{3,}',
+        r'\bce\s+(la|il|l\'|hai|avete)\s*\w{3,}',
+        r'\bvorrei\s+(il|la|dello|della|un[ao]?)\s*\w{3,}',
+        r'\bcerco\s+\w{3,}',
+        r'\bmi\s+serve\s+(il|la|un[ao]?)\s*\w{3,}',
     ]
     
     has_explicit_intent = False
@@ -366,57 +368,104 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
             break
     
     words = user_normalized.split()
-    if len(words) == 1 and len(user_normalized) >= 4:  # Fix: >= 4 invece di > 5
+    
+    # LOGICA "IMPLICIT SEARCH" per query brevi (es "bpc 157", "trembo")
+    # Se il messaggio è breve e sembra una lista di prodotti, lo trattiamo come search
+    if not has_explicit_intent:
+        if len(user_normalized) < 25 and len(words) <= 3 and len(user_normalized) >= 3:
+            has_explicit_intent = True
+            logger.info(f"✅ Query breve implicita detected: '{user_normalized}'")
+            
+    # Fix per singola parola (es "trembo")
+    if len(words) == 1 and len(user_normalized) >= 3:
         has_explicit_intent = True
-        logger.info(f"✅ Query singola: '{user_normalized}'")
     
     if not has_explicit_intent:
         logger.info(f"❌ Nessun intent esplicito di ricerca prodotto")
         return {'match': False, 'snippet': None, 'score': 0}
     
-    # STEP 2: ESTRAI NOME PRODOTTO
+    # STEP 2: ESTRAI KEYWORDS VALIDE
     stopwords = {
         'hai', 'avete', 'vendete', 'quanto', 'costa', 'prezzo', 'costo',
         'disponibile', 'disponibilità', 'stock', 'vorrei', 'cerco', 'serve',
         'per', 'sono', 'nel', 'con', 'che', 'questa', 'quello', 'tutte',
-        'della', 'dello', 'delle', 'degli', 'alla', 'allo', 'alle', 'agli'
+        'della', 'dello', 'delle', 'degli', 'alla', 'allo', 'alle', 'agli',
+        'info', 'ciao', 'buongiorno', 'sera', 'salve'
     }
     
     product_keywords = [
         w for w in words 
-        if len(w) >= 4 and w not in stopwords
+        if len(w) >= 3 and w not in stopwords
     ]
     
+    # Recupera parole di 2 lettere solo se significative (es "gh", "tb")
+    special_short_keywords = {'gh', 'tb', 't3', 't4'}
+    for w in words:
+        if w in special_short_keywords and w not in product_keywords:
+             product_keywords.append(w)
+
     if not product_keywords:
         logger.info(f"❌ Nessuna keyword prodotto trovata")
         return {'match': False, 'snippet': None, 'score': 0}
     
     logger.info(f"🔍 Cerco prodotti con keywords: {product_keywords}")
     
-    # STEP 3: CERCA NEL LISTINO
+    # STEP 3: CERCA NEL LISTINO (Use Fuzzy logic)
     lines = lista_text.split('\n')
     matched_lines = []
     
     for line in lines:
-        if not line.strip():
-            continue
+        if not line.strip(): continue
         
-        if line.strip().startswith('_'):
-            continue
-        if line.strip().startswith('⬛') and line.strip().endswith('⬛'):
-            continue
-        if line.strip().startswith('🔘') and line.strip().endswith('🔘'):
-            continue
+        # Skip sezioni header/footer
+        if line.strip().startswith('_'): continue
+        if line.strip().startswith('⬛') and line.strip().endswith('⬛'): continue
+        if line.strip().startswith('🔘') and line.strip().endswith('🔘'): continue
         
-        line_normalized = normalize_text(line)
+        # Normalizza riga per confronto
+        line_clean = line.lower().replace("-", " ").replace("/", " ")
+        line_words = normalize_text(line_clean).split()
         
+        match_found = False
+        
+        # Controlla ogni keyword dell'utente contro ogni parola della riga
         for keyword in product_keywords:
-            if keyword in line_normalized:
-                if ('💊' in line or '💉' in line or '€' in line):
-                    matched_lines.append(line.strip())
-                    logger.info(f"  ✅ Match: '{keyword}' in '{line[:50]}'")
-                    break
-    
+            for line_word in line_words:
+                
+                # Check 1: Strict Substring (es "bpc" in "bpc 157" o "bpc157")
+                if keyword in line_word:
+                    # Verifica che sia riga prodotto
+                    if ('💊' in line or '💉' in line or '€' in line):
+                        match_found = True
+                        break
+                
+                # Check 2: Fuzzy Prefix (es "trembo" vs "trenbo"lone)
+                # Se la keyword è lunga almeno 4 chars, controlliamo se somiglia all'inizio della parola
+                if len(keyword) >= 4 and len(line_word) >= 4:
+                    # Prendi il prefisso della parola del listino lungo quanto la keyword
+                    prefix = line_word[:len(keyword)]
+                    similarity = calculate_similarity(keyword, prefix)
+                    
+                    if similarity >= 0.80: # Soglia alta per prefissi
+                        if ('💊' in line or '💉' in line or '€' in line):
+                            logger.info(f"  ⚡ Fuzzy prefix match: '{keyword}' ~ '{prefix}' (in {line_word}) -> {similarity:.2f}")
+                            match_found = True
+                            break
+                            
+                # Check 3: Fuzzy Full Word (es "tren" vs "trenbolone" NO, ma "winstrol" vs "winstro" SI)
+                # Questo serve più per typo (es "testoterone")
+                sim_full = calculate_similarity(keyword, line_word)
+                if sim_full > 0.85:
+                    if ('💊' in line or '💉' in line or '€' in line):
+                        match_found = True
+                        break
+            
+            if match_found: 
+                break
+        
+        if match_found:
+            matched_lines.append(line.strip())
+            
     # STEP 4: RISULTATO
     if matched_lines:
         snippet = '\n'.join(matched_lines[:15])
@@ -424,10 +473,10 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         if len(snippet) > 3900:
             snippet = snippet[:3900] + "\n\n💡 (Scrivi il nome specifico per una ricerca più precisa)"
         
-        score = len(matched_lines) / len(product_keywords) if product_keywords else 0
+        score = 1.0
         
         logger.info(f"✅ Trovate {len(matched_lines)} righe prodotto")
-        return {'match': True, 'snippet': snippet, 'score': min(score, 1.0)}
+        return {'match': True, 'snippet': snippet, 'score': score}
     
     logger.info(f"❌ Nessun prodotto trovato nel listino")
     return {'match': False, 'snippet': None, 'score': 0}
