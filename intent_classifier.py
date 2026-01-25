@@ -53,15 +53,15 @@ class EnhancedIntentClassifier:
                 r'\b(voglio|vorrei|mi\s+serve)\s+\w+',
                 r'\b(prendo|prenoto|ordino)\s+\w+',
                 r'^\w+\s+(grazie|per\s+favore)$',
-                # FIX: Pattern per ordini vaghi con quantitÃƒÂ 
-                r'\b(voglio|vorrei|mi\s+serve)\s+\d+',  # "voglio 2 ..." Ã¢â€ â€™ order
-                r'\b(prendo|dammi|ordino)\s+(quello|quella|quelli|quelle)',  # "prendo quello" Ã¢â€ â€™ order
+                # FIX: Pattern per ordini vaghi con quantità
+                r'\b(voglio|vorrei|mi\s+serve)\s+\d+',  # "voglio 2 ..." → order
+                r'\b(prendo|dammi|ordino)\s+(quello|quella|quelli|quelle)',  # "prendo quello" → order
                 r'\b(voglio|vorrei)\s+(quello|quella|quelli|quelle|quel|quella\s+roba)',  # "voglio quella roba"
             ],
             
             "search": [
-                # FIX: Pattern piÃƒÂ¹ specifici per evitare conflitti
-                r'^(hai|avete|ce l\'hai|c\'ÃƒÂ¨|vendete)\b(?!.*(stock|lista|catalogo|listino)).*\??',  # Solo all'inizio
+                # FIX: Pattern più specifici per evitare conflitti
+                r'^(hai|avete|ce l\'hai|c\'è|vendete)\b(?!.*(stock|lista|catalogo|listino)).*\??',  # Solo all'inizio
                 r'\b(che|cosa)\s+(hai|avete)\b(?!.*(stock|lista|detto|disse|menzionato)).*\??$',  # "che hai" ma non "che hai detto"
                 r'\b(quanto|costa|prezzo|prezzzo)\b.*\??$',  # typo prezzzo
                 r'^(quanto|costa|prezzo|prezzzo)\??$',      # typo prezzzo
@@ -69,7 +69,7 @@ class EnhancedIntentClassifier:
 
                 r'^(orali|sarms|pct|peptidi|ai|sex|viagra|cialis|levitra|cut|bulk|massa|definizione)\??$',
                 r'\b(consigli|meglio|confronto|quale)\b.*\??',  # Rimosso "cosa" per evitare conflitti
-                r'^(che hai|cosa c\'ÃƒÂ¨|novitÃƒÂ |disponibile)\??$',  # Rimosso "stock" (ora solo in list)
+                r'^(che hai|cosa c\'è|novità|disponibile)\??$',  # Rimosso "stock" (ora solo in list)
                 # FIX #2d: Pattern "per massa" solo con contesto di domanda
                 r'^(che|cosa|quale).*(per massa|per forza|per taglio|per definizione)',  # "che hai per massa?"
                 r'\b(consigli|suggerimenti).*(per massa|per forza|per taglio|per definizione)',  # "consigli per massa?"
@@ -89,13 +89,13 @@ class EnhancedIntentClassifier:
                 r'^(sicuro|discreto|garanzia|privacy)\??$',
                 r'\b(problema|help|aiuto|contatto|numero|supporto|assistenza)\b.*\??',
                 r'^(problema|help|aiuto|contatto|numero|supporto)\??$',
-                r'\b(tempo|giorno|giorni|settimana|settimane|modalitÃƒÂ |come funziona)\b.*\??$',
+                r'\b(tempo|giorno|giorni|settimana|settimane|modalità|come funziona)\b.*\??$',
                 # NUOVI pattern FAQ specifici
-                r'c\'ÃƒÂ¨\s+(un\s+)?minimo',
+                r'c\'è\s+(un\s+)?minimo',
                 r'\b(quanto|quando)\s+(ci\s+mette|ci\s+vuole|tempo|giorni)\b',
                 r'(ordine\s+)?minimo',
                 r'\b(quanto|come)\s+(tempo|giorni|settimane)\b',
-                r'\b(posso|si\s+puÃƒÂ²)\s+(ordinare|pagare)\b'
+                r'\b(posso|si\s+può)\s+(ordinare|pagare)\b'
             ],
             
             "list": [
@@ -103,16 +103,22 @@ class EnhancedIntentClassifier:
                 r'^(che avete|cosa vendete|mostra tutto|manda lista)$',
                 r'\b(lista|catalogo|listino|prezzi|prodotti|offerte)\b',
                 r'^(fammi vedere|mostrami|visualizza)\s+(cosa|tutto)',
-                r'\b(che|cosa)\s+(avete|hai|c\'ÃƒÂ¨)\s+(in\s+)?stock\b',
+                r'\b(che|cosa)\s+(avete|hai|c\'è)\s+(in\s+)?stock\b',
                 r'^(che|cosa)\s+(hai|avete)\??$',
-                r'\b(disponibilit[ÃƒÂ a])\b',
+                r'\b(disponibilit[àa])\b',
                 # FIX #3c: Pattern aggiuntivi per stock
                 r'\bstock\??$',  # "stock?"
                 r'\b(cosa|che)\s+avete\b',  # "cosa avete?" generico
             ],
             
-            # ORDER_CONFIRMATION DEVE VENIRE PRIMA DI CONTACT!
-            # Altrimenti "Tel:" nei messaggi di conferma viene matchato come richiesta contatto
+            "contact": [
+                r'\b(contatto|numero|telefono|email|whatsapp|telegram|instagram)\b.*\??',
+                r'^(contatto|numero|telefono|email|whatsapp)\??$',
+                r'\b(scrivi|chiama|messaggio|dm|parlare|umano)\b',
+                r'numero\s+(di\s+)?(telefono|cellulare)',
+                r'hai\s+(whatsapp|telegram|numero)'
+            ],
+            
             "order_confirmation": [
                 r'\b(bonifico|pagamento)\s+(effettuat|fatt|completat)',  # "bonifico effettuato"
                 r'\b(ho|abbiamo)\s+(pagat|effettuat)',  # "ho pagato"
@@ -123,19 +129,11 @@ class EnhancedIntentClassifier:
                 r'\bindirizzo\s+di\s+consegna',  # "indirizzo di consegna"
                 r'\b(nome|intestat)[oa]?\s+(a|di)\s+[A-Z]+',  # "a nome di MARIO"
             ],
-            
-            "contact": [
-                r'\b(contatto|numero|telefono|email|whatsapp|telegram|instagram)\b.*\??',
-                r'^(contatto|numero|telefono|email|whatsapp)\??$',
-                r'\b(scrivi|chiama|messaggio|dm|parlare|umano)\b',
-                r'numero\s+(di\s+)?(telefono|cellulare)',
-                r'hai\s+(whatsapp|telegram|numero)'
-            ],
 
             "fallback": [
                 r'^(bot|chi\s+sei|cosa|boh|\?+)\??$',
                 r'^(non\s+)?ho\s+capito$',
-                r'cos\'ÃƒÂ¨\s+questo'
+                r'cos\'è\s+questo'
             ]
         }
     
@@ -148,7 +146,7 @@ class EnhancedIntentClassifier:
                 self.product_keywords = list(dynamic_product_keywords)
             else:
                 self.product_keywords = dynamic_product_keywords
-            logger.info(f"Ã¢Å“â€¦ Usate {len(self.product_keywords)} product keywords DINAMICHE dalla lista")
+            logger.info(f"✅ Usate {len(self.product_keywords)} product keywords DINAMICHE dalla lista")
         else:
             # Fallback: keywords statiche (base minima)
             self.product_keywords = [
@@ -158,7 +156,7 @@ class EnhancedIntentClassifier:
                 'tren ace', 'trenbolone', 'viagra', 'cialis', 'levitra', 'proviron',
                 'arimidex', 'nolvadex', 'tamoxifen', 'clenbuterol'
             ]
-            logger.info(f"Ã¢Å¡Â Ã¯Â¸Â Usate {len(self.product_keywords)} product keywords STATICHE (fallback)")
+            logger.info(f"⚠️ Usate {len(self.product_keywords)} product keywords STATICHE (fallback)")
         
         self.category_keywords = [
             'orali', 'sarms', 'pct', 'peptidi', 'ai', 'sex', 'cut', 'bulk',
@@ -167,7 +165,7 @@ class EnhancedIntentClassifier:
         
         self.order_verbs = ['ordina', 'prenota', 'compra', 'acquista', 'mandami', 'invia', 'spediscimi', 'consegnami', 'prendo', 'dammi']
         self.wish_verbs = ['voglio', 'vorrei', 'cerco', 'cercavo', 'mi serve', 'mi servirebbe']
-        self.question_words = ['quando', 'dove', 'come', 'perchÃƒÂ©', 'posso', 'quanto', 'cosa', 'quale']
+        self.question_words = ['quando', 'dove', 'come', 'perché', 'posso', 'quanto', 'cosa', 'quale']
         self.faq_keywords = ['spedizione', 'consegna', 'pagamento', 'bonifico', 'crypto', 
                             'contrassegno', 'tempo', 'giorni', 'settimane', 'sicuro', 
                             'discreto', 'garanzia', 'minimo', 'sconto', 'offerta']
@@ -200,18 +198,18 @@ class EnhancedIntentClassifier:
                 intents.append(conv['intent'])
             
             if not messages:
-                print("Ã¢Å¡Â Ã¯Â¸Â Nessun dato di training trovato")
+                print("⚠️ Nessun dato di training trovato")
                 return False
             
             self.ml_pipeline.fit(messages, intents)
             self.is_trained = True
             
-            print(f"Ã¢Å“â€¦ Modello addestrato con {len(messages)} esempi")
+            print(f"✅ Modello addestrato con {len(messages)} esempi")
             print(f"   Classi: {set(intents)}")
             return True
             
         except Exception as e:
-            print(f"Ã¢ÂÅ’ Errore durante il training: {e}")
+            print(f"❌ Errore durante il training: {e}")
             return False
     
     def classify(self, message, debug=False):
@@ -225,14 +223,14 @@ class EnhancedIntentClassifier:
         # RACCOLTA TUTTI I RISULTATI
         all_results = []
         
-        # 1. REGOLE REGEX (prioritÃƒÂ  alta)
+        # 1. REGOLE REGEX (priorità alta)
         regex_result = self._classify_by_regex(message_lower, debug)
         if regex_result:
             intent, confidence = regex_result
             if confidence >= self.MIN_CONFIDENCE:
                 all_results.append(("regex", intent, confidence))
                 if debug:
-                    print(f"Ã°Å¸â€Â Regex match: {intent} ({confidence:.2f})")
+                    print(f"🔍 Regex match: {intent} ({confidence:.2f})")
         
         # 2. MODELLO ML
         if self.is_trained and self.USE_HYBRID:
@@ -242,7 +240,7 @@ class EnhancedIntentClassifier:
                 if confidence >= self.FALLBACK_THRESHOLD:
                     all_results.append(("ml", intent, confidence))
                     if debug:
-                        print(f"Ã°Å¸â€Â ML prediction: {intent} ({confidence:.2f})")
+                        print(f"🔍 ML prediction: {intent} ({confidence:.2f})")
         
         # 3. REGOLE SEMPLICI
         simple_result = self._classify_by_simple_rules(message_lower, debug)
@@ -251,7 +249,7 @@ class EnhancedIntentClassifier:
             if confidence >= self.FALLBACK_THRESHOLD:
                 all_results.append(("simple", intent, confidence))
                 if debug:
-                    print(f"Ã°Å¸â€Â Simple rules: {intent} ({confidence:.2f})")
+                    print(f"🔍 Simple rules: {intent} ({confidence:.2f})")
         
         # SELEZIONE BEST MATCH
         if all_results:
@@ -262,9 +260,9 @@ class EnhancedIntentClassifier:
             
             # Log per debug
             if debug and len(all_results) > 1:
-                print(f"Ã°Å¸Ââ€  Best Match Comparison:")
+                print(f"🏆 Best Match Comparison:")
                 for i, (method, intent, conf) in enumerate(all_results, 1):
-                    indicator = "Ã¢Å“â€¦" if i == 1 else "  "
+                    indicator = "✅" if i == 1 else "  "
                     print(f"   {indicator} {method}: {intent} ({conf:.2f})")
             
             # Aggiorna statistiche
@@ -280,7 +278,7 @@ class EnhancedIntentClassifier:
         # 4. FALLBACK
         self.stats['fallback_classifications'] += 1
         if debug:
-            print(f"Ã°Å¸â€Â No match found Ã¢â€ â€™ fallback")
+            print(f"🔍 No match found → fallback")
         return "fallback", 0.0
     
     def _classify_by_regex(self, message, debug=False):
@@ -319,7 +317,7 @@ class EnhancedIntentClassifier:
             return None
     
     def _classify_by_simple_rules(self, message, debug=False):
-        """Classifica usando regole semplici con prioritÃƒÂ  corrette"""
+        """Classifica usando regole semplici con priorità corrette"""
         words = message.split()
         
         if not words:
@@ -330,21 +328,21 @@ class EnhancedIntentClassifier:
         is_question = '?' in message
         
         # ============================================
-        # ORDINE PRIORITÃƒâ‚¬ (DAL PIÃƒâ„¢ SPECIFICO AL GENERICO)
+        # ORDINE PRIORITÀ (DAL PIÙ SPECIFICO AL GENERICO)
         # ============================================
         
-        # 0. CONTACT KEYWORDS (prioritÃƒÂ  assoluta)
+        # 0. CONTACT KEYWORDS (priorità assoluta)
         if any(kw in message for kw in self.contact_keywords):
-            # Se chiede numero/telefono/whatsapp Ã¢â€ â€™ contact
+            # Se chiede numero/telefono/whatsapp → contact
             if any(w in message for w in ['numero', 'telefono', 'whatsapp', 'telegram', 'email']):
                 if 'tracking' not in message:  # Eccezione: "numero tracking" = FAQ
                     return "contact", 0.98
         
-        # 1. FAQ KEYWORDS (prioritÃƒÂ  massima per domande procedurali)
+        # 1. FAQ KEYWORDS (priorità massima per domande procedurali)
         faq_strong_keywords = ['spedizione', 'consegna', 'pagamento', 'bonifico', 
                                'crypto', 'tempo', 'giorni', 'minimo', 'sconto']
         if any(faq_word in message for faq_word in faq_strong_keywords):
-            # ECCEZIONE: "quanto costa PRODOTTO" ÃƒÂ¨ search, non FAQ
+            # ECCEZIONE: "quanto costa PRODOTTO" è search, non FAQ
             if 'quanto' in message and 'costa' in message and has_product:
                 if 'spedizione' not in message:
                     return "search", 0.85
@@ -370,13 +368,13 @@ class EnhancedIntentClassifier:
                 vague_refs = ['quello', 'quella', 'quelli', 'quelle', 'cose', 'roba', 
                              'quella roba', 'quelle cose', 'questi', 'queste']
                 
-                # Se ha numeri (es. "voglio 2 di quelle") Ã¢â€ â€™ probabilmente order vago
+                # Se ha numeri (es. "voglio 2 di quelle") → probabilmente order vago
                 if any(char.isdigit() for char in message):
                     return "order", 0.82  # "voglio 2 di quelle cose"
-                # Se ha riferimenti vaghi Ã¢â€ â€™ probabilmente order contestuale
+                # Se ha riferimenti vaghi → probabilmente order contestuale
                 elif any(vague in message for vague in vague_refs):
                     return "order", 0.80  # "voglio quella roba", "prendo quelle"
-                # Altrimenti ÃƒÂ¨ una ricerca generica
+                # Altrimenti è una ricerca generica
                 return "search", 0.70  # "voglio qualcosa per massa" = ricerca
         
         # 4. ORDER VERBS = ORDER (anche senza prodotto specifico)
@@ -395,7 +393,7 @@ class EnhancedIntentClassifier:
         if len(words) == 1:
             word_scores = {
                 'lista': ("list", 0.90), 'catalogo': ("list", 0.90), 'prezzi': ("list", 0.90),
-                'stock': ("list", 0.90), 'disponibilitÃƒÂ ': ("list", 0.90), 'listino': ("list", 0.90),  # Ã¢â€ Â FIX #3
+                'stock': ("list", 0.90), 'disponibilità': ("list", 0.90), 'listino': ("list", 0.90),  # ← FIX #3
                 'orali': ("search", 0.85), 'sarms': ("search", 0.85), 'pct': ("search", 0.85),
                 'ok': ("order", 0.80), 'si': ("order", 0.80), 'fatto': ("order", 0.80),
                 'help': ("faq", 0.80), 'supporto': ("faq", 0.80),
@@ -442,7 +440,7 @@ class EnhancedIntentClassifier:
             stopwords_comuni = {
                 'ciao', 'buongiorno', 'sera', 'grazie', 'ok', 'si', 'no', 
                 'cosa', 'come', 'quando',
-                'bro', 'fra', 'zi', 'bello', 'amico', 'boss', 'capo'  # Ã¢â€ Â SLANG AGGIUNTO
+                'bro', 'fra', 'zi', 'bello', 'amico', 'boss', 'capo'  # ← SLANG AGGIUNTO
             }
             clean_words = [w for w in words if w not in stopwords_comuni]
             
@@ -453,7 +451,7 @@ class EnhancedIntentClassifier:
             
     def _analyze_implicit_order(self, text: str, text_lower: str) -> float:
         """
-        Analizza se il testo ÃƒÂ¨ un ordine implicito usando un sistema a punteggio.
+        Analizza se il testo è un ordine implicito usando un sistema a punteggio.
         Adattato dalla vecchia funzione _check_ordine_reale.
         Returns: confidence score (0.0 - 1.0)
         """
@@ -483,11 +481,11 @@ class EnhancedIntentClassifier:
         matched_indicators = []
         
         # 1. Simboli valuta o prezzi (Es: "25$")
-        if re.search(r'[Ã¢â€šÂ¬$Ã‚Â£Ã‚Â¥Ã¢â€šÂ¿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
+        if re.search(r'[€$£¥₿]|\d+\s*(euro|eur|usd|gbp)', text_lower):
             score += 3
             matched_indicators.append('prezzo')
         
-        # 2. QuantitÃƒÂ  chiare (Es: "2 x testo", "3 pezzi")
+        # 2. Quantità chiare (Es: "2 x testo", "3 pezzi")
         quantita_patterns = [
             r'\d+\s*x\s*\w+',
             r'\d+\s+[a-z]{3,}', # "1 testo"
@@ -539,15 +537,15 @@ class EnhancedIntentClassifier:
     
     def _calculate_regex_confidence(self, message, intent, pattern):
         """Calcola confidence score per match regex"""
-        # Aumentata base score per garantire prioritÃƒÂ  su ML
-        # Se c'ÃƒÂ¨ un match regex, vogliamo che vinca quasi sempre (0.95 - 1.0)
+        # Aumentata base score per garantire priorità su ML
+        # Se c'è un match regex, vogliamo che vinca quasi sempre (0.95 - 1.0)
         base_score = 0.95
         
         match = re.search(pattern, message, re.IGNORECASE)
         if match:
             matched_text = match.group()
             match_ratio = len(matched_text) / len(message)
-            # Bonus per match piÃƒÂ¹ lunghi, max 1.0
+            # Bonus per match più lunghi, max 1.0
             bonus = match_ratio * 0.05
             return min(1.0, base_score + bonus)
         
@@ -578,18 +576,18 @@ class EnhancedIntentClassifier:
             train_data = []
             test_data = []
             
-            print(f"Ã°Å¸â€œÅ  Distribuzione dataset:")
+            print(f"📊 Distribuzione dataset:")
             for intent, samples in intent_groups.items():
                 print(f"  {intent}: {len(samples)} esempi")
                 split_idx = int(len(samples) * (1 - test_split))
                 train_data.extend(samples[:split_idx])
                 test_data.extend(samples[split_idx:])
             
-            print(f"\nÃ°Å¸â€œË† Split {int((1-test_split)*100)}/{int(test_split*100)}:")
+            print(f"\n📈 Split {int((1-test_split)*100)}/{int(test_split*100)}:")
             print(f"  Training: {len(train_data)} esempi")
             print(f"  Test: {len(test_data)} esempi")
             
-            print("\nÃ°Å¸Å½Â¯ Addestramento su dati training...")
+            print("\n🎯 Addestramento su dati training...")
             temp_data = {'conversations': []}
             for msg, intent in train_data:
                 temp_data['conversations'].append({'message': msg, 'intent': intent})
@@ -603,14 +601,14 @@ class EnhancedIntentClassifier:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             
-            print("Ã°Å¸Â§Âª Valutazione su dati test...")
+            print("🧪 Valutazione su dati test...")
             results = self._detailed_evaluate(test_data)
             self._print_evaluation_results(results)
             
             return results
             
         except Exception as e:
-            print(f"Ã¢ÂÅ’ Errore nella valutazione: {e}")
+            print(f"❌ Errore nella valutazione: {e}")
             return None
     
     def _detailed_evaluate(self, test_data):
@@ -676,14 +674,14 @@ class EnhancedIntentClassifier:
     def _print_evaluation_results(self, results):
         """Stampa i risultati della valutazione"""
         print("\n" + "="*60)
-        print("Ã°Å¸â€œÅ  RISULTATI VALUTAZIONE COMPLETA")
+        print("📊 RISULTATI VALUTAZIONE COMPLETA")
         print("="*60)
         
-        print(f"\nÃ°Å¸Å½Â¯ ACCURACY TOTALE: {results['accuracy']}%")
+        print(f"\n🎯 ACCURACY TOTALE: {results['accuracy']}%")
         print(f"   Corretti: {results['correct']}/{results['total']}")
         print(f"   Errati: {results['incorrect']}/{results['total']}")
         
-        print(f"\nÃ°Å¸â€œË† METRICHE PER INTENT:")
+        print(f"\n📈 METRICHE PER INTENT:")
         print("-"*40)
         for intent, metrics in results['metrics'].items():
             print(f"\n  {intent.upper()}:")
@@ -692,7 +690,7 @@ class EnhancedIntentClassifier:
             print(f"    F1-Score:  {metrics['f1']:.3f}")
             print(f"    Support:   {metrics['support']} esempi")
         
-        print(f"\nÃ°Å¸â€œÅ  MATRICE DI CONFUSIONE:")
+        print(f"\n📊 MATRICE DI CONFUSIONE:")
         print("-"*40)
         all_intents = sorted(results['confusion_matrix'].keys())
         
@@ -708,7 +706,7 @@ class EnhancedIntentClassifier:
             print(row)
         
         if results['errors']:
-            print(f"\nÃ¢ÂÅ’ ERRORI DETTAGLIATI ({len(results['errors'])}):")
+            print(f"\n❌ ERRORI DETTAGLIATI ({len(results['errors'])}):")
             print("-"*40)
             for i, error in enumerate(results['errors'][:10], 1):
                 print(f"{i}. Messaggio: '{error['message']}'")
@@ -721,7 +719,7 @@ class EnhancedIntentClassifier:
             error_file = 'evaluation_errors.json'
             with open(error_file, 'w', encoding='utf-8') as f:
                 json.dump(results['errors'], f, indent=2, ensure_ascii=False)
-            print(f"\nÃ°Å¸â€™Â¾ Errori salvati in: {error_file}")
+            print(f"\n💾 Errori salvati in: {error_file}")
     
     def save_model(self, path='intent_classifier_model.pkl'):
         """Salva il modello su disco"""
@@ -746,10 +744,10 @@ class EnhancedIntentClassifier:
                     'stats': stats_dict,
                     'confusion_matrix': confusion_dict
                 }, f)
-            print(f"Ã¢Å“â€¦ Modello salvato in {path}")
+            print(f"✅ Modello salvato in {path}")
             return True
         except Exception as e:
-            print(f"Ã¢ÂÅ’ Errore nel salvataggio: {e}")
+            print(f"❌ Errore nel salvataggio: {e}")
             return False
     
     def load_model(self, path='intent_classifier_model.pkl'):
@@ -779,10 +777,10 @@ class EnhancedIntentClassifier:
             for key, value in confusion_data.items():
                 self.confusion_matrix[key] = defaultdict(int, value)
             
-            print(f"Ã¢Å“â€¦ Modello caricato da {path}")
+            print(f"✅ Modello caricato da {path}")
             return True
         except Exception as e:
-            print(f"Ã¢ÂÅ’ Errore nel caricamento: {e}")
+            print(f"❌ Errore nel caricamento: {e}")
             return False
     
     def save_config(self, path='classifier_config.json'):
@@ -807,10 +805,10 @@ class EnhancedIntentClassifier:
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-            print(f"Ã¢Å“â€¦ Configurazione salvata in {path}")
+            print(f"✅ Configurazione salvata in {path}")
             return True
         except Exception as e:
-            print(f"Ã¢ÂÅ’ Errore nel salvataggio config: {e}")
+            print(f"❌ Errore nel salvataggio config: {e}")
             return False
     
     def load_config(self, path='classifier_config.json'):
@@ -831,15 +829,15 @@ class EnhancedIntentClassifier:
             self.question_words = keywords.get('question_words', self.question_words)
             self.faq_keywords = keywords.get('faq_keywords', self.faq_keywords)
             
-            print(f"Ã¢Å“â€¦ Configurazione caricata da {path}")
+            print(f"✅ Configurazione caricata da {path}")
             return True
         except Exception as e:
-            print(f"Ã¢ÂÅ’ Errore nel caricamento config: {e}")
+            print(f"❌ Errore nel caricamento config: {e}")
             return False
     
     def print_stats(self):
         """Stampa statistiche di utilizzo"""
-        print("\nÃ°Å¸â€œÅ  STATISTICHE CLASSIFICATORE")
+        print("\n📊 STATISTICHE CLASSIFICATORE")
         print("=" * 50)
         print(f"Richieste totali: {self.stats.get('total_requests', 0)}")
         print(f"Classificazioni regex: {self.stats.get('regex_classifications', 0)}")
@@ -848,7 +846,7 @@ class EnhancedIntentClassifier:
         print(f"Fallback: {self.stats.get('fallback_classifications', 0)}")
         
         if self.confusion_matrix:
-            print("\nÃ°Å¸â€œË† MATRICE DI CONFUSIONE:")
+            print("\n📈 MATRICE DI CONFUSIONE:")
             for true_intent, pred_counts in self.confusion_matrix.items():
                 print(f"  {true_intent}: {dict(pred_counts)}")
 
