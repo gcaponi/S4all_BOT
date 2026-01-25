@@ -1,3 +1,4 @@
+
 import os
 import json
 import logging
@@ -43,7 +44,7 @@ ACCESS_CODE_FILE = 'access_code.json'
 FAQ_FILE = 'faq.json'
 LISTA_FILE = "lista.txt"
 ORDINI_FILE = "ordini_confermati.json"
-USER_TAGS_FILE = 'user_tags.json'  # â† NUOVO
+USER_TAGS_FILE = 'user_tags.json'  # ← NUOVO
 
 # Link JustPaste.it
 LISTA_URL = "https://justpaste.it/lista_4all"
@@ -134,11 +135,11 @@ def fetch_markdown_from_html(url: str) -> str:
         return ""
 
 def parse_faq(markdown: str) -> list:
-    """Parsa FAQ con sezioni emoji e domande ðŸ“ðŸ”˜"""
+    """Parsa FAQ con sezioni emoji e domande 📍🔘"""
     faq_list = []
     
-    # PATTERN 1: Sezioni principali (ðŸ¤”TITOLOðŸ¤” + contenuto)
-    sezioni_pattern = r'([ðŸ¤”ðŸ“¨ðŸ’µ])\s*([A-ZÃ€ÃˆÃ‰ÃŒÃ’Ã™\s]+)\1\s*(.*?)(?=\n[ðŸ¤”ðŸ“¨ðŸ’µâ¬›]|$)'
+    # PATTERN 1: Sezioni principali (🤔TITOLO🤔 + contenuto)
+    sezioni_pattern = r'([🤔📨💵])\s*([A-ZÀÈÉÌÒÙ\s]+)\1\s*(.*?)(?=\n[🤔📨💵⬛]|$)'
     sezioni = re.findall(sezioni_pattern, markdown, flags=re.S | re.M)
     
     for emoji, titolo, contenuto in sezioni:
@@ -148,8 +149,8 @@ def parse_faq(markdown: str) -> list:
                 "risposta": contenuto.strip()
             })
     
-    # PATTERN 2: Domande specifiche (ðŸ“ + domanda + ðŸ”˜ + risposta)
-    domande_pattern = r'ðŸ“\s*(.*?)\s*\n\s*ðŸ”˜\s*(.*?)(?=\nðŸ“|\n\n|$)'
+    # PATTERN 2: Domande specifiche (📍 + domanda + 🔘 + risposta)
+    domande_pattern = r'📍\s*(.*?)\s*\n\s*🔘\s*(.*?)(?=\n📍|\n\n|$)'
     domande = re.findall(domande_pattern, markdown, flags=re.S | re.M)
     
     for domanda, risposta in domande:
@@ -158,7 +159,7 @@ def parse_faq(markdown: str) -> list:
             "risposta": risposta.strip()
         })
     
-    logger.info(f"âœ… Parsate {len(faq_list)} FAQ totali")
+    logger.info(f"✅ Parsate {len(faq_list)} FAQ totali")
     for i, faq in enumerate(faq_list[:5], 1):
         logger.info(f"  FAQ {i}: '{faq['domanda'][:50]}'")
     
@@ -171,26 +172,26 @@ def write_faq_json(faq: list, filename: str):
 
 def update_faq_from_web():
     """Sincronizza le FAQ scaricandole dal link JustPaste configurato"""
-    logger.info(f"ðŸ“¥ Tentativo download FAQ da: {PASTE_URL}")
+    logger.info(f"📥 Tentativo download FAQ da: {PASTE_URL}")
     
     markdown = fetch_markdown_from_html(PASTE_URL)
     
     if not markdown:
-        logger.error("âŒ Markdown vuoto o errore fetch")
+        logger.error("❌ Markdown vuoto o errore fetch")
         return False
     
-    logger.info(f"âœ… Markdown scaricato: {len(markdown)} caratteri")
-    logger.info(f"ðŸ“„ Prime 200 caratteri: {markdown[:200]}")
+    logger.info(f"✅ Markdown scaricato: {len(markdown)} caratteri")
+    logger.info(f"📄 Prime 200 caratteri: {markdown[:200]}")
     
     faq = parse_faq(markdown)
     
     if not faq:
-        logger.error(f"âŒ Nessuna FAQ trovata. Pattern non matchato.")
-        logger.info(f"ðŸ” Markdown completo:\n{markdown}")
+        logger.error(f"❌ Nessuna FAQ trovata. Pattern non matchato.")
+        logger.info(f"🔍 Markdown completo:\n{markdown}")
         return False
     
     write_faq_json(faq, FAQ_FILE)
-    logger.info(f"âœ… FAQ sincronizzate: {len(faq)} elementi salvati.")
+    logger.info(f"✅ FAQ sincronizzate: {len(faq)} elementi salvati.")
     return True
 
 def update_lista_from_web():
@@ -218,7 +219,7 @@ def load_lista():
     return ""
 
 def load_json_file(filename, default=None):
-    """Carica in sicurezza file JSON evitando crash se il file Ã¨ corrotto o assente"""
+    """Carica in sicurezza file JSON evitando crash se il file è corrotto o assente"""
     if os.path.exists(filename):
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -304,7 +305,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
             for faq in faq_list:
                 domanda_norm = normalize_text(faq["domanda"])
                 if any(phrase in domanda_norm for phrase in config["match_in"]):
-                    logger.info(f"âœ… FAQ Match (pattern {tema}): score 1.0")
+                    logger.info(f"✅ FAQ Match (pattern {tema}): score 1.0")
                     return {'match': True, 'item': faq, 'score': 1.0, 'method': 'pattern'}
     
     # STEP 2: Similarity search (fallback)
@@ -315,7 +316,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
         domanda_norm = normalize_text(faq["domanda"])
         
         if user_normalized in domanda_norm or domanda_norm in user_normalized:
-            logger.info(f"âœ… FAQ Match (substring): score 1.0")
+            logger.info(f"✅ FAQ Match (substring): score 1.0")
             return {'match': True, 'item': faq, 'score': 1.0, 'method': 'substring'}
         
         score = calculate_similarity(user_normalized, domanda_norm)
@@ -324,10 +325,10 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
             best_match = faq
     
     if best_score >= 0.50:  # Soglia abbassata
-        logger.info(f"âœ… FAQ Match (similarity): score {best_score:.2f}")
+        logger.info(f"✅ FAQ Match (similarity): score {best_score:.2f}")
         return {'match': True, 'item': best_match, 'score': best_score, 'method': 'similarity'}
     
-    logger.info(f"âŒ FAQ: No match (best score: {best_score:.2f})")
+    logger.info(f"❌ FAQ: No match (best score: {best_score:.2f})")
     return {'match': False, 'item': None, 'score': best_score, 'method': None}
 
 def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
@@ -352,7 +353,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         r'\bprezzo\s+(di|del|della|dello)\s+\w{3,}',
         r'\bcosto\s+(di|del|della|dello)\s+\w{3,}',
         r'\bdisponibile\s+\w{3,}',
-        r'\bdisponibilitÃ \s+(di|del|della)\s+\w{3,}',
+        r'\bdisponibilità\s+(di|del|della)\s+\w{3,}',
         r'\bin\s+stock\s+\w{3,}',
         r'\bce\s+(la|il|l\'|hai|avete)\s*\w{3,}',
         r'\bvorrei\s+(il|la|dello|della|un[ao]?)\s*\w{3,}',
@@ -364,30 +365,30 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     for pattern in explicit_request_patterns:
         if re.search(pattern, text_lower):
             has_explicit_intent = True
-            logger.info(f"âœ… Pattern richiesta esplicita: {pattern[:30]}")
+            logger.info(f"✅ Pattern richiesta esplicita: {pattern[:30]}")
             break
     
     words = user_normalized.split()
     
     # LOGICA "IMPLICIT SEARCH" per query brevi (es "bpc 157", "trembo")
-    # Se il messaggio Ã¨ breve e sembra una lista di prodotti, lo trattiamo come search
+    # Se il messaggio è breve e sembra una lista di prodotti, lo trattiamo come search
     if not has_explicit_intent:
         if len(user_normalized) < 25 and len(words) <= 3 and len(user_normalized) >= 3:
             has_explicit_intent = True
-            logger.info(f"âœ… Query breve implicita detected: '{user_normalized}'")
+            logger.info(f"✅ Query breve implicita detected: '{user_normalized}'")
             
     # Fix per singola parola (es "trembo")
     if len(words) == 1 and len(user_normalized) >= 3:
         has_explicit_intent = True
     
     if not has_explicit_intent:
-        logger.info(f"âŒ Nessun intent esplicito di ricerca prodotto")
+        logger.info(f"❌ Nessun intent esplicito di ricerca prodotto")
         return {'match': False, 'snippet': None, 'score': 0}
     
     # STEP 2: ESTRAI KEYWORDS VALIDE
     stopwords = {
         'hai', 'avete', 'vendete', 'quanto', 'costa', 'prezzo', 'costo',
-        'disponibile', 'disponibilitÃ ', 'stock', 'vorrei', 'cerco', 'serve',
+        'disponibile', 'disponibilità', 'stock', 'vorrei', 'cerco', 'serve',
         'per', 'sono', 'nel', 'con', 'che', 'questa', 'quello', 'tutte',
         'della', 'dello', 'delle', 'degli', 'alla', 'allo', 'alle', 'agli',
         'info', 'ciao', 'buongiorno', 'sera', 'salve'
@@ -405,10 +406,10 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
              product_keywords.append(w)
 
     if not product_keywords:
-        logger.info(f"âŒ Nessuna keyword prodotto trovata")
+        logger.info(f"❌ Nessuna keyword prodotto trovata")
         return {'match': False, 'snippet': None, 'score': 0}
     
-    logger.info(f"ðŸ” Cerco prodotti con keywords: {product_keywords}")
+    logger.info(f"🔍 Cerco prodotti con keywords: {product_keywords}")
     
     # STEP 3: CERCA NEL LISTINO (Use Fuzzy logic)
     lines = lista_text.split('\n')
@@ -419,8 +420,8 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         
         # Skip sezioni header/footer
         if line.strip().startswith('_'): continue
-        if line.strip().startswith('â¬›') and line.strip().endswith('â¬›'): continue
-        if line.strip().startswith('ðŸ”˜') and line.strip().endswith('ðŸ”˜'): continue
+        if line.strip().startswith('⬛') and line.strip().endswith('⬛'): continue
+        if line.strip().startswith('🔘') and line.strip().endswith('🔘'): continue
         
         # Normalizza riga per confronto
         line_clean = line.lower().replace("-", " ").replace("/", " ")
@@ -435,28 +436,28 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
                 # Check 1: Strict Substring (es "bpc" in "bpc 157" o "bpc157")
                 if keyword in line_word:
                     # Verifica che sia riga prodotto
-                    if ('ðŸ’Š' in line or 'ðŸ’‰' in line or 'â‚¬' in line):
+                    if ('💊' in line or '💉' in line or '€' in line):
                         match_found = True
                         break
                 
                 # Check 2: Fuzzy Prefix (es "trembo" vs "trenbo"lone)
-                # Se la keyword Ã¨ lunga almeno 4 chars, controlliamo se somiglia all'inizio della parola
+                # Se la keyword è lunga almeno 4 chars, controlliamo se somiglia all'inizio della parola
                 if len(keyword) >= 4 and len(line_word) >= 4:
                     # Prendi il prefisso della parola del listino lungo quanto la keyword
                     prefix = line_word[:len(keyword)]
                     similarity = calculate_similarity(keyword, prefix)
                     
                     if similarity >= 0.80: # Soglia alta per prefissi
-                        if ('ðŸ’Š' in line or 'ðŸ’‰' in line or 'â‚¬' in line):
-                            logger.info(f"  âš¡ Fuzzy prefix match: '{keyword}' ~ '{prefix}' (in {line_word}) -> {similarity:.2f}")
+                        if ('💊' in line or '💉' in line or '€' in line):
+                            logger.info(f"  ⚡ Fuzzy prefix match: '{keyword}' ~ '{prefix}' (in {line_word}) -> {similarity:.2f}")
                             match_found = True
                             break
                             
                 # Check 3: Fuzzy Full Word (es "tren" vs "trenbolone" NO, ma "winstrol" vs "winstro" SI)
-                # Questo serve piÃ¹ per typo (es "testoterone")
+                # Questo serve più per typo (es "testoterone")
                 sim_full = calculate_similarity(keyword, line_word)
                 if sim_full > 0.85:
-                    if ('ðŸ’Š' in line or 'ðŸ’‰' in line or 'â‚¬' in line):
+                    if ('💊' in line or '💉' in line or '€' in line):
                         match_found = True
                         break
             
@@ -471,14 +472,14 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         snippet = '\n'.join(matched_lines[:15])
         
         if len(snippet) > 3900:
-            snippet = snippet[:3900] + "\n\nðŸ’¡ (Scrivi il nome specifico per una ricerca piÃ¹ precisa)"
+            snippet = snippet[:3900] + "\n\n💡 (Scrivi il nome specifico per una ricerca più precisa)"
         
         score = 1.0
         
-        logger.info(f"âœ… Trovate {len(matched_lines)} righe prodotto")
+        logger.info(f"✅ Trovate {len(matched_lines)} righe prodotto")
         return {'match': True, 'snippet': snippet, 'score': score}
     
-    logger.info(f"âŒ Nessun prodotto trovato nel listino")
+    logger.info(f"❌ Nessun prodotto trovato nel listino")
     return {'match': False, 'snippet': None, 'score': 0}
 
 def has_payment_method(text: str) -> bool:
@@ -499,13 +500,13 @@ def estrai_parole_chiave_lista():
     
     testo = load_lista()
     if not testo:
-        logger.warning("âš ï¸ Lista prodotti vuota")
+        logger.warning("⚠️ Lista prodotti vuota")
         PAROLE_CHIAVE_LISTA = set()
     else:
         testo_norm = re.sub(r'[^\w\s]', ' ', testo.lower())
         parole = set(testo_norm.split())
         PAROLE_CHIAVE_LISTA = {p for p in parole if len(p) > 2}
-        logger.info(f"âœ… {len(PAROLE_CHIAVE_LISTA)} keywords estratte")
+        logger.info(f"✅ {len(PAROLE_CHIAVE_LISTA)} keywords estratte")
     
     return PAROLE_CHIAVE_LISTA
 
@@ -525,18 +526,18 @@ def init_classifier():
         try:
             if os.path.exists('intent_classifier_model.pkl'):
                 classifier_instance.load_model('intent_classifier_model.pkl')
-                logger.info("âœ… Classificatore caricato da file")
+                logger.info("✅ Classificatore caricato da file")
             else:
-                logger.info("âš ï¸  Nessun modello pre-addestrato, uso classificatore di base")
+                logger.info("⚠️  Nessun modello pre-addestrato, uso classificatore di base")
         except Exception as e:
-            logger.error(f"âŒ Errore nel caricamento modello: {e}")
+            logger.error(f"❌ Errore nel caricamento modello: {e}")
             classifier_instance = EnhancedIntentClassifier(dynamic_product_keywords=PAROLE_CHIAVE_LISTA)
     return classifier_instance
 
 def calcola_intenzione(text):
     """
     Versione migliorata che usa EnhancedIntentClassifier
-    Mantiene compatibilitÃ  con gli intent esistenti nel codice
+    Mantiene compatibilità con gli intent esistenti nel codice
     """
     try:
         # Inizializza se necessario
@@ -545,7 +546,7 @@ def calcola_intenzione(text):
         # Classifica il messaggio
         intent_classificato, confidence = classifier.classify(text)
         
-        logger.info(f"ðŸ” Classificazione: '{text}' -> {intent_classificato} ({confidence:.2f})")
+        logger.info(f"🔍 Classificazione: '{text}' -> {intent_classificato} ({confidence:.2f})")
         
         # Mappa gli intent del nuovo classificatore agli intent del vecchio sistema
         intent_map = {
@@ -562,21 +563,21 @@ def calcola_intenzione(text):
         # Converti l'intent
         intent_finale = intent_map.get(intent_classificato, "fallback")
         
-        # Se confidence Ã¨ troppo bassa, forza fallback
+        # Se confidence è troppo bassa, forza fallback
         if confidence < 0.4:
             intent_finale = "fallback"
         
         # Log dettagliato per debug
         if intent_finale == "fallback":
-            logger.warning(f"âš ï¸  Fallback per: '{text}' (confidence: {confidence:.2f})")
+            logger.warning(f"⚠️  Fallback per: '{text}' (confidence: {confidence:.2f})")
         else:
-            logger.info(f"âœ… Intent riconosciuto: {intent_finale}")
+            logger.info(f"✅ Intent riconosciuto: {intent_finale}")
         
-        # Restituisci l'intent (solo stringa, per compatibilitÃ )
+        # Restituisci l'intent (solo stringa, per compatibilità)
         return intent_finale
         
     except Exception as e:
-        logger.error(f"âŒ Errore in calcola_intenzione: {e}")
+        logger.error(f"❌ Errore in calcola_intenzione: {e}")
         return "fallback"
 
     def debug_intent(text: str):
@@ -589,11 +590,11 @@ def calcola_intenzione(text):
     result = intent_classifier.classify(text)
     
     print("\n" + "="*60)
-    print(f"ðŸ” DEBUG INTENT: '{text}'")
-    print(f"ðŸŽ¯ Risultato: {result.intent.value}")
-    print(f"ðŸ“Š Confidence: {result.confidence:.2f}")
-    print(f"ðŸ’¡ Reason: {result.reason}")
-    print(f"ðŸ”‘ Matched: {result.matched_keywords}")
+    print(f"🔍 DEBUG INTENT: '{text}'")
+    print(f"🎯 Risultato: {result.intent.value}")
+    print(f"📊 Confidence: {result.confidence:.2f}")
+    print(f"💡 Reason: {result.reason}")
+    print(f"🔑 Matched: {result.matched_keywords}")
     print("="*60 + "\n")
     
     return result.intent.value
@@ -609,15 +610,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     if context.args and context.args[0] == load_access_code():
         authorize_user(user.id, user.first_name, user.last_name, user.username)
-        await update.message.reply_text("âœ… Accesso autorizzato! Ora puoi interagire con il bot e visualizzare i prodotti.")
+        await update.message.reply_text("✅ Accesso autorizzato! Ora puoi interagire con il bot e visualizzare i prodotti.")
         if ADMIN_CHAT_ID:
-            await context.bot.send_message(ADMIN_CHAT_ID, f"ðŸ†• Utente autorizzato: {user.first_name} (@{user.username})")
+            await context.bot.send_message(ADMIN_CHAT_ID, f"🆕 Utente autorizzato: {user.first_name} (@{user.username})")
         return
 
     if is_user_authorized(user.id):
-        await update.message.reply_text(f"ðŸ‘‹ Ciao {user.first_name}! Sono il tuo assistente. Scrivi 'lista' per vedere i prodotti o chiedimi informazioni su spedizioni e pagamenti. Usa i comandi /help, /lista")
+        await update.message.reply_text(f"👋 Ciao {user.first_name}! Sono il tuo assistente. Scrivi 'lista' per vedere i prodotti o chiedimi informazioni su spedizioni e pagamenti. Usa i comandi /help, /lista")
     else:
-        await update.message.reply_text("âŒ Accesso negato. Devi utilizzare il link di invito ufficiale per abilitare il bot.")
+        await update.message.reply_text("❌ Accesso negato. Devi utilizzare il link di invito ufficiale per abilitare il bot.")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mostra l'intero regolamento e le FAQ caricate"""
@@ -628,12 +629,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     faq_list = faq_data.get("faq", [])
     
     if not faq_list:
-        await update.message.reply_text("âš ï¸ Il regolamento non Ã¨ ancora stato configurato.")
+        await update.message.reply_text("⚠️ Il regolamento non è ancora stato configurato.")
         return
         
-    full_text = "ðŸ—’ï¸ <b>REGOLAMENTO E INFORMAZIONI</b>\n\n"
+    full_text = "🗒️ <b>REGOLAMENTO E INFORMAZIONI</b>\n\n"
     for item in faq_list:
-        full_text += f"ðŸ”¹ <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
+        full_text += f"🔹 <b>{item['domanda']}</b>\n{item['risposta']}\n\n"
         
     if len(full_text) > 4000:
         for i in range(0, len(full_text), 4000):
@@ -650,7 +651,7 @@ async def lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lista_text = load_lista()
     
     if not lista_text:
-        await update.message.reply_text("âŒ Listino non disponibile. Riprova piÃ¹ tardi.")
+        await update.message.reply_text("❌ Listino non disponibile. Riprova più tardi.")
         return
         
     for i in range(0, len(lista_text), 4000):
@@ -664,31 +665,31 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
     msg = (
-        "ðŸ‘‘ <b>PANNELLO DI CONTROLLO ADMIN</b>\n\n"
-        "<b>ðŸ“ Comandi Admin:</b>\n"
-        "â€¢ /aggiorna_faq - Scarica le FAQ da JustPaste\n"
-        "â€¢ /aggiorna_lista - Scarica il listino da JustPaste\n"
-        "â€¢ /cambia_codice - Rigenera il token di sicurezza\n"
-        "â€¢ /clearordini [giorni] - Cancella ordini vecchi (default: 1 giorno)\n"
-        "â€¢ /genera_link - Crea il link per autorizzare nuovi utenti\n"
-        "â€¢ /lista_autorizzati - Vedi chi puÃ² usare il bot\n"
-        "â€¢ /listtags - Vedi clienti registrati con tag\n"
-        "â€¢ /ordini - Visualizza ordini confermati oggi\n"
-        "â€¢ /revoca ID - Rimuovi un utente dal database\n"
-        "â€¢ /removetag ID - Rimuovi tag cliente\n\n"
-        "<b>ðŸ‘¤ Comandi Utente:</b>\n"
-        "â€¢ /start - Avvia il bot\n"
-        "â€¢ /help - Visualizza FAQ e regolamento\n"
-        "â€¢ /lista - Mostra il listino prodotti"
+        "👑 <b>PANNELLO DI CONTROLLO ADMIN</b>\n\n"
+        "<b>📝 Comandi Admin:</b>\n"
+        "• /aggiorna_faq - Scarica le FAQ da JustPaste\n"
+        "• /aggiorna_lista - Scarica il listino da JustPaste\n"
+        "• /cambia_codice - Rigenera il token di sicurezza\n"
+        "• /clearordini [giorni] - Cancella ordini vecchi (default: 1 giorno)\n"
+        "• /genera_link - Crea il link per autorizzare nuovi utenti\n"
+        "• /lista_autorizzati - Vedi chi può usare il bot\n"
+        "• /listtags - Vedi clienti registrati con tag\n"
+        "• /ordini - Visualizza ordini confermati oggi\n"
+        "• /revoca ID - Rimuovi un utente dal database\n"
+        "• /removetag ID - Rimuovi tag cliente\n\n"
+        "<b>👤 Comandi Utente:</b>\n"
+        "• /start - Avvia il bot\n"
+        "• /help - Visualizza FAQ e regolamento\n"
+        "• /lista - Mostra il listino prodotti"
     )
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
     if update_faq_from_web():
-        await update.message.reply_text("âœ… FAQ sincronizzate con successo.")
+        await update.message.reply_text("✅ FAQ sincronizzate con successo.")
     else:
-        await update.message.reply_text("âŒ Errore durante l'aggiornamento FAQ.")
+        await update.message.reply_text("❌ Errore durante l'aggiornamento FAQ.")
 
 async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
@@ -697,20 +698,20 @@ async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_T
         global PAROLE_CHIAVE_LISTA, classifier_instance
         PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
         
-        # Se il classificatore esiste giÃ , aggiorna le sue keywords
+        # Se il classificatore esiste già, aggiorna le sue keywords
         if classifier_instance:
             classifier_instance.product_keywords = list(PAROLE_CHIAVE_LISTA)
-            logger.info(f"âœ… Classificatore aggiornato con {len(PAROLE_CHIAVE_LISTA)} nuove keywords")
+            logger.info(f"✅ Classificatore aggiornato con {len(PAROLE_CHIAVE_LISTA)} nuove keywords")
         
-        await update.message.reply_text(f"âœ… Listino prodotti aggiornato.\nðŸ“Š {len(PAROLE_CHIAVE_LISTA)} keywords estratte.")
+        await update.message.reply_text(f"✅ Listino prodotti aggiornato.\n📊 {len(PAROLE_CHIAVE_LISTA)} keywords estratte.")
     else:
-        await update.message.reply_text("âŒ Errore aggiornamento listino.")
+        await update.message.reply_text("❌ Errore aggiornamento listino.")
 
 async def genera_link_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
     link = f"https://t.me/{get_bot_username.username}?start={load_access_code()}"
     await update.message.reply_text(
-        f"ðŸ”— <b>Link Autorizzazione:</b>\n<a href='{link}'>{link}</a>",
+        f"🔗 <b>Link Autorizzazione:</b>\n<a href='{link}'>{link}</a>",
         parse_mode='HTML'
     )
 
@@ -719,7 +720,7 @@ async def cambia_codice_command(update: Update, context: ContextTypes.DEFAULT_TY
     new_code = secrets.token_urlsafe(12)
     save_access_code(new_code)
     link = f"https://t.me/{get_bot_username.username}?start={new_code}"
-    await update.message.reply_text(f"âœ… Nuovo codice generato:\n<code>{link}</code>", parse_mode='HTML')
+    await update.message.reply_text(f"✅ Nuovo codice generato:\n<code>{link}</code>", parse_mode='HTML')
 
 async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
@@ -727,7 +728,7 @@ async def lista_autorizzati_command(update: Update, context: ContextTypes.DEFAUL
     if not users:
         await update.message.reply_text("Nessun utente registrato.")
         return
-    msg = "ðŸ‘¥ <b>UTENTI ABILITATI:</b>\n\n"
+    msg = "👥 <b>UTENTI ABILITATI:</b>\n\n"
     for uid, info in users.items():
         msg += f"- {info['name']} (@{info.get('username', 'N/A')}) [<code>{uid}</code>]\n"
     await update.message.reply_text(msg, parse_mode='HTML')
@@ -739,9 +740,9 @@ async def revoca_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if target in users:
         del users[target]
         save_authorized_users(users)
-        await update.message.reply_text(f"âœ… Utente {target} rimosso.")
+        await update.message.reply_text(f"✅ Utente {target} rimosso.")
     else:
-        await update.message.reply_text("âŒ ID non trovato.")
+        await update.message.reply_text("❌ ID non trovato.")
 
 async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mostra all'admin gli ordini confermati oggi"""
@@ -749,16 +750,16 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if update.effective_chat.type != "private":
-        await update.message.reply_text("âš ï¸ Questo comando funziona solo in chat privata.")
+        await update.message.reply_text("⚠️ Questo comando funziona solo in chat privata.")
         return
 
     ordini_oggi = get_ordini_oggi()
     
     if not ordini_oggi:
-        await update.message.reply_text("ðŸ“‹ Nessun ordine confermato oggi.")
+        await update.message.reply_text("📋 Nessun ordine confermato oggi.")
         return
     
-    msg = f"ðŸ“¦ <b>ORDINI CONFERMATI OGGI ({len(ordini_oggi)})</b>\n\n"
+    msg = f"📦 <b>ORDINI CONFERMATI OGGI ({len(ordini_oggi)})</b>\n\n"
     
     for i, ordine in enumerate(ordini_oggi, 1):
         user_name = ordine.get('user_name', 'N/A')
@@ -767,8 +768,8 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = ordine.get('data', 'N/A')
         message = ordine.get('message', 'N/A')
         chat_id = ordine.get('chat_id', 'N/A')
-        msg += f"<b>{i}. {user_name}</b> (@{username}) ðŸ• {data}\n"
-        msg += f"  ðŸ“ Messaggio:\n  <code>{message[:100]}...</code>\n\n"
+        msg += f"<b>{i}. {user_name}</b> (@{username}) 🕐 {data}\n"
+        msg += f"  📝 Messaggio:\n  <code>{message[:100]}...</code>\n\n"
     
     if len(msg) > 4000:
         for i in range(0, len(msg), 4000):
@@ -787,16 +788,16 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Nessun cliente registrato con tag")
         return
     
-    msg = "ðŸ“‹ <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
+    msg = "📋 <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
     
     for user_id, tag in tags.items():
         try:
             user = await context.bot.get_chat(int(user_id))
             nome = user.first_name or "Sconosciuto"
             username = f"@{user.username}" if user.username else "nessuno"
-            msg += f"â€¢ {nome} ({username}) â†’ <b>{tag}</b>\n"
+            msg += f"• {nome} ({username}) → <b>{tag}</b>\n"
         except:
-            msg += f"â€¢ ID <code>{user_id}</code> â†’ <b>{tag}</b>\n"
+            msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
     
     if len(msg) > 4000:
         for i in range(0, len(msg), 4000):
@@ -815,12 +816,12 @@ async def remove_tag_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     user_id = context.args[0]
     if remove_user_tag(user_id):
-        await update.message.reply_text(f"âœ… Tag rimosso per user {user_id}")
+        await update.message.reply_text(f"✅ Tag rimosso per user {user_id}")
     else:
-        await update.message.reply_text(f"âŒ User {user_id} non trovato")
+        await update.message.reply_text(f"❌ User {user_id} non trovato")
 
 async def clear_ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancella ordini piÃ¹ vecchi di N giorni - /clearordini [giorni]"""
+    """Cancella ordini più vecchi di N giorni - /clearordini [giorni]"""
     if update.effective_user.id != ADMIN_CHAT_ID:
         return
     
@@ -830,12 +831,12 @@ async def clear_ordini_command(update: Update, context: ContextTypes.DEFAULT_TYP
         try:
             giorni = int(context.args[0])
         except:
-            await update.message.reply_text("âŒ Uso: /clearordini [giorni]\nEsempio: /clearordini 7")
+            await update.message.reply_text("❌ Uso: /clearordini [giorni]\nEsempio: /clearordini 7")
             return
     
     deleted = db.clear_old_orders(giorni)
     await update.message.reply_text(
-        f"ðŸ—‘ï¸ Cancellati {deleted} ordini piÃ¹ vecchi di {giorni} giorn{'o' if giorni == 1 else 'i'}"
+        f"🗑️ Cancellati {deleted} ordini più vecchi di {giorni} giorn{'o' if giorni == 1 else 'i'}"
     )
     
 # ============================================================================
@@ -846,15 +847,15 @@ async def clear_ordini_command(update: Update, context: ContextTypes.DEFAULT_TYP
 def home():
     """Homepage con status del bot"""
     global bot_application
-    status = "âœ… ATTIVO" if bot_application else "â³ INIZIALIZZAZIONE"
+    status = "✅ ATTIVO" if bot_application else "⏳ INIZIALIZZAZIONE"
     
     return f'''
-    ðŸ¤– Bot Telegram Business - {status}
+    🤖 Bot Telegram Business - {status}
     
     Endpoint disponibili:
-    - GET  /        â†’ Status page
-    - GET  /health  â†’ Health check  
-    - POST /webhook â†’ Telegram webhook
+    - GET  /        → Status page
+    - GET  /health  → Health check  
+    - POST /webhook → Telegram webhook
     ''', 200
 
 @app.route('/health', methods=['GET'])
@@ -874,28 +875,28 @@ def webhook():
     
     try:
         logger.info("=" * 60)
-        logger.info("ðŸ”” WEBHOOK RICEVUTO")
+        logger.info("🔔 WEBHOOK RICEVUTO")
         logger.info("=" * 60)
         
         if not bot_application:
-            logger.warning("âš ï¸ Bot non inizializzato al momento del webhook")
+            logger.warning("⚠️ Bot non inizializzato al momento del webhook")
             return 'Bot not ready', 503
         
         json_data = request.get_json(force=True)
         
         if not json_data:
-            logger.warning("âš ï¸ Webhook ricevuto senza dati")
+            logger.warning("⚠️ Webhook ricevuto senza dati")
             return 'No data', 400
         
         # Log tipo update
         if 'business_message' in json_data:
             msg = json_data['business_message']
-            logger.info(f"ðŸ’¼ Business message")
+            logger.info(f"💼 Business message")
             logger.info(f"   User: {msg.get('from', {}).get('id')} - Chat: {msg.get('chat', {}).get('id')}")
             logger.info(f"   Text: {msg.get('text', 'N/A')}")
         elif 'message' in json_data:
             msg = json_data['message']
-            logger.info(f"ðŸ’¬ Private message")
+            logger.info(f"💬 Private message")
             logger.info(f"   User: {msg.get('from', {}).get('id')}")
             logger.info(f"   Text: {msg.get('text', 'N/A')}")
         
@@ -907,14 +908,14 @@ def webhook():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
         
-        logger.info("âš™ï¸ Processing update...")
+        logger.info("⚙️ Processing update...")
         loop.run_until_complete(bot_application.process_update(update))
-        logger.info("âœ… Update processato")
+        logger.info("✅ Update processato")
         
         return 'ok', 200
         
     except Exception as e:
-        logger.error(f"âŒ Errore webhook: {e}", exc_info=True)
+        logger.error(f"❌ Errore webhook: {e}", exc_info=True)
         return 'Error', 500
 
 # ============================================================================
@@ -928,28 +929,28 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     - Sistema /reg per registrazione clienti
     - Whitelist basata su tag
     """
-    from telegram import Message  # â† AGGIUNGI QUESTO IMPORT
+    from telegram import Message  # ← AGGIUNGI QUESTO IMPORT
     
-    logger.info(f"ðŸŽ¯ TypeHandler chiamato")
+    logger.info(f"🎯 TypeHandler chiamato")
     
     # Accesso diretto al dizionario raw
     update_dict = update.to_dict()
     
     if 'business_message' not in update_dict:
-        return  # Non Ã¨ Business message
+        return  # Non è Business message
     
     # Ricrea il Message object dal dizionario
     from telegram import Message
     message = Message.de_json(update_dict['business_message'], context.bot)
     
-    logger.info("ðŸ”¥ BUSINESS MESSAGE RILEVATO ðŸ”¥")
+    logger.info("🔥 BUSINESS MESSAGE RILEVATO 🔥")
     
     # Estrai dati dal message
     business_connection_id = message.business_connection_id
     text = message.text.strip() if message.text else ""
     
     if not text:
-        logger.info("â­ï¸ Messaggio vuoto, skip")
+        logger.info("⏭️ Messaggio vuoto, skip")
         return
     
     text_lower = text.lower()
@@ -962,20 +963,20 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # ========================================
     
     if message.from_user and message.from_user.is_bot:
-        logger.info(f"ðŸ¤– Bot ignorato")
+        logger.info(f"🤖 Bot ignorato")
         return
     
     # ========================================
     # RILEVA ADMIN AUTOMATICAMENTE
     # ========================================
     
-    # Se from_user.id != chat.id â†’ Admin sta scrivendo al cliente
+    # Se from_user.id != chat.id → Admin sta scrivendo al cliente
     if user_id != chat_id:
-        logger.info(f"â­ï¸ Admin (user={user_id}) scrive a cliente (chat={chat_id})")
+        logger.info(f"⏭️ Admin (user={user_id}) scrive a cliente (chat={chat_id})")
         
         # ECCEZIONE: Comando /reg
         if text_lower.startswith('/reg'):
-            logger.info(f"âœ… Comando /reg dall'admin - ESEGUO")
+            logger.info(f"✅ Comando /reg dall'admin - ESEGUO")
             
             parts = text.split()
             
@@ -983,7 +984,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 await context.bot.send_message(
                     business_connection_id=business_connection_id,
                     chat_id=chat_id,
-                    text="âŒ Formato: /reg TAG\nEsempio: /reg sp20"
+                    text="❌ Formato: /reg TAG\nEsempio: /reg sp20"
                 )
                 return
             
@@ -993,7 +994,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 await context.bot.send_message(
                     business_connection_id=business_connection_id,
                     chat_id=chat_id,
-                    text=f"âŒ Tag non valido.\n\nTag disponibili:\nâ€¢ {chr(10).join(ALLOWED_TAGS)}"
+                    text=f"❌ Tag non valido.\n\nTag disponibili:\n• {chr(10).join(ALLOWED_TAGS)}"
                 )
                 return
             
@@ -1003,22 +1004,22 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             await context.bot.send_message(
                 business_connection_id=business_connection_id,
                 chat_id=chat_id,
-                text=f"âœ… Cliente registrato con tag: <b>{tag}</b>",
+                text=f"✅ Cliente registrato con tag: <b>{tag}</b>",
                 parse_mode='HTML'
             )
             
-            logger.info(f"ðŸ‘¨â€ðŸ’¼ Admin ha registrato cliente {chat_id} con tag {tag}")
+            logger.info(f"👨‍💼 Admin ha registrato cliente {chat_id} con tag {tag}")
             return
         
         # Ignora tutti gli altri messaggi dell'admin (inclusi automatici!)
-        logger.info(f"â­ï¸ Messaggio admin ignorato")
+        logger.info(f"⏭️ Messaggio admin ignorato")
         return
     
     # ========================================
     # MESSAGGIO DAL CLIENTE
     # ========================================
     
-    logger.info(f"ðŸ“± Messaggio da cliente {user_id}: '{text}'")
+    logger.info(f"📱 Messaggio da cliente {user_id}: '{text}'")
     
     # ========================================
     # CHECK WHITELIST TAG
@@ -1027,10 +1028,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     user_tag = get_user_tag(user_id)
     
     if not user_tag:
-        logger.info(f"â›” Cliente {user_id} non registrato - ignoro")
+        logger.info(f"⛔ Cliente {user_id} non registrato - ignoro")
         return
     
-    logger.info(f"âœ… Cliente con tag: {user_tag}")
+    logger.info(f"✅ Cliente con tag: {user_tag}")
     
     # ========================================
     # HELPER INVIO RISPOSTE
@@ -1045,20 +1046,20 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode=parse_mode,
                 reply_markup=reply_markup
             )
-            logger.info(f"âœ… Reply inviata")
+            logger.info(f"✅ Reply inviata")
         except Exception as e:
-            logger.error(f"âŒ Errore invio: {e}")
+            logger.error(f"❌ Errore invio: {e}")
     
     # ========================================
     # CALCOLA INTENTO E RISPONDI
     # ========================================
     
     intent = calcola_intenzione(text)
-    logger.info(f"ðŸ”„ Intent ricevuto: '{intent}'")
+    logger.info(f"🔄 Intent ricevuto: '{intent}'")
     
     # 1. LISTA
     if intent == "lista":
-        logger.info(f"âž¡ï¸ Entrato in blocco LISTA")
+        logger.info(f"➡️ Entrato in blocco LISTA")
         await send_business_reply(
             "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
             parse_mode=None
@@ -1067,7 +1068,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     # 2. ORDINE
     if intent == "ordine":
-        logger.info(f"âž¡ï¸ Entrato in blocco ORDINE")
+        logger.info(f"➡️ Entrato in blocco ORDINE")
     
         # Salva l'ordine temporaneamente
         order_data = {
@@ -1081,8 +1082,8 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         callback_data = f"pay_ok_{user_id}_{message.message_id}"
     
         keyboard = [[
-            InlineKeyboardButton("âœ… SÃ¬", callback_data=callback_data),
-            InlineKeyboardButton("âŒ No", callback_data=f"pay_no_{message.message_id}")
+            InlineKeyboardButton("✅ Sì", callback_data=callback_data),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
         ]]
     
         # Salva in context per recuperarlo dopo
@@ -1092,73 +1093,65 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             context.bot_data['pending_orders'] = {}
     
         context.bot_data['pending_orders'][callback_data] = order_data
-        logger.info(f"ðŸ’¾ Ordine temporaneo salvato: {callback_data}")
+        logger.info(f"💾 Ordine temporaneo salvato: {callback_data}")
     
         await send_business_reply(
-            "ðŸ¤” <b>Sembra un ordine!</b>\nC'Ã¨ il metodo di pagamento?",
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
             reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-        return
-    
-    # 2.5 CONFERMA ORDINE
-    if intent == "conferma_ordine":
-        logger.info(f"➡️ Entrato in blocco CONFERMA ORDINE")
-        await send_business_reply(
-            "✅ Ricevuto! I tempi di spedizione trovi nel nostro FAQ"
         )
         return
     
     # 3. FAQ
     if intent == "faq":
-        logger.info(f"âž¡ï¸ Entrato in blocco FAQ")
+        logger.info(f"➡️ Entrato in blocco FAQ")
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
         if res.get("match"):
             await send_business_reply(
-                f"âœ… <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
             )
         return
     
     # 4. RICERCA PRODOTTI
     if intent == "ricerca_prodotti":
-        logger.info(f"âž¡ï¸ Entrato in blocco RICERCA")
+        logger.info(f"➡️ Entrato in blocco RICERCA")
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
             await send_business_reply(
-                f"ðŸ“¦ <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
             )
             return
     
     # 5. FALLBACK
     if intent == "fallback":
-        logger.info(f"âž¡ï¸ Entrato in blocco FALLBACK")
+        logger.info(f"➡️ Entrato in blocco FALLBACK")
     
     # Suggerimenti intelligenti basati su parole chiave
     text_lower = text.lower()
     
     if any(word in text_lower for word in ['listino', 'catalogo', 'prezzi', 'prodotti']):
         await send_business_reply(
-            "ðŸ“‹ Vuoi vedere il listino completo? Scrivi 'lista'"
+            "📋 Vuoi vedere il listino completo? Scrivi 'lista'"
         )
     elif any(word in text_lower for word in ['ordina', 'compra', 'acquista', 'voglio']):
         await send_business_reply(
-            "ðŸ›’ Per fare un ordine, scrivi cosa vorresti acquistare, es: 'voglio 2 fiale di susta'"
+            "🛒 Per fare un ordine, scrivi cosa vorresti acquistare, es: 'voglio 2 fiale di susta'"
         )
     elif any(word in text_lower for word in ['costa', 'prezzo', 'quanto']):
         await send_business_reply(
-            "ðŸ’° Per sapere il prezzo di un prodotto, scrivi ad esempio: 'quanto costa testo?'"
+            "💰 Per sapere il prezzo di un prodotto, scrivi ad esempio: 'quanto costa testo?'"
         )
     elif any(word in text_lower for word in ['spedizione', 'consegna', 'tempo', 'giorni']):
         await send_business_reply(
-            "ðŸšš Per info sulle spedizioni, scrivi 'spedizione'"
+            "🚚 Per info sulle spedizioni, scrivi 'spedizione'"
         )
     else:
         await send_business_reply(
-            "â“ Non ho capito. Prova con:\n"
-            "â€¢ 'lista' per il catalogo\n"
-            "â€¢ 'quanto costa X' per un prodotto\n"
-            "â€¢ Info su spedizioni e pagamenti\n"
-            "â€¢ Scrivi direttamente cosa vorresti"
+            "❓ Non ho capito. Prova con:\n"
+            "• 'lista' per il catalogo\n"
+            "• 'quanto costa X' per un prodotto\n"
+            "• Info su spedizioni e pagamenti\n"
+            "• Scrivi direttamente cosa vorresti"
         )
     return
 
@@ -1184,11 +1177,11 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     # 2. ORDINE
     if intent == "ordine":
         keyboard = [[
-            InlineKeyboardButton("âœ… SÃ¬", callback_data=f"pay_ok_{message.message_id}"),
-            InlineKeyboardButton("âŒ No", callback_data=f"pay_no_{message.message_id}")
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
         ]]
         await message.reply_text(
-            "ðŸ¤” <b>Sembra un ordine!</b>\nC'Ã¨ il metodo di pagamento?",
+            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
@@ -1196,9 +1189,9 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
 
     # 2.5 CONFERMA ORDINE
     if intent == "conferma_ordine":
-        logger.info(f"âž¡ï¸ Entrato in blocco CONFERMA ORDINE")
-        await message.reply_text(
-            "âœ… Ricevuto! I tempi di spedizione trovi nel nostro FAQ"
+        logger.info(f"➡️ Entrato in blocco CONFERMA ORDINE")
+        await send_business_reply(
+            "✅ Ricevuto! I tempi di spedizione trovi nel nostro FAQ"
         )
         return
 
@@ -1208,7 +1201,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
         if res.get("match"):
             await message.reply_text(
-                f"âœ… <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
+                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
                 parse_mode="HTML"
             )
             return
@@ -1218,13 +1211,13 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
             await message.reply_text(
-                f"ðŸ“¦ <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
+                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
                 parse_mode="HTML"
             )
             return
 
     # 5. FALLBACK
-    await message.reply_text("â“ Non ho capito. Scrivi 'lista' o usa /help.")
+    await message.reply_text("❓ Non ho capito. Scrivi 'lista' o usa /help.")
 
 # ============================================================================
 # HANDLER MESSAGGI GRUPPI
@@ -1253,12 +1246,12 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     # 2. ORDINE
     if intent == "ordine":
         keyboard = [[
-            InlineKeyboardButton("âœ… SÃ¬", callback_data=f"pay_ok_{message.message_id}"),
-            InlineKeyboardButton("âŒ No", callback_data=f"pay_no_{message.message_id}")
+            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
         ]]
         await context.bot.send_message(
             chat_id=message.chat.id,
-            text="ðŸ¤” <b>Sembra un ordine!</b>\nC'Ã¨ il metodo di pagamento?",
+            text="🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML",
             reply_to_message_id=message.message_id
@@ -1272,7 +1265,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         if res.get("match"):
             await context.bot.send_message(
                 chat_id=message.chat.id,
-                text=f"âœ… <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
+                text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
                 parse_mode="HTML",
                 reply_to_message_id=message.message_id
             )
@@ -1284,7 +1277,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         if l_res.get("match"):
             await context.bot.send_message(
                 chat_id=message.chat.id,
-                text=f"ðŸ“¦ <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
+                text=f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
                 parse_mode="HTML",
                 reply_to_message_id=message.message_id
             )
@@ -1299,7 +1292,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if any(word in text.lower() for word in trigger_words):
         await context.bot.send_message(
             chat_id=message.chat.id,
-            text="â“ Non ho capito. Usa /lista o /help.",
+            text="❓ Non ho capito. Usa /lista o /help.",
             reply_to_message_id=message.message_id
         )
 
@@ -1312,10 +1305,10 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     
-    logger.info(f"ðŸ”˜ Callback ricevuto: {query.data}")
+    logger.info(f"🔘 Callback ricevuto: {query.data}")
     
     if query.data.startswith("pay_ok_"):
-        logger.info("âœ… Bottone 'SÃ¬' premuto")
+        logger.info("✅ Bottone 'Sì' premuto")
         
         # Recupera ordine salvato
         if not hasattr(context, 'bot_data'):
@@ -1325,8 +1318,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         order_data = pending_orders.get(query.data)
         
         if not order_data:
-            logger.warning("âš ï¸ Ordine non trovato in memoria")
-            await query.edit_message_text("âœ… Ordine confermato!")
+            logger.warning("⚠️ Ordine non trovato in memoria")
+            await query.edit_message_text("✅ Ordine confermato!")
             return
         
         user = query.from_user
@@ -1340,28 +1333,28 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             message_id=order_data['message_id']
         )
         
-        logger.info(f"ðŸ’¾ Ordine salvato per user {order_data['user_id']}")
+        logger.info(f"💾 Ordine salvato per user {order_data['user_id']}")
         
         # Rimuovi dalla memoria
         del pending_orders[query.data]
         
-        await query.edit_message_text(f"âœ… Ordine confermato da {user.first_name}! ProcederÃ² appena possibile.")
+        await query.edit_message_text(f"✅ Ordine confermato da {user.first_name}! Procederò appena possibile.")
         
         if ADMIN_CHAT_ID:
             try:
                 notifica = (
-                    f"ðŸ“© <b>NUOVO ORDINE CONFERMATO</b>\n\n"
-                    f"ðŸ‘¤ Utente: {user.first_name} (@{user.username})  ðŸ• {data}\n"
-                    f"ðŸ“ Messaggio:\n<code>{order_data['text'][:200]}</code>"
+                    f"📩 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
+                    f"👤 Utente: {user.first_name} (@{user.username})  🕐 {data}\n"
+                    f"📝 Messaggio:\n<code>{order_data['text'][:200]}</code>"
                 )
                 await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
-                logger.info("ðŸ“§ Notifica admin inviata")
+                logger.info("📧 Notifica admin inviata")
             except Exception as e:
-                logger.error(f"âŒ Errore notifica admin: {e}")
+                logger.error(f"❌ Errore notifica admin: {e}")
             
     elif query.data.startswith("pay_no_"):
-        logger.info("âŒ Bottone 'No' premuto")
-        await query.edit_message_text("ðŸ’¡ Per favore, indica il metodo (Bonifico, Crypto).")
+        logger.info("❌ Bottone 'No' premuto")
+        await query.edit_message_text("💡 Per favore, indica il metodo (Bonifico, Crypto).")
 
 # ============================================================================
 # HANDLER STATUS UPDATES
@@ -1373,13 +1366,13 @@ async def handle_user_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     for member in update.message.new_chat_members:
         welcome_text = (
-            f"ðŸ‘‹ Benvenuto {member.first_name}!\n\n"
-            "ðŸ—’ï¸ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
+            f"👋 Benvenuto {member.first_name}!\n\n"
+            "🗒️ Per favore prima di fare qualsiasi domanda o ordinare leggi interamente il listino "
             "dopo la lista prodotti dove troverai risposta alla maggior parte delle tue domande: "
-            "tempi di spedizione, metodi di pagamento, come ordinare ecc. ðŸ—’ï¸\n\n"
-            "ðŸ“‹ <b>Comandi disponibili:</b>\n"
-            "â€¢ /help - Visualizza tutte le FAQ\n"
-            "â€¢ /lista - Visualizza la lista prodotti"
+            "tempi di spedizione, metodi di pagamento, come ordinare ecc. 🗒️\n\n"
+            "📋 <b>Comandi disponibili:</b>\n"
+            "• /help - Visualizza tutte le FAQ\n"
+            "• /lista - Visualizza la lista prodotti"
         )
         try:
             kwargs = {
@@ -1410,16 +1403,16 @@ async def setup_bot():
     initialization_lock = True
     
     try:
-        logger.info("ðŸ”¡ Inizializzazione bot...")
+        logger.info("🔡 Inizializzazione bot...")
         
         # ========================================
         # INIZIALIZZA DATABASE POSTGRESQL
         # ========================================
-        logger.info("ðŸ—„ï¸ Inizializzazione database...")
+        logger.info("🗄️ Inizializzazione database...")
         if db.init_db():
-            logger.info("âœ… Database PostgreSQL pronto")
+            logger.info("✅ Database PostgreSQL pronto")
         else:
-            logger.error("âŒ Errore inizializzazione database!")
+            logger.error("❌ Errore inizializzazione database!")
             raise RuntimeError("Database init failed")
         
         # Inizializza classifier
@@ -1427,21 +1420,21 @@ async def setup_bot():
             # Prova aggiornamento da web
             faq_data = load_faq()
             if not faq_data.get("faq"):
-                logger.warning("âš ï¸ FAQ vuote, scarico da web")
+                logger.warning("⚠️ FAQ vuote, scarico da web")
                 update_faq_from_web()
             
-            logger.info("ðŸ“¥ Download lista...")
+            logger.info("📥 Download lista...")
             update_lista_from_web()
             
             # Crea classifier
             PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
             
-            logger.info("ðŸ”§ Inizializzazione classificatore...")
+            logger.info("🔧 Inizializzazione classificatore...")
             classifier = init_classifier()
-            logger.info("âœ… Classificatore pronto")
+            logger.info("✅ Classificatore pronto")
             
         except Exception as e:
-            logger.error(f"âŒ Errore init: {e}")
+            logger.error(f"❌ Errore init: {e}")
         
         application = Application.builder().token(BOT_TOKEN).updater(None).build()
         bot = await application.bot.get_me()
@@ -1461,7 +1454,7 @@ async def setup_bot():
                 self.callback = callback
     
             def check_update(self, update):
-                """Verifica se Ã¨ un business message"""
+                """Verifica se è un business message"""
                 if not update:
                     return False        
                 # Escludi callback_query
@@ -1472,7 +1465,7 @@ async def setup_bot():
                 return 'business_message' in update_dict
         # Registrazione
         application.add_handler(BusinessMessageHandler(handle_business_message), group=0)
-        logger.info("âœ… Handler Business Messages registrato (priority group=0)")
+        logger.info("✅ Handler Business Messages registrato (priority group=0)")
 
         # 1. COMANDI
         application.add_handler(CommandHandler("start", start))
@@ -1538,11 +1531,11 @@ async def setup_bot():
                     "edited_business_message"
                 ]
             )
-            logger.info(f"âœ… Webhook: {WEBHOOK_URL}/webhook")
+            logger.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
 
         await application.initialize()
         await application.start()
-        logger.info("ðŸ¤– Bot pronto!")
+        logger.info("🤖 Bot pronto!")
 
         await application.bot.set_my_commands([
             ("start", "Avvia il bot"),
@@ -1564,7 +1557,7 @@ async def setup_bot():
         return application
         
     except Exception as e:
-        logger.error(f"âŒ Setup error: {e}")
+        logger.error(f"❌ Setup error: {e}")
         initialization_lock = False
         raise
 
