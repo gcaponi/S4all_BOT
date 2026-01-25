@@ -511,10 +511,16 @@ def estrai_parole_chiave_lista():
 
 
 def init_classifier():
-    """Inizializza il classificatore una sola volta"""
-    global classifier_instance
+    """Inizializza il classificatore una sola volta con keywords dinamiche dalla lista"""
+    global classifier_instance, PAROLE_CHIAVE_LISTA
     if classifier_instance is None:
-        classifier_instance = EnhancedIntentClassifier()
+        # Assicuriamoci di avere le keywords aggiornate
+        if not PAROLE_CHIAVE_LISTA:
+            PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
+        
+        # Crea classificatore con keywords dinamiche
+        classifier_instance = EnhancedIntentClassifier(dynamic_product_keywords=PAROLE_CHIAVE_LISTA)
+        
         # Carica il modello addestrato se esiste
         try:
             if os.path.exists('intent_classifier_model.pkl'):
@@ -524,7 +530,7 @@ def init_classifier():
                 logger.info("⚠️  Nessun modello pre-addestrato, uso classificatore di base")
         except Exception as e:
             logger.error(f"❌ Errore nel caricamento modello: {e}")
-            classifier_instance = EnhancedIntentClassifier()
+            classifier_instance = EnhancedIntentClassifier(dynamic_product_keywords=PAROLE_CHIAVE_LISTA)
     return classifier_instance
 
 def calcola_intenzione(text):
@@ -686,7 +692,16 @@ async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYP
 async def aggiorna_lista_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_CHAT_ID: return
     if update_lista_from_web():
-        await update.message.reply_text("✅ Listino prodotti aggiornato.")
+        # Aggiorna anche le parole chiave del classificatore
+        global PAROLE_CHIAVE_LISTA, classifier_instance
+        PAROLE_CHIAVE_LISTA = estrai_parole_chiave_lista()
+        
+        # Se il classificatore esiste già, aggiorna le sue keywords
+        if classifier_instance:
+            classifier_instance.product_keywords = list(PAROLE_CHIAVE_LISTA)
+            logger.info(f"✅ Classificatore aggiornato con {len(PAROLE_CHIAVE_LISTA)} nuove keywords")
+        
+        await update.message.reply_text(f"✅ Listino prodotti aggiornato.\n📊 {len(PAROLE_CHIAVE_LISTA)} keywords estratte.")
     else:
         await update.message.reply_text("❌ Errore aggiornamento listino.")
 

@@ -8,9 +8,12 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 import os
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 class EnhancedIntentClassifier:
-    def __init__(self, config_path=None):
+    def __init__(self, config_path=None, dynamic_product_keywords=None):
         # Configurazioni
         self.MIN_CONFIDENCE = 0.65
         self.FALLBACK_THRESHOLD = 0.45
@@ -18,7 +21,7 @@ class EnhancedIntentClassifier:
         
         # Inizializza componenti
         self._init_patterns()
-        self._init_keywords()
+        self._init_keywords(dynamic_product_keywords)
         self._init_ml_model()
         
         # Statistiche
@@ -114,15 +117,26 @@ class EnhancedIntentClassifier:
             ]
         }
     
-    def _init_keywords(self):
+    def _init_keywords(self, dynamic_product_keywords=None):
         """Inizializza le liste di parole chiave"""
-        self.product_keywords = [
-            'testo', 'testosterone', 'anavar', 'deca', 'tren', 'susta', 'sustanon',
-            'winstrol', 'winny', 'masteron', 'boldo', 'boldenone', 'primo', 'primobolan',
-            'dianabol', 'dbol', 'clen', 'clenbuterolo', 'hcg', 'clomid', 'kamagra',
-            'tren ace', 'trenbolone', 'viagra', 'cialis', 'levitra', 'proviron',
-            'arimidex', 'nolvadex', 'tamoxifen', 'clenbuterol'
-        ]
+        # Se sono fornite keywords dinamiche, usale
+        if dynamic_product_keywords:
+            # Converti set in list se necessario
+            if isinstance(dynamic_product_keywords, set):
+                self.product_keywords = list(dynamic_product_keywords)
+            else:
+                self.product_keywords = dynamic_product_keywords
+            logger.info(f"✅ Usate {len(self.product_keywords)} product keywords DINAMICHE dalla lista")
+        else:
+            # Fallback: keywords statiche (base minima)
+            self.product_keywords = [
+                'testo', 'testosterone', 'anavar', 'deca', 'tren', 'susta', 'sustanon',
+                'winstrol', 'winny', 'masteron', 'boldo', 'boldenone', 'primo', 'primobolan',
+                'dianabol', 'dbol', 'clen', 'clenbuterolo', 'hcg', 'clomid', 'kamagra',
+                'tren ace', 'trenbolone', 'viagra', 'cialis', 'levitra', 'proviron',
+                'arimidex', 'nolvadex', 'tamoxifen', 'clenbuterol'
+            ]
+            logger.info(f"⚠️ Usate {len(self.product_keywords)} product keywords STATICHE (fallback)")
         
         self.category_keywords = [
             'orali', 'sarms', 'pct', 'peptidi', 'ai', 'sex', 'cut', 'bulk',
@@ -339,6 +353,54 @@ class EnhancedIntentClassifier:
         if any(verb in message for verb in self.order_verbs):
             # "prendo quello che hai detto" = order anche senza prodotto
             return "order", 0.85
+        
+        # 5. PRODOTTI con domande -> SEARCH
+        if has_product or has_category:
+            if is_question:
+                return "search", 0.80  # "hai anavar?"
+            elif len(words) <= 2:
+                return "search", 0.75  # "testo"
+        
+        # 6. Singole parole (dictionary lookup)
+        if len(words) == 1:
+            word_scores = {
+                'lista': ("list", 0.90), 'catalogo': ("list", 0.90), 'prezzi': ("list", 0.90),
+                'orali': ("search", 0.85), 'sarms': ("search", 0.85), 'pct': ("search", 0.85),
+                'ok': ("order", 0.80), 'si': ("order", 0.80), 'fatto': ("order", 0.80),
+                'help': ("faq", 0.80), 'supporto': ("faq", 0.80),
+                'ciao': ("saluto", 0.95), 'hey': ("saluto", 0.95),
+            }
+            if words[0] in word_scores:
+                return word_scores[words[0]]
+        
+        # 7. Coppie di parole
+        if len(words) == 2:
+            first = words[0]
+            if first in self.order_verbs:
+                return "order", 0.82
+            if first in ['hai', 'costa', 'prezzo', 'quanto']:
+                return "search", 0.80
+            if first in self.question_words:
+                return "faq", 0.78
+        
+        # 8. Domande generiche
+        if is_question:
+            if any(word in message for word in ['quando', 'dove', 'come']):
+                return "faq", 0.75
+            else:
+                return "search", 0.70
+        
+        # 9. FALLBACK INTELLIGENTE: query brevi (probabilmente nomi prodotti)
+        # Es: "trembo", "bpc 157", "gh", "tb500"
+        if len(words) <= 3 and len(message) >= 3 and len(message) <= 25:
+            # Escludi stopwords comuni
+            stopwords_comuni = {'ciao', 'buongiorno', 'sera', 'grazie', 'ok', 'si', 'no', 'cosa', 'come', 'quando'}
+            clean_words = [w for w in words if w not in stopwords_comuni]
+            
+            if clean_words:  # Se rimane qualcosa dopo aver tolto le stopwords
+                return "search", 0.72  # Probabilmente cerca un prodotto
+        
+        return None
             
     def _analyze_implicit_order(self, text: str, text_lower: str) -> float:
         """
@@ -425,44 +487,6 @@ class EnhancedIntentClassifier:
             return 0.75 # Meno sicuro senza prodotto noto
             
         return 0.0
-        
-        # 4. PRODOTTI con domande -> SEARCH
-        if has_product or has_category:
-            if is_question:
-                return "search", 0.80  # "hai anavar?"
-            elif len(words) <= 2:
-                return "search", 0.75  # "testo"
-        
-        # 5. Singole parole (dictionary lookup)
-        if len(words) == 1:
-            word_scores = {
-                'lista': ("list", 0.90), 'catalogo': ("list", 0.90), 'prezzi': ("list", 0.90),
-                'orali': ("search", 0.85), 'sarms': ("search", 0.85), 'pct': ("search", 0.85),
-                'ok': ("order", 0.80), 'si': ("order", 0.80), 'fatto': ("order", 0.80),
-                'help': ("faq", 0.80), 'supporto': ("faq", 0.80),
-                'ciao': ("saluto", 0.95), 'hey': ("saluto", 0.95),
-            }
-            if words[0] in word_scores:
-                return word_scores[words[0]]
-        
-        # 6. Coppie di parole
-        if len(words) == 2:
-            first = words[0]
-            if first in self.order_verbs:
-                return "order", 0.82
-            if first in ['hai', 'costa', 'prezzo', 'quanto']:
-                return "search", 0.80
-            if first in self.question_words:
-                return "faq", 0.78
-        
-        # 7. Domande generiche
-        if is_question:
-            if any(word in message for word in ['quando', 'dove', 'come']):
-                return "faq", 0.75
-            else:
-                return "search", 0.70
-        
-        return None
     
     def _calculate_regex_confidence(self, message, intent, pattern):
         """Calcola confidence score per match regex"""
