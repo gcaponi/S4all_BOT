@@ -53,20 +53,26 @@ class EnhancedIntentClassifier:
                 r'\b(voglio|vorrei|mi\s+serve)\s+\w+',
                 r'\b(prendo|prenoto|ordino)\s+\w+',
                 r'^\w+\s+(grazie|per\s+favore)$',
-                r'^(voglio|vorrei|mi\s+serve)\s+\d+\s+di\s+\w+'  # "voglio 2 di quelle"
+                # FIX: Pattern per ordini vaghi con quantità
+                r'\b(voglio|vorrei|mi\s+serve)\s+\d+',  # "voglio 2 ..." → order
+                r'\b(prendo|dammi|ordino)\s+(quello|quella|quelli|quelle)',  # "prendo quello" → order
+                r'\b(voglio|vorrei)\s+(quello|quella|quelli|quelle|quel|quella\s+roba)',  # "voglio quella roba"
             ],
             
             "search": [
-                r'\b(hai|avete|ce l\'hai|c\'è|vendete)\b.*\??',
-                r'^(hai|avete|ce l\'hai|c\'è|vendete)\??$',
-                r'\b(quanto|costa|prezzo|prezzzo)\b.*\??',  # typo prezzzo
+                # FIX: Pattern più specifici per evitare conflitti
+                r'^(hai|avete|ce l\'hai|c\'è|vendete)\b(?!.*(stock|lista|catalogo|listino)).*\??',  # Solo all'inizio
+                r'\b(che|cosa)\s+(hai|avete)\b(?!.*(stock|lista|detto|disse|menzionato)).*\??$',  # "che hai" ma non "che hai detto"
+                r'\b(quanto|costa|prezzo|prezzzo)\b.*\??$',  # typo prezzzo
                 r'^(quanto|costa|prezzo|prezzzo)\??$',      # typo prezzzo
                 r'prezz[zo]+\s+\w+',                         # typo prezzzo
 
                 r'^(orali|sarms|pct|peptidi|ai|sex|viagra|cialis|levitra|cut|bulk|massa|definizione)\??$',
-                r'\b(consigli|meglio|confronto|quale|cosa)\b.*\??',
-                r'^(che hai|cosa c\'è|novità|disponibile|stock)\??$',
-                r'\b(per massa|per forza|per taglio|per definizione)\b',
+                r'\b(consigli|meglio|confronto|quale)\b.*\??',  # Rimosso "cosa" per evitare conflitti
+                r'^(che hai|cosa c\'è|novità|disponibile)\??$',  # Rimosso "stock" (ora solo in list)
+                # FIX #2d: Pattern "per massa" solo con contesto di domanda
+                r'^(che|cosa|quale).*(per massa|per forza|per taglio|per definizione)',  # "che hai per massa?"
+                r'\b(consigli|suggerimenti).*(per massa|per forza|per taglio|per definizione)',  # "consigli per massa?"
                 r'^(come funziona|info|dettagli)\??$',
                 r'^(voglio|vorrei|cerco|cercavo|mi serve)\s+\w+\??$',
                 r'^\w+\s+(info|informazioni)\??$'
@@ -86,7 +92,7 @@ class EnhancedIntentClassifier:
                 r'\b(tempo|giorno|giorni|settimana|settimane|modalità|come funziona)\b.*\??$',
                 # NUOVI pattern FAQ specifici
                 r'c\'è\s+(un\s+)?minimo',
-                r'quanto\s+costa\s+(la\s+)?(spedizione|consegna)',
+                r'\b(quanto|quando)\s+(ci\s+mette|ci\s+vuole|tempo|giorni)\b',
                 r'(ordine\s+)?minimo',
                 r'\b(quanto|come)\s+(tempo|giorni|settimane)\b',
                 r'\b(posso|si\s+può)\s+(ordinare|pagare)\b'
@@ -99,7 +105,10 @@ class EnhancedIntentClassifier:
                 r'^(fammi vedere|mostrami|visualizza)\s+(cosa|tutto)',
                 r'\b(che|cosa)\s+(avete|hai|c\'è)\s+(in\s+)?stock\b',
                 r'^(che|cosa)\s+(hai|avete)\??$',
-                r'\b(disponibilit[àa])\b'
+                r'\b(disponibilit[àa])\b',
+                # FIX #3c: Pattern aggiuntivi per stock
+                r'\bstock\??$',  # "stock?"
+                r'\b(cosa|che)\s+avete\b',  # "cosa avete?" generico
             ],
             
             "contact": [
@@ -344,9 +353,17 @@ class EnhancedIntentClassifier:
             if has_product or has_category:
                 return "order", 0.90  # "voglio anavar" = ordine
             else:
+                # FIX: Riferimenti vaghi comuni negli ordini
+                vague_refs = ['quello', 'quella', 'quelli', 'quelle', 'cose', 'roba', 
+                             'quella roba', 'quelle cose', 'questi', 'queste']
+                
                 # Se ha numeri (es. "voglio 2 di quelle") → probabilmente order vago
                 if any(char.isdigit() for char in message):
-                    return "order", 0.75  # "voglio 2 di quelle cose"
+                    return "order", 0.82  # "voglio 2 di quelle cose"
+                # Se ha riferimenti vaghi → probabilmente order contestuale
+                elif any(vague in message for vague in vague_refs):
+                    return "order", 0.80  # "voglio quella roba", "prendo quelle"
+                # Altrimenti è una ricerca generica
                 return "search", 0.70  # "voglio qualcosa per massa" = ricerca
         
         # 4. ORDER VERBS = ORDER (anche senza prodotto specifico)
@@ -365,6 +382,7 @@ class EnhancedIntentClassifier:
         if len(words) == 1:
             word_scores = {
                 'lista': ("list", 0.90), 'catalogo': ("list", 0.90), 'prezzi': ("list", 0.90),
+                'stock': ("list", 0.90), 'disponibilità': ("list", 0.90), 'listino': ("list", 0.90),  # ← FIX #3
                 'orali': ("search", 0.85), 'sarms': ("search", 0.85), 'pct': ("search", 0.85),
                 'ok': ("order", 0.80), 'si': ("order", 0.80), 'fatto': ("order", 0.80),
                 'help': ("faq", 0.80), 'supporto': ("faq", 0.80),
@@ -390,11 +408,29 @@ class EnhancedIntentClassifier:
             else:
                 return "search", 0.70
         
+        # 8.5 SALUTI CON SLANG (prima della regola #9)
+        # Cattura: "ciao bro", "hey fra", "yo zi"
+        if len(words) == 2:
+            first_word = words[0]
+            second_word = words[1]
+            saluto_words = ['ciao', 'hey', 'yo', 'ehi', 'salve']
+            slang_words = ['bro', 'fra', 'zi', 'bello', 'amico', 'boss', 'capo']
+            
+            if first_word in saluto_words and second_word in slang_words:
+                return "saluto", 0.90
+            # Anche inverso: "bro ciao"
+            if first_word in slang_words and second_word in saluto_words:
+                return "saluto", 0.90
+        
         # 9. FALLBACK INTELLIGENTE: query brevi (probabilmente nomi prodotti)
         # Es: "trembo", "bpc 157", "gh", "tb500"
         if len(words) <= 3 and len(message) >= 3 and len(message) <= 25:
-            # Escludi stopwords comuni
-            stopwords_comuni = {'ciao', 'buongiorno', 'sera', 'grazie', 'ok', 'si', 'no', 'cosa', 'come', 'quando'}
+            # Escludi stopwords comuni + slang saluti
+            stopwords_comuni = {
+                'ciao', 'buongiorno', 'sera', 'grazie', 'ok', 'si', 'no', 
+                'cosa', 'come', 'quando',
+                'bro', 'fra', 'zi', 'bello', 'amico', 'boss', 'capo'  # ← SLANG AGGIUNTO
+            }
             clean_words = [w for w in words if w not in stopwords_comuni]
             
             if clean_words:  # Se rimane qualcosa dopo aver tolto le stopwords
