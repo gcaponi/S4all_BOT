@@ -555,6 +555,7 @@ def calcola_intenzione(text):
             "search": "ricerca_prodotti",  # search -> ricerca_prodotti
             "saluto": "saluto",        # saluto -> saluto
             "contact": "contact",      # contact -> contact (se necessario)
+            "order_confirmation": "conferma_ordine",
             "fallback": "fallback"     # fallback -> fallback
         }
         
@@ -1182,6 +1183,14 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
             "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
+        )
+        return
+
+    # 2.5 CONFERMA ORDINE
+    if intent == "conferma_ordine":
+        logger.info(f"➡️ Entrato in blocco CONFERMA ORDINE")
+        await send_business_reply(
+            "✅ Ricevuto! I tempi di spedizione trovi nel nostro FAQ"
         )
         return
 

@@ -119,6 +119,17 @@ class EnhancedIntentClassifier:
                 r'hai\s+(whatsapp|telegram|numero)'
             ],
             
+            "order_confirmation": [
+                r'\b(bonifico|pagamento)\s+(effettuat|fatt|completat)',  # "bonifico effettuato"
+                r'\b(ho|abbiamo)\s+(pagat|effettuat)',  # "ho pagato"
+                r'\bpagat[oa]\b',  # "pagato", "pagata"
+                r'\bF_\d+',  # Codice ordine "F_21"
+                r'\b(via|viale|piazza|corso)\s+[A-Z][a-zA-Z\s]+,?\s*numero\s+\d+',  # Indirizzo completo
+                r'\bCAP\s+\d{5}',  # CAP italiano
+                r'\bindirizzo\s+di\s+consegna',  # "indirizzo di consegna"
+                r'\b(nome|intestat)[oa]?\s+(a|di)\s+[A-Z]+',  # "a nome di MARIO"
+            ],
+
             "fallback": [
                 r'^(bot|chi\s+sei|cosa|boh|\?+)\??$',
                 r'^(non\s+)?ho\s+capito$',
