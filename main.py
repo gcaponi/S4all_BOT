@@ -13,12 +13,14 @@ from intent_classifier import EnhancedIntentClassifier
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from datetime import datetime
+from datetime import datetime
 
 # Import database module (PostgreSQL)
 import database as db
 
 classifier_instance = None
 
+data_ora = datetime.now().strftime("%d-%m-%Y %H:%M")
 # ============================================================================
 # CONFIGURAZIONE LOGGING
 # ============================================================================
@@ -323,7 +325,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
             best_score = score
             best_match = faq
     
-    if best_score >= 0.50:  # Soglia abbassata
+    if best_match and best_score >= 0.50:
         logger.info(f"✅ FAQ Match (similarity): score {best_score:.2f}")
         return {'match': True, 'item': best_match, 'score': best_score, 'method': 'similarity'}
     
@@ -1351,7 +1353,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 notifica = (
                     f"📩 <b>NUOVO ORDINE CONFERMATO</b>\n\n"
-                    f"👤 Utente: {user.first_name} (@{user.username})  🕐 {data}\n"
+                    f"👤 Utente: {user.first_name} (@{user.username})  🕐 {data_ora}\n"
                     f"📝 Messaggio:\n<code>{order_data['text'][:200]}</code>"
                 )
                 await context.bot.send_message(ADMIN_CHAT_ID, notifica, parse_mode='HTML')
