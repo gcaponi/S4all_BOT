@@ -49,7 +49,7 @@ USER_TAGS_FILE = 'user_tags.json'  # ← NUOVO
 
 # Link JustPaste.it
 LISTA_URL = "https://justpaste.it/lista_4all"
-PASTE_URL = "https://justpaste.it/faq_4allB"
+PASTE_URL = "https://justpaste.it/faq_4all"
 
 # Tag clienti consentiti
 ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
@@ -151,7 +151,7 @@ def parse_faq(markdown: str) -> list:
             })
     
     # PATTERN 2: Domande specifiche (📍 + domanda + 🔘 + risposta)
-    domande_pattern = r'📍\s*(.*?)\s*\n\s*🔘\s*(.*?)(?=\n📍|\n\n|$)'
+    domande_pattern = r'📍\s*([^\n]+)\s*\n\s*🔘\s*(.*?)(?=\n📍|\n\n|$)'
     domande = re.findall(domande_pattern, markdown, flags=re.S | re.M)
     
     for domanda, risposta in domande:
