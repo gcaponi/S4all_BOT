@@ -279,7 +279,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
             "match_in": ["dopo quanto ricevo", "quando spedisci"]
         },
         "pagamento": {
-            "keywords": ["pagamento", "pagare", "bonifico", "crypto", "bitcoin", "usdt", "metodi"],
+            "keywords": ["pagamento", "pagare", "pago", "paga", "bonifico", "crypto", "bitcoin", "usdt", "metodi"],
             "match_in": ["metodi di pagamento"]
         },
         "sconto": {
