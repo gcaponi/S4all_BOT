@@ -140,29 +140,46 @@ def parse_faq(markdown: str) -> list:
     faq_list = []
     
     # PATTERN 1: Sezioni principali (🤔TITOLO🤔 + contenuto)
-    sezioni_pattern = r'(?s)([🤔📨💵⬛])\s*([A-ZÀÈÉÌÒÙ\s]+)\1(.*?)(?=\n[🤔📨💵⬛]|$)'
+    # Modificato per gestire emoji attaccate al testo senza spazi
+    sezioni_pattern = r'([🤔📨💵⬛])([^🤔📨💵⬛\n]+?)\1\s*(.*?)(?=\n\s*[🤔📨💵⬛]|$)'
     sezioni = re.findall(sezioni_pattern, markdown, flags=re.S | re.M)
     
+    logger.info(f"🔍 Trovate {len(sezioni)} sezioni con pattern")
+    
     for emoji, titolo, contenuto in sezioni:
-        if contenuto.strip():
+        titolo = titolo.strip()
+        contenuto = contenuto.strip()
+        
+        if titolo and contenuto:
             faq_list.append({
-                "domanda": titolo.strip(),
-                "risposta": contenuto.strip()
+                "domanda": titolo,
+                "risposta": contenuto
             })
+            logger.info(f"  ✅ Aggiunta FAQ sezione: '{titolo[:50]}...'")
     
     # PATTERN 2: Domande specifiche (📍 + domanda + 🔘 + risposta)
-    domande_pattern = r'(?s)📍([^\n]+?)(?:\n🔘(.+?))?(?=\n📍|$)'
+    # Modificato per gestire meglio i newline
+    domande_pattern = r'📍\s*(.*?)\s*\n\s*🔘\s*(.*?)(?=\n\s*📍|\n\n|$)'
     domande = re.findall(domande_pattern, markdown, flags=re.S | re.M)
     
+    logger.info(f"🔍 Trovate {len(domande)} domande specifiche")
+    
     for domanda, risposta in domande:
-        faq_list.append({
-            "domanda": domanda.strip(),
-            "risposta": risposta.strip()
-        })
+        domanda = domanda.strip()
+        risposta = risposta.strip()
+        
+        if domanda and risposta:
+            faq_list.append({
+                "domanda": domanda,
+                "risposta": risposta
+            })
+            logger.info(f"  ✅ Aggiunta FAQ domanda: '{domanda[:50]}...'")
     
     logger.info(f"✅ Parsate {len(faq_list)} FAQ totali")
-    for i, faq in enumerate(faq_list[:5], 1):
-        logger.info(f"  FAQ {i}: '{faq['domanda'][:50]}'")
+    
+    # DEBUG: Stampa tutte le FAQ parse per verifica
+    for i, faq in enumerate(faq_list, 1):
+        logger.info(f"  FAQ {i}: '{faq['domanda'][:80]}'")
     
     return faq_list
 
@@ -279,7 +296,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
             "match_in": ["dopo quanto ricevo", "quando spedisci"]
         },
         "pagamento": {
-            "keywords": ["pagamento", "pagare", "pago", "paga", "bonifico", "crypto", "bitcoin", "usdt", "metodi"],
+            "keywords": ["pagamento", "pagare", "bonifico", "crypto", "bitcoin", "usdt", "metodi"],
             "match_in": ["metodi di pagamento"]
         },
         "sconto": {
