@@ -49,7 +49,7 @@ USER_TAGS_FILE = 'user_tags.json'  # ← NUOVO
 
 # Link JustPaste.it
 LISTA_URL = "https://justpaste.it/lista_4all"
-PASTE_URL = "https://justpaste.it/faq_4all"
+PASTE_URL = "https://justpaste.it/faq_4allB"
 
 # Tag clienti consentiti
 ALLOWED_TAGS = ['aff', 'jgor5', 'ig5', 'sp20']
