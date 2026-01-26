@@ -140,7 +140,7 @@ def parse_faq(markdown: str) -> list:
     faq_list = []
     
     # PATTERN 1: Sezioni principali (🤔TITOLO🤔 + contenuto)
-    sezioni_pattern = r'([🤔📨💵⬛])\s*([A-ZÀÈÉÌÒÙ\s]+)\1\s*(.*?)(?=\n\s*[🤔📨💵⬛]|$)'
+    sezioni_pattern = r'(?s)([🤔📨💵⬛])\s*([A-ZÀÈÉÌÒÙ\s]+)\1(.*?)(?=\n[🤔📨💵⬛]|$)'
     sezioni = re.findall(sezioni_pattern, markdown, flags=re.S | re.M)
     
     for emoji, titolo, contenuto in sezioni:
@@ -151,7 +151,7 @@ def parse_faq(markdown: str) -> list:
             })
     
     # PATTERN 2: Domande specifiche (📍 + domanda + 🔘 + risposta)
-    domande_pattern = r'📍\s*([^\n]+)\s*\n\s*🔘\s*(.*?)(?=\n📍|\n\n|$)'
+    domande_pattern = r'(?s)📍([^\n]+?)(?:\n🔘(.+?))?(?=\n📍|$)'
     domande = re.findall(domande_pattern, markdown, flags=re.S | re.M)
     
     for domanda, risposta in domande:
