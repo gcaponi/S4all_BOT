@@ -136,59 +136,73 @@ def fetch_markdown_from_html(url: str) -> str:
         return ""
 
 def parse_faq(markdown: str) -> list:
-    """Parsa FAQ con sezioni emoji e domande 📍🔘 - Versione FIXED"""
+    """Parsa FAQ - VERSIONE SEMPLICE E SICURA"""
     faq_list = []
     
     if not markdown:
         return faq_list
     
-    logger.info(f"📏 Markdown da parsare: {len(markdown)} caratteri")
+    logger.info(f"📏 Parsing FAQ: {len(markdown)} caratteri")
     
-    # 1. PRIMA: Cattura le sezioni principali (🤔COME ORDINARE🤔, ecc.)
-    # Pattern migliorato: emoji + testo + stessa emoji + qualsiasi cosa fino alla prossima emoji
-    sezioni_pattern = r'([🤔📨💵⬛])([^\n]+?)\1\s*\n(.*?)(?=\n[🤔📨💵⬛📍]|$)'
-    sezioni = re.findall(sezioni_pattern, markdown, flags=re.S)
-    
-    logger.info(f"🔍 Sezioni principali trovate: {len(sezioni)}")
-    
-    for emoji, titolo, contenuto in sezioni:
-        titolo = titolo.strip()
-        contenuto = contenuto.strip()
+    try:
+        # PATTERN per sezioni: 🤔TITOLO🤔\nCONTENUTO
+        pattern = r'([🤔📨💵⬛])([^🤔📨💵⬛\n]+)\1\n(.+?)(?=\n[🤔📨💵⬛]|\Z)'
+        sections = re.findall(pattern, markdown, flags=re.S)
         
-        if titolo and contenuto:
-            # Pulisci spazi multipli
-            contenuto = re.sub(r'\n{3,}', '\n\n', contenuto)
+        logger.info(f"🔍 Sezioni trovate: {len(sections)}")
+        
+        for emoji, titolo, contenuto in sections:
+            titolo = titolo.strip()
+            contenuto = contenuto.strip()
             
-            faq_list.append({
-                "domanda": titolo,
-                "risposta": contenuto
-            })
-            logger.info(f"  ✅ Sezione: '{titolo[:60]}...'")
-    
-    # 2. SECONDO: Cattura le domande specifiche (📍... 🔘...)
-    domande_pattern = r'📍\s*(.*?)\s*\n\s*🔘\s*(.*?)(?=\n📍|\n\n|$)'
-    domande = re.findall(domande_pattern, markdown, flags=re.S | re.M)
-    
-    logger.info(f"🔍 Domande specifiche trovate: {len(domande)}")
-    
-    for domanda, risposta in domande:
-        domanda = domanda.strip()
-        risposta = risposta.strip()
+            if titolo == "DOMANDE FREQUENTI":
+                # Estrai domande
+                domande = []
+                # Cerca blocchi 📍...🔘...
+                start_idx = 0
+                while True:
+                    start_loc = contenuto.find('📍', start_idx)
+                    if start_loc == -1:
+                        break
+                    
+                    end_loc = contenuto.find('🔘', start_loc)
+                    if end_loc == -1:
+                        break
+                    
+                    next_start = contenuto.find('📍', end_loc)
+                    if next_start == -1:
+                        next_start = len(contenuto)
+                    
+                    domanda = contenuto[start_loc + 1:end_loc].strip()
+                    risposta = contenuto[end_loc + 1:next_start].strip()
+                    
+                    # Pulisci
+                    domanda = domanda.replace('🔴', '').strip()
+                    domanda = re.sub(r'\s*\n\s*', ' ', domanda)
+                    
+                    if domanda and risposta:
+                        domande.append({
+                            "domanda": domanda,
+                            "risposta": risposta
+                        })
+                    
+                    start_idx = next_start
+                
+                faq_list.extend(domande)
+                logger.info(f"  ✅ DOMANDE FREQUENTI: {len(domande)} domande")
+            else:
+                faq_list.append({
+                    "domanda": titolo,
+                    "risposta": contenuto
+                })
+                logger.info(f"  ✅ {titolo}")
         
-        if domanda and risposta:
-            faq_list.append({
-                "domanda": domanda,
-                "risposta": risposta
-            })
-            logger.info(f"  ✅ Domanda: '{domanda[:60]}...'")
-    
-    logger.info(f"✅ Totale FAQ parsate: {len(faq_list)}")
-    
-    # DEBUG: Mostra il risultato
-    for i, faq in enumerate(faq_list[:5], 1):
-        logger.info(f"  Esempio {i}: Q='{faq['domanda'][:50]}'")
-    
-    return faq_list
+        logger.info(f"✅ Totale FAQ: {len(faq_list)}")
+        return faq_list
+        
+    except Exception as e:
+        logger.error(f"❌ Errore parse_faq: {e}")
+        return []
 
 def write_faq_json(faq: list, filename: str):
     """Salva le FAQ strutturate in un file JSON locale"""
