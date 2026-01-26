@@ -1,20 +1,5 @@
 {
   "faq": [
-    {
-      "domanda": "Come faccio a ordinare?",
-      "risposta": "Scrivi semplicemente cosa vuoi ordinare con quantità e indirizzo. Esempio: '2x Vitamina C, Via Roma 10, Milano'. Il bot ti chiederà conferma e metodo di pagamento."
-    },
-    {
-      "domanda": "Quali sono i tempi di spedizione?",
-      "risposta": "Le spedizioni vengono effettuate entro 24-48 ore lavorative. La consegna richiede solitamente 2-3 giorni lavorativi."
-    },
-    {
-      "domanda": "C'è il tracking?",
-      "risposta": "Sì, riceverai il codice di tracking non appena il pacco viene spedito."
-    },
-    {
-      "domanda": "Quali metodi di pagamento accettate?",
-      "risposta": "Accettiamo bonifico bancario e criptovalute (USDT, Bitcoin, Ethereum)."
-    }
+
   ]
 }
