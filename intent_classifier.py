@@ -57,6 +57,9 @@ class EnhancedIntentClassifier:
                 r'\b(voglio|vorrei|mi\s+serve)\s+\d+',  # "voglio 2 ..." → order
                 r'\b(prendo|dammi|ordino)\s+(quello|quella|quelli|quelle)',  # "prendo quello" → order
                 r'\b(voglio|vorrei)\s+(quello|quella|quelli|quelle|quel|quella\s+roba)',  # "voglio quella roba"
+                # FIX: Pattern per ordini CON metodo pagamento
+                r'\b(tramite|con|via|in)\s+(bonifico|crypto|bitcoin|usdt|contrassegno)',  # "tramite bonifico"
+                r'\w+.*\b(tramite|con|via)\s+(bonifico|crypto|bitcoin)',  # Prodotto + metodo pagamento
             ],
             
             "search": [
@@ -81,8 +84,8 @@ class EnhancedIntentClassifier:
             "faq": [
                 r'\b(quando|dove|spedisci|arriva|consegna|pacco|tracking|corriere)\b.*\??',
                 r'^(quando|dove|spedisci|arriva)\??$',
-                r'\b(come pago|bonifico|crypto|contrassegno|pagamento|metodo|pago)\b.*\??',
-                r'^(bonifico|crypto|contrassegno|pagamento|metodo)\??$',
+                r'\b(come pago|come si paga|metodi di pagamento|metodo di pagamento)\b.*\??',  # Solo domande sul pagamento
+                r'^(bonifico|crypto|contrassegno|pagamento|metodo)\??$',  # Solo domande singole
                 r'\b(sconto|minimo|offerta|promozione)\b.*\??',
                 r'^(sconto|minimo|offerta|promozione)\??$',
                 r'\b(sicuro|discreto|garanzia|privacy|anonimo)\b.*\??',
