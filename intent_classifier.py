@@ -131,6 +131,9 @@ class EnhancedIntentClassifier:
                 r'\bCAP\s+\d{5}',  # CAP italiano
                 r'\bindirizzo\s+di\s+consegna',  # "indirizzo di consegna"
                 r'\b(nome|intestat)[oa]?\s+(a|di)\s+[A-Z]+',  # "a nome di MARIO"
+                r'^(farei|farò|faremo|userò|useremo|pagherò|pagheremo)\s+(bonifico|crypto|bitcoin|usdt)',
+                r'^(pago|pagherò)\s+(con|tramite|via)\s+(bonifico|crypto|bitcoin|revolut|postepay)',
+                r'\b(revolut|postepay|paypal)\b',
             ],
 
             "fallback": [
