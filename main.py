@@ -136,33 +136,40 @@ def fetch_markdown_from_html(url: str) -> str:
         return ""
 
 def parse_faq(markdown: str) -> list:
-    """Parsa FAQ con sezioni emoji e domande 📍🔘"""
+    """Parsa FAQ con sezioni emoji e domande 📍🔘 - Versione FIXED"""
     faq_list = []
     
-    # PATTERN 1: Sezioni principali (🤔TITOLO🤔 + contenuto)
-    # Modificato per gestire emoji attaccate al testo senza spazi
-    sezioni_pattern = r'([🤔📨💵⬛])([^🤔📨💵⬛\n]+?)\1\s*(.*?)(?=\n\s*[🤔📨💵⬛]|$)'
-    sezioni = re.findall(sezioni_pattern, markdown, flags=re.S | re.M)
+    if not markdown:
+        return faq_list
     
-    logger.info(f"🔍 Trovate {len(sezioni)} sezioni con pattern")
+    logger.info(f"📏 Markdown da parsare: {len(markdown)} caratteri")
+    
+    # 1. PRIMA: Cattura le sezioni principali (🤔COME ORDINARE🤔, ecc.)
+    # Pattern migliorato: emoji + testo + stessa emoji + qualsiasi cosa fino alla prossima emoji
+    sezioni_pattern = r'([🤔📨💵⬛])([^\n]+?)\1\s*\n(.*?)(?=\n[🤔📨💵⬛📍]|$)'
+    sezioni = re.findall(sezioni_pattern, markdown, flags=re.S)
+    
+    logger.info(f"🔍 Sezioni principali trovate: {len(sezioni)}")
     
     for emoji, titolo, contenuto in sezioni:
         titolo = titolo.strip()
         contenuto = contenuto.strip()
         
         if titolo and contenuto:
+            # Pulisci spazi multipli
+            contenuto = re.sub(r'\n{3,}', '\n\n', contenuto)
+            
             faq_list.append({
                 "domanda": titolo,
                 "risposta": contenuto
             })
-            logger.info(f"  ✅ Aggiunta FAQ sezione: '{titolo[:50]}...'")
+            logger.info(f"  ✅ Sezione: '{titolo[:60]}...'")
     
-    # PATTERN 2: Domande specifiche (📍 + domanda + 🔘 + risposta)
-    # Modificato per gestire meglio i newline
-    domande_pattern = r'📍\s*(.*?)\s*\n\s*🔘\s*(.*?)(?=\n\s*📍|\n\n|$)'
+    # 2. SECONDO: Cattura le domande specifiche (📍... 🔘...)
+    domande_pattern = r'📍\s*(.*?)\s*\n\s*🔘\s*(.*?)(?=\n📍|\n\n|$)'
     domande = re.findall(domande_pattern, markdown, flags=re.S | re.M)
     
-    logger.info(f"🔍 Trovate {len(domande)} domande specifiche")
+    logger.info(f"🔍 Domande specifiche trovate: {len(domande)}")
     
     for domanda, risposta in domande:
         domanda = domanda.strip()
@@ -173,13 +180,13 @@ def parse_faq(markdown: str) -> list:
                 "domanda": domanda,
                 "risposta": risposta
             })
-            logger.info(f"  ✅ Aggiunta FAQ domanda: '{domanda[:50]}...'")
+            logger.info(f"  ✅ Domanda: '{domanda[:60]}...'")
     
-    logger.info(f"✅ Parsate {len(faq_list)} FAQ totali")
+    logger.info(f"✅ Totale FAQ parsate: {len(faq_list)}")
     
-    # DEBUG: Stampa tutte le FAQ parse per verifica
-    for i, faq in enumerate(faq_list, 1):
-        logger.info(f"  FAQ {i}: '{faq['domanda'][:80]}'")
+    # DEBUG: Mostra il risultato
+    for i, faq in enumerate(faq_list[:5], 1):
+        logger.info(f"  Esempio {i}: Q='{faq['domanda'][:50]}'")
     
     return faq_list
 
@@ -199,13 +206,27 @@ def update_faq_from_web():
         return False
     
     logger.info(f"✅ Markdown scaricato: {len(markdown)} caratteri")
-    logger.info(f"📄 Prime 200 caratteri: {markdown[:200]}")
+    
+    # DEBUG CRITICO: Mostra EMOJI TROVATE
+    logger.info("🔍 CERCO EMOJI NEL TESTO...")
+    import re
+    
+    # Conta emoji
+    emoji_count = len(re.findall(r'[🤔📨💵⬛📍🔘]', markdown))
+    logger.info(f"🔤 Numero totale emoji trovate: {emoji_count}")
+    
+    # Mostra posizioni delle prime 5 emoji
+    matches = list(re.finditer(r'[🤔📨💵⬛📍🔘]', markdown))
+    for i, match in enumerate(matches[:10]):
+        start = max(0, match.start() - 20)
+        end = min(len(markdown), match.start() + 80)
+        context = markdown[start:end].replace('\n', ' ')
+        logger.info(f"  Emoji {i+1} '{match.group()}' a pos {match.start()}: ...{context}...")
     
     faq = parse_faq(markdown)
     
     if not faq:
-        logger.error(f"❌ Nessuna FAQ trovata. Pattern non matchato.")
-        logger.info(f"🔍 Markdown completo:\n{markdown}")
+        logger.error(f"❌ Nessuna FAQ trovata!")
         return False
     
     write_faq_json(faq, FAQ_FILE)
