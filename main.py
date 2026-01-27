@@ -136,44 +136,45 @@ def fetch_markdown_from_html(url: str) -> str:
         return ""
 
 def parse_faq(markdown: str) -> list:
-    """Parsa FAQ con split semplice invece di regex complessi"""
+    """Parsa FAQ - versione semplificata robusta"""
     faq_list = []
     
-    # Split per emoji sezioni
-    parts = re.split(r'\n([🤔📨💵⬛])', markdown)
+    # Rimuovi line breaks problematici nelle emoji
+    markdown = markdown.replace('\n ', ' ')
     
-    for i in range(1, len(parts), 2):
-        emoji = parts[i]
-        if i+1 >= len(parts):
-            break
-            
-        content = parts[i+1]
+    # STEP 1: Trova sezioni principali con emoji doppie
+    sections = re.findall(r'([🤔📨💵⬛])\s*([A-ZÀÈÉÌÒÙ\s]+?)\s*\1(.*?)(?=\n[🤔📨💵⬛]|$)', 
+                          markdown, re.DOTALL)
+    
+    for emoji, title, content in sections:
+        title = title.strip()
+        content = content.strip()
         
-        # Cerca titolo + emoji chiusura
-        match = re.match(rf'([A-ZÀÈÉÌÒÙ\s]+){emoji}(.*)', content, re.DOTALL)
-        if match:
-            title = match.group(1).strip()
-            body = match.group(2).strip()
-            
-            # Se è sezione DOMANDE, parsa sottosezioni
-            if '📍' in body:
-                sub_parts = re.split(r'\n📍', body)
-                for sub in sub_parts[1:]:
-                    if '🔘' in sub:
-                        q, a = sub.split('🔘', 1)
-                        faq_list.append({
-                            "domanda": q.strip(),
-                            "risposta": a.strip()
-                        })
-            else:
+        if not content:
+            continue
+        
+        # Se contiene sottosezioni 📍🔘, parsale
+        if '📍' in content:
+            qa_pairs = re.findall(r'📍\s*([^\n🔘]+?)\s*🔘\s*([^📍]+?)(?=📍|$)', 
+                                  content, re.DOTALL)
+            for q, a in qa_pairs:
                 faq_list.append({
-                    "domanda": title,
-                    "risposta": body
+                    "domanda": q.strip(),
+                    "risposta": a.strip()
                 })
+        else:
+            # Sezione senza sottosezioni
+            faq_list.append({
+                "domanda": title,
+                "risposta": content
+            })
     
     logger.info(f"✅ Parsate {len(faq_list)} FAQ totali")
     for i, faq in enumerate(faq_list[:5], 1):
         logger.info(f"  FAQ {i}: '{faq['domanda'][:50]}'")
+    
+    if len(faq_list) == 0:
+        logger.error("❌ Nessuna FAQ trovata!")
     
     return faq_list
 
