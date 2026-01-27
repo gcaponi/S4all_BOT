@@ -47,6 +47,15 @@ class UserTag(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class ChatSession(Base):
+    """Tabella chat_sessions - Tracking sessioni e auto-messages"""
+    __tablename__ = 'chat_sessions'
+    
+    chat_id = Column(String(50), primary_key=True, index=True)
+    admin_active = Column(Integer, default=0)  # 0=False, 1=True (SQLite compatibility)
+    last_admin_time = Column(DateTime, nullable=True)
+    last_auto_msg_time = Column(DateTime, default=datetime.utcnow)
+
 class AuthorizedUser(Base):
     """Tabella authorized_users - Utenti autorizzati bot"""
     __tablename__ = 'authorized_users'
@@ -275,24 +284,25 @@ def get_ordini_oggi() -> list:
 # CLEAR ORDINI
 def clear_old_orders(days=1):
     """Cancella ordini più vecchi di N giorni"""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cutoff_date = datetime.now() - timedelta(days=days)
-    
-    cursor.execute(
-        "DELETE FROM ordini_confermati WHERE timestamp < %s",
-        (cutoff_date,)
-    )
-    
-    deleted = cursor.rowcount
-    conn.commit()
-    conn.close()
-    
-    logger.info(f"🗑️ Cancellati {deleted} ordini più vecchi di {days} giorni")
-    return deleted
+    session = SessionLocal()
+    try:
+        cutoff_date = datetime.now() - timedelta(days=days)
+        
+        deleted = session.query(OrdineConfermato).filter(
+            OrdineConfermato.timestamp < cutoff_date
+        ).delete()
+        
+        session.commit()
+        logger.info(f"🗑️ Cancellati {deleted} ordini più vecchi di {days} giorni")
+        return deleted
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore clear_old_orders: {e}")
+        return 0
+    finally:
+        session.close()
     
 # ============================================================================
 # FUNZIONI APP CONFIG (access_code, ecc.)
@@ -343,7 +353,7 @@ def save_access_code(code: str):
     set_config('access_code', code)
 
 # ============================================================================
-# COMPATIBILITÃƒâ‚¬ CON JSON (per facilitare migrazione)
+# COMPATIBILITÀ CON JSON (per facilitare migrazione)
 # ============================================================================
 
 def save_user_tags(tags_dict):
@@ -353,5 +363,73 @@ def save_user_tags(tags_dict):
 def save_authorized_users(users_dict):
     """CompatibilitÃ  - non fa nulla, giÃ  salvato nel DB"""
     pass
+
+def init_chat_sessions_table():
+    """Crea tabella tracking sessioni chat - già gestito da Base.metadata.create_all"""
+    pass  # La tabella viene creata automaticamente da init_db()
+
+def set_admin_active(chat_id, active=True):
+    """Imposta admin attivo/inattivo in chat"""
+    session = SessionLocal()
+    try:
+        chat_session = session.query(ChatSession).filter_by(chat_id=str(chat_id)).first()
+        
+        if chat_session:
+            chat_session.admin_active = 1 if active else 0
+            chat_session.last_admin_time = datetime.utcnow()
+        else:
+            chat_session = ChatSession(
+                chat_id=str(chat_id),
+                admin_active=1 if active else 0,
+                last_admin_time=datetime.utcnow()
+            )
+            session.add(chat_session)
+        
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore set_admin_active: {e}")
+    finally:
+        session.close()
+
+def get_chat_session(chat_id):
+    """Ottieni stato sessione: (admin_active, last_admin_time, last_auto_msg_time)"""
+    session = SessionLocal()
+    try:
+        chat_session = session.query(ChatSession).filter_by(chat_id=str(chat_id)).first()
+        
+        if not chat_session:
+            return None
+        
+        # Ritorna tupla come prima (per compatibilità)
+        return (
+            bool(chat_session.admin_active),  # Convert 0/1 to False/True
+            chat_session.last_admin_time,
+            chat_session.last_auto_msg_time
+        )
+    finally:
+        session.close()
+
+def update_auto_message_time(chat_id):
+    """Aggiorna timestamp ultimo auto-message"""
+    session = SessionLocal()
+    try:
+        chat_session = session.query(ChatSession).filter_by(chat_id=str(chat_id)).first()
+        
+        if chat_session:
+            chat_session.last_auto_msg_time = datetime.utcnow()
+        else:
+            chat_session = ChatSession(
+                chat_id=str(chat_id),
+                last_auto_msg_time=datetime.utcnow()
+            )
+            session.add(chat_session)
+        
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore update_auto_message_time: {e}")
+    finally:
+        session.close()
 
 # End database.py

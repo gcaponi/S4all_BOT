@@ -290,7 +290,7 @@ def fuzzy_search_faq(user_message: str, faq_list: list) -> dict:
     user_normalized = normalize_text(user_message)
     text_lower = user_message.lower()
     
-    # Pattern specifici basati sulle tue FAQ reali
+    # Pattern specifici basati sulle FAQ reali
     faq_patterns = {
         "tracking": {
             "keywords": ["tracking", "tracciamento", "codice", "numero", "traccia", "dove", "pacco"],
@@ -371,6 +371,19 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     text_lower = text_lower.replace("-", " ") 
     user_normalized = normalize_text(text_lower)
     
+    # Escludi domande conversazionali generiche
+    conversational_questions = [
+        r'^(manca|serve|vuoi|ti\s+serve|altro)\s*(altro|qualcosa)?\??$',
+        r'^(tutto\s+)?(ok|bene|perfetto)\??$',
+        r'^(e\s+)?(poi|dopo|ancora)\??$',
+        r'^(grazie|ok)\b',
+    ]
+
+    for pattern in conversational_questions:
+        if re.search(pattern, user_normalized, re.I):
+            logger.info(f"⏭️ Domanda conversazionale: '{user_normalized}' - skip search")
+            return {'match': False, 'snippet': None, 'score': 0}
+            
     # STEP 1: VERIFICA INTENT ESPLICITO (Pattern forti)
     explicit_request_patterns = [
         r'\bhai\s+(la|il|dello|della|l\'|un[ao]?)\s*\w{3,}',
@@ -474,7 +487,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
                     prefix = line_word[:len(keyword)]
                     similarity = calculate_similarity(keyword, prefix)
                     
-                    if similarity >= 0.80: # Soglia alta per prefissi
+                    if similarity >= 0.90: # Soglia alta per prefissi
                         if ('💊' in line or '💉' in line or '€' in line):
                             logger.info(f"  ⚡ Fuzzy prefix match: '{keyword}' ~ '{prefix}' (in {line_word}) -> {similarity:.2f}")
                             match_found = True
@@ -1000,7 +1013,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # Se from_user.id != chat.id → Admin sta scrivendo al cliente
     if user_id != chat_id:
         logger.info(f"⏭️ Admin (user={user_id}) scrive a cliente (chat={chat_id})")
-        
+        # Attiva pausa bot per questa chat
+        db.set_admin_active(chat_id, active=True)
+        logger.info(f"⏸️ Bot messo in PAUSA per chat {chat_id}")
+
         # ECCEZIONE: Comando /reg
         if text_lower.startswith('/reg'):
             logger.info(f"✅ Comando /reg dall'admin - ESEGUO")
@@ -1048,6 +1064,52 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     logger.info(f"📱 Messaggio da cliente {user_id}: '{text}'")
     
+    # ========================================
+    # CHECK PAUSA BOT (admin attivo)
+    # ========================================
+    
+    session = db.get_chat_session(chat_id)
+    
+    if session and session[0]:  # admin_active = True
+        last_admin_time = session[1]
+        inactive_seconds = (datetime.now() - last_admin_time).total_seconds()
+        
+        if inactive_seconds < 1800:  # 30 minuti
+            logger.info(f"⏸️ Bot in PAUSA - admin attivo (ultimo msg {inactive_seconds/60:.0f} min fa)")
+            return
+        else:
+            # Timeout - riattiva bot
+            db.set_admin_active(chat_id, active=False)
+            logger.info(f"▶️ Bot RIATTIVATO - timeout admin (30 min)")
+    
+    # ========================================
+    # CHECK AUTO-MESSAGE (ogni 30 min)
+    # ========================================
+    
+    should_send_auto = True
+    
+    if session and session[2]:  # last_auto_msg_time esiste
+        last_auto = session[2]
+        elapsed = (datetime.now() - last_auto).total_seconds()
+        
+        if elapsed < 1800:  # Meno di 30 min
+            should_send_auto = False
+            logger.info(f"⏭️ Auto-msg skip (inviato {elapsed/60:.0f} min fa)")
+    
+    if should_send_auto:
+        auto_msg = (
+            "Ciao grazie per avermi contattato.\n\n"
+            "Rispondo dal *lunedì al venerdì* (ESCLUSI GIORNI FESTIVITÀ) "
+            "dalle ore *07:00* alle ore *17:00*\n\n"
+            "Ho registrato la tua richiesta, risponderò non appena sarò disponibile. "
+            "Grazie per la pazienza (lascia scritto tutto, a volte rispondo anche fuori orario)\n\n"
+            "_I messaggi inviati dopo le ore 17:00 del venerdì, verranno risposti di LUNEDI'_"
+        )
+        
+        await send_business_reply(auto_msg, parse_mode='Markdown')
+        db.update_auto_message_time(chat_id)
+        logger.info(f"📨 Auto-message inviato a {chat_id}")
+
     # ========================================
     # CHECK WHITELIST TAG
     # ========================================
@@ -1445,6 +1507,8 @@ async def setup_bot():
         # ========================================
         logger.info("🗄️ Inizializzazione database...")
         if db.init_db():
+            db.init_chat_sessions_table()
+            logger.info("✅ Tabella chat_sessions pronta")
             logger.info("✅ Database PostgreSQL pronto")
         else:
             logger.error("❌ Errore inizializzazione database!")

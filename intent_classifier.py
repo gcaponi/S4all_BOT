@@ -326,6 +326,18 @@ class EnhancedIntentClassifier:
         """Classifica usando regole semplici con priorità corrette"""
         words = message.split()
         
+        courtesy_patterns = [
+            r'\bgrazie\b.*\battendo\b',
+            r'\bok\b.*\bgrazie\b',
+            r'\battendo\b.*\baggiornamenti\b',
+            r'\bperfetto\b.*\bgrazie\b',
+            r'\bva bene\b.*\bgrazie\b'
+        ]
+
+        for pattern in courtesy_patterns:
+            if re.search(pattern, message, re.I):
+                return None  # Non classificare come order
+
         if not words:
             return None
         
