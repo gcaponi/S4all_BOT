@@ -135,61 +135,47 @@ def fetch_markdown_from_html(url: str) -> str:
         logger.error(f"Errore durante il fetch da {url}: {e}")
         return ""
 
-def update_faq_from_web():
-    """Sincronizza le FAQ scaricandole dal link JustPaste configurato"""
-    logger.info(f"📥 Tentativo download FAQ da: {PASTE_URL}")
+def parse_faq(markdown: str) -> list:
+    """Parsa FAQ con split semplice invece di regex complessi"""
+    faq_list = []
     
-    markdown = fetch_markdown_from_html(PASTE_URL)
+    # Split per emoji sezioni
+    parts = re.split(r'\n([🤔📨💵⬛])', markdown)
     
-    if not markdown:
-        logger.error("❌ Markdown vuoto o errore fetch")
-        return False
-    
-    logger.info(f"✅ Markdown scaricato: {len(markdown)} caratteri")
-    
-    # DEBUG CRITICO: Salva e analizza
-    with open("faq_raw_downloaded.txt", "w", encoding="utf-8") as f:
-        f.write(markdown)
-    logger.info("💾 Markdown salvato in 'faq_raw_downloaded.txt'")
-    
-    # Mostra la struttura
-    logger.info("🔍 STRUTTURA DEL TESTO SCARICATO:")
-    logger.info("=" * 60)
-    
-    # Cerca pattern specifici
-    import re
-    
-    # Cerca 🤔
-    matches_think = list(re.finditer(r'🤔', markdown))
-    logger.info(f"Emoji 🤔 trovate: {len(matches_think)}")
-    
-    # Mostra contesto attorno a ogni 🤔
-    for i, match in enumerate(matches_think[:4]):
-        start = max(0, match.start() - 20)
-        end = min(len(markdown), match.start() + 50)
-        context = markdown[start:end].replace('\n', ' ')
-        logger.info(f"  🤔 {i+1}: ...{context}...")
-    
-    logger.info("=" * 60)
-    
-    faq = parse_faq(markdown)
-    
-    if not faq:
-        logger.error(f"❌ Nessuna FAQ trovata!")
+    for i in range(1, len(parts), 2):
+        emoji = parts[i]
+        if i+1 >= len(parts):
+            break
+            
+        content = parts[i+1]
         
-        # Analisi approfondita
-        logger.info("🔍 ANALISI APPROFONDITA DEL TESTO:")
-        
-        # Cerca qualsiasi sequenza che assomigli a una sezione FAQ
-        lines = markdown.split('\n')
-        for i, line in enumerate(lines[:20]):  # Prime 20 righe
-            logger.info(f"  Riga {i}: '{line}'")
-        
-        return False
+        # Cerca titolo + emoji chiusura
+        match = re.match(rf'([A-ZÀÈÉÌÒÙ\s]+){emoji}(.*)', content, re.DOTALL)
+        if match:
+            title = match.group(1).strip()
+            body = match.group(2).strip()
+            
+            # Se è sezione DOMANDE, parsa sottosezioni
+            if '📍' in body:
+                sub_parts = re.split(r'\n📍', body)
+                for sub in sub_parts[1:]:
+                    if '🔘' in sub:
+                        q, a = sub.split('🔘', 1)
+                        faq_list.append({
+                            "domanda": q.strip(),
+                            "risposta": a.strip()
+                        })
+            else:
+                faq_list.append({
+                    "domanda": title,
+                    "risposta": body
+                })
     
-    write_faq_json(faq, FAQ_FILE)
-    logger.info(f"✅ FAQ sincronizzate: {len(faq)} elementi salvati.")
-    return True
+    logger.info(f"✅ Parsate {len(faq_list)} FAQ totali")
+    for i, faq in enumerate(faq_list[:5], 1):
+        logger.info(f"  FAQ {i}: '{faq['domanda'][:50]}'")
+    
+    return faq_list
 
 def write_faq_json(faq: list, filename: str):
     """Salva le FAQ strutturate in un file JSON locale"""
