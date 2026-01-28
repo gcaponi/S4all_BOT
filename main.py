@@ -1007,6 +1007,23 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         return
     
     # ========================================
+    # HELPER INVIO RISPOSTE
+    # ========================================
+    
+    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+        try:
+            await context.bot.send_message(
+                business_connection_id=business_connection_id,
+                chat_id=chat_id,
+                text=text_reply,
+                parse_mode=parse_mode,
+                reply_markup=reply_markup
+            )
+            logger.info(f"✅ Reply inviata")
+        except Exception as e:
+            logger.error(f"❌ Errore invio: {e}")
+
+    # ========================================
     # RILEVA ADMIN AUTOMATICAMENTE
     # ========================================
     
@@ -1121,23 +1138,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         return
     
     logger.info(f"✅ Cliente con tag: {user_tag}")
-    
-    # ========================================
-    # HELPER INVIO RISPOSTE
-    # ========================================
-    
-    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
-        try:
-            await context.bot.send_message(
-                business_connection_id=business_connection_id,
-                chat_id=chat_id,
-                text=text_reply,
-                parse_mode=parse_mode,
-                reply_markup=reply_markup
-            )
-            logger.info(f"✅ Reply inviata")
-        except Exception as e:
-            logger.error(f"❌ Errore invio: {e}")
     
     # ========================================
     # CALCOLA INTENTO E RISPONDI
