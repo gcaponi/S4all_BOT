@@ -1019,7 +1019,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 parse_mode=parse_mode,
                 reply_markup=reply_markup
             )
-            logger.info(f"✅ Reply inviata")
+          #  logger.info(f"✅ Reply inviata")
         except Exception as e:
             logger.error(f"❌ Errore invio: {e}")
 
@@ -1091,7 +1091,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         last_admin_time = session[1]
         inactive_seconds = (datetime.now() - last_admin_time).total_seconds()
         
-        if inactive_seconds < 1800:  # 30 minuti
+        if inactive_seconds < 900:  # 15 minuti
             logger.info(f"⏸️ Bot in PAUSA - admin attivo (ultimo msg {inactive_seconds/60:.0f} min fa)")
             return
         else:
@@ -1113,7 +1113,29 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             should_send_auto = False
             logger.info(f"⏭️ Auto-msg skip (inviato {elapsed/60:.0f} min fa)")
     
-    if should_send_auto:
+    # ========================================
+    # CHECK FASCIA ORARIA AUTO-MESSAGE
+    # ========================================
+
+    now = datetime.now()
+    weekday = now.weekday()  # 0=Lun, 4=Ven, 5=Sab, 6=Dom
+    hour = now.hour
+    
+    # Sabato o Domenica → sempre auto-message
+    if weekday >= 5:
+        should_send_auto_by_time = True
+        logger.info(f"⏰ Weekend - auto-message abilitato")
+    # Lunedì-Venerdì
+    else:
+        # Fuori orario lavorativo (17:00-07:00)
+        if hour >= 17 or hour < 7:
+            should_send_auto_by_time = True
+            logger.info(f"⏰ Fuori orario lavorativo ({hour}:00) - auto-message abilitato")
+        else:
+            should_send_auto_by_time = False
+            logger.info(f"⏰ Orario lavorativo ({hour}:00) - auto-message disabilitato")
+    
+    if should_send_auto and should_send_auto_by_time:
         auto_msg = (
             "Ciao grazie per avermi contattato.\n\n"
             "Rispondo dal *lunedì al venerdì* (ESCLUSI GIORNI FESTIVITÀ) "
