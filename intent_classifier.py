@@ -226,6 +226,23 @@ class EnhancedIntentClassifier:
         message_lower = message.strip().lower()
         self.stats['total_requests'] += 1
         
+        # ========================================
+        # EARLY CHECK: COURTESY PATTERNS (priorità assoluta)
+        # ========================================
+        courtesy_patterns = [
+            r'\bgrazie\b.*\battendo\b',
+            r'\bok\b.*\bgrazie\b',
+            r'\battendo\b.*\baggiornamenti\b',
+            r'\bperfetto\b.*\bgrazie\b',
+            r'\bva bene\b.*\bgrazie\b'
+        ]
+        
+        for pattern in courtesy_patterns:
+            if re.search(pattern, message_lower, re.I):
+                if debug:
+                    print(f"⏭️ Courtesy pattern detected - skip classification")
+                return "fallback", 0.0
+
         # RACCOLTA TUTTI I RISULTATI
         all_results = []
         
