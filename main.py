@@ -13,7 +13,7 @@ from intent_classifier import EnhancedIntentClassifier
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from datetime import datetime
-from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # Import database module (PostgreSQL)
 import database as db
@@ -371,7 +371,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
     text_lower = text_lower.replace("-", " ") 
     user_normalized = normalize_text(text_lower)
     
-    # Escludi domande conversazionali generiche
+    # Escludi domande conversazioni generiche
     conversational_questions = [
         r'^(manca|serve|vuoi|ti\s+serve|altro)\s*(altro|qualcosa)?\??$',
         r'^(tutto\s+)?(ok|bene|perfetto)\??$',
@@ -381,7 +381,7 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
 
     for pattern in conversational_questions:
         if re.search(pattern, user_normalized, re.I):
-            logger.info(f"⏭️ Domanda conversazionale: '{user_normalized}' - skip search")
+            logger.info(f"⏭️ Domanda conversazione: '{user_normalized}' - skip search")
             return {'match': False, 'snippet': None, 'score': 0}
             
     # STEP 1: VERIFICA INTENT ESPLICITO (Pattern forti)
@@ -622,14 +622,14 @@ def calcola_intenzione(text):
 
     def debug_intent(text: str):
         """Funzione di debug per vedere come viene classificato il testo"""
-    global intent_classifier
+        global intent_classifier
     
-    if intent_classifier is None:
-        estrai_parole_chiave_lista()
+        if intent_classifier is None:
+            estrai_parole_chiave_lista()
     
-    result = intent_classifier.classify(text)
+        result = intent_classifier.classify(text)
     
-    print("\n" + "="*60)
+        print("\n" + "="*60)
     print(f"🔍 DEBUG INTENT: '{text}'")
     print(f"🎯 Risultato: {result.intent.value}")
     print(f"📊 Confidence: {result.confidence:.2f}")
@@ -1036,7 +1036,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
 
         # ECCEZIONE: Comando /reg
         if text_lower.startswith('/reg'):
-            logger.info(f"✅ Comando /reg dall'admin - ESEGUO")
+            logger.info(f"✅ Comando /reg dal admin - ESEGUO")
             
             parts = text.split()
             
@@ -1117,7 +1117,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # CHECK FASCIA ORARIA AUTO-MESSAGE
     # ========================================
 
-    now = datetime.now()
+    now = datetime.now(ZoneInfo("Europe/Rome"))
     weekday = now.weekday()  # 0=Lun, 4=Ven, 5=Sab, 6=Dom
     hour = now.hour
     
