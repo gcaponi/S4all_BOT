@@ -303,7 +303,17 @@ class EnhancedIntentClassifier:
         if debug:
             print(f"🔍 No match found → fallback")
         return "fallback", 0.0
-    
+
+                # Escludi "vorrei ordinare" SOLO se NON menziona prodotti
+        if re.search(r'\b(vorrei|voglio)\s+ordinare\b', message, re.I):
+            # Check se menziona prodotto
+            has_product = any(product in message for product in self.product_keywords)
+            
+            if not has_product:
+                # Domanda generica su come ordinare → FAQ
+                return "faq", 0.95
+            # Altrimenti continua (sarà order)
+            
     def _classify_by_regex(self, message, debug=False):
         """Classifica usando regex patterns"""
         best_intent = None
@@ -354,16 +364,6 @@ class EnhancedIntentClassifier:
         for pattern in courtesy_patterns:
             if re.search(pattern, message, re.I):
                 return None  # Non classificare come order
-
-        # Escludi "vorrei ordinare" SOLO se NON menziona prodotti
-        if re.search(r'\b(vorrei|voglio)\s+ordinare\b', message, re.I):
-            # Check se menziona prodotto
-            has_product_temp = any(product in message for product in self.product_keywords)
-            
-            if not has_product_temp:
-                # Domanda generica su come ordinare → FAQ
-                return "faq", 0.95
-            # Altrimenti continua (sarà order)
 
         if not words:
             return None
