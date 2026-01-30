@@ -434,10 +434,17 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         'info', 'ciao', 'buongiorno', 'sera', 'salve'
     }
     
+    # Escludi numeri e stopwords quantità
+    numeric_stopwords = ['uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 
+    'otto', 'nove', 'dieci', 'confezioni', 'confezione', 
+    'flaconi', 'flacone', 'pezzi', 'pezzo', 'scatole', 'scatola']
+
     product_keywords = [
-        w for w in words 
-        if len(w) >= 3 and w not in stopwords
-    ]
+    word for word in user_normalized.split() 
+    if len(word) >= 3 
+    and word not in numeric_stopwords
+    and not word.isdigit()  # Escludi anche "3", "10", etc.
+]
     
     # Recupera parole di 2 lettere solo se significative (es "gh", "tb")
     special_short_keywords = {'gh', 'tb', 't3', 't4'}
