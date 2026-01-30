@@ -604,6 +604,7 @@ def calcola_intenzione(text):
             "saluto": "saluto",        # saluto -> saluto
             "contact": "contact",      # contact -> contact (se necessario)
             "order_confirmation": "conferma_ordine",
+            "fallback_mute": "fallback_mute",
             "fallback": "fallback"     # fallback -> fallback
         }
         
@@ -1251,6 +1252,15 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # 5. FALLBACK
     if intent == "fallback":
         logger.info(f"➡️ Entrato in blocco FALLBACK")
+
+        # Controlla se è una conversazione che richiede umano (parole chiave)
+        text_lower = text.lower()
+        human_keywords = ['preparato', 'acqua', 'dosi', 'consegnato', 'ritirato', 
+                         'disturbo', 'speriamo', 'tra l\'altro', 'non sono stato']
+        
+        if any(kw in text_lower for kw in human_keywords):
+            logger.info(f"⏸️ Fallback silenzioso: conversazione umana rilevata")
+            return  # NON invia nulla
     
     # Suggerimenti intelligenti basati su parole chiave
     text_lower = text.lower()
@@ -1280,6 +1290,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             "• Scrivi direttamente cosa vorresti"
         )
     return
+
+    if intent == "fallback_mute":
+        logger.info(f"➡️ Entrato in blocco FALLBACK MUTO - nessuna risposta")
+        return  # Esce silenziosamente
 
 # ============================================================================
 # HANDLER MESSAGGI PRIVATI
