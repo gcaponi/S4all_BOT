@@ -1289,7 +1289,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         logger.info(f"💾 Ordine temporaneo salvato: {callback_data}")
     
         await send_business_reply(
-            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            message_text,
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
