@@ -260,6 +260,59 @@ class EnhancedIntentClassifier:
             r'\bva bene\b.*\bgrazie\b'
         ]
         
+        # ========================================
+        # EARLY CHECK: CONVERSAZIONI POST-ACQUISTO (richiedono umano) = FALLBACK MUTO
+        # ========================================
+        human_required_patterns = [
+            # Domande su preparazione/prodotti ricevuti
+            r'\bcome\s+va\s+preparato\b',
+            r'\bquanta\s+acqua\b',
+            r'\bdosi\b',
+            r'\bpreparare\b',
+            # Problemi consegna
+            r'\bnon\s+sono\s+stato\b',
+            r'\bnon\s+sono\s+a\s+casa\b',
+            r'\bconsegnato\b.*\bnon\b',
+            r'\britirato\b',
+            r'\bmi\s+dice\s+che\b',
+            r'\bmi\s+è\s+arrivato\b',
+            # Espressioni conversazionali di chiusura/seguimento
+            r'\bsperiamo\s+bene\b',
+            r'\btra\s+l\'altro\b',
+            r'\bah[, ]?\s*ok\b',
+            r'\bscusa\s+(il|il)\s+disturbo\b',
+            r'\bmi\s+serve\b.*\baiuto\b',
+            # Pattern "ok perfetto grazie" (fallback cortese)
+            r'^(ok|perfetto|bene|ottimo)\s+(grazie|perfetto)$',
+            r'\bok\b.*\bperfetto\b.*\bgrazie\b'
+        ]
+        
+        for pattern in human_required_patterns:
+            if re.search(pattern, message_lower, re.I):
+                if debug:
+                    print(f"⏭️ Conversazione umana/assistenza richiesta - fallback muto")
+                return "fallback_mute", 1.0  # Intent speciale per non rispondere
+        
+        # ========================================
+        # EARLY CHECK: SALUTI DI CHIUSURA/CORTESIA
+        # ========================================
+        goodbye_patterns = [
+            r'^(ok|va bene|perfetto|bene|ottimo)\s*(grazie)?$',
+            r'^(grazie)\s*(mille)?$',
+            r'\bgrazie\b.*\btutto\b',
+            r'^(ciao|salve|buongiorno|buonasera)\s*(grazie)?$'
+        ]
+        
+        for pattern in goodbye_patterns:
+            if re.search(pattern, message_lower, re.I):
+                if debug:
+                    print(f"⏭️ Saluto/cortesia detected")
+                return "fallback_mute", 1.0
+
+        numeric_stopwords = ['uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 
+                     'otto', 'nove', 'dieci', 'confezioni', 'confezione', 
+                     'flaconi', 'flacone', 'pezzi', 'pezzo', 'scatole', 'scatola']
+
         for pattern in courtesy_patterns:
             if re.search(pattern, message_lower, re.I):
                 if debug:
