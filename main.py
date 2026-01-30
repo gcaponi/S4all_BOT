@@ -1225,6 +1225,44 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     if intent == "ordine":
         logger.info(f"➡️ Entrato in blocco ORDINE")
     
+                # ========================================
+        # CHECK PRODOTTI CHE NECESSITANO ACQUA BATTERIOSTATICA
+        # ========================================
+        text_lower = text.lower()
+        
+        # Prodotti che richiedono acqua batteriostatica per preparazione
+        prodotti_acqua_necessaria = [
+            'retatrutide', 'tirzepatide', 'semaglutide',
+            'gh', 'ormone della crescita', 'ormone crescita',
+            'pt141', 'pt-141', 'pt 141',
+            'bpc157', 'bpc 157', 'bpc-157',
+            'melatonan', 'melatonan2', 'melanotan', 'melanotan2', 'melanotan 2',
+            'cjc', 'cjc dac', 'cjc-dac',
+            'mgf', 'peg-mgf', 'peg mgf',
+            'follistatina',
+            'igf1', 'igf-1'
+        ]
+        
+        # Verifica se ordina prodotti che necessitano acqua
+        needs_acqua = any(prod in text_lower for prod in prodotti_acqua_necessaria)
+        
+        # Verifica se ha già menzionato acqua batteriostatica (evita duplicati)
+        has_acqua = any(term in text_lower for term in [
+            'acqua batteriostatica', 'acqua', 'batteriostatica', 
+            'acqua per preparazione', 'solvente'
+        ])
+        
+        # Costruisci messaggio dinamico
+        msg_parts = ["🤔 <b>Sembra un ordine!</b>"]
+        
+        if needs_acqua and not has_acqua:
+            msg_parts.append("\n⚠️ <b>Serve anche confezione di acqua batteriostatica per il prodotto ordinato?</b>")
+            logger.info("💧 Prodotto richiede acqua batteriostatica - domanda automatica aggiunta")
+        
+        msg_parts.append("\nC'è il metodo di pagamento?")
+        
+        message_text = "\n".join(msg_parts)
+    
         # Salva l'ordine temporaneamente
         order_data = {
             'text': text,
@@ -1352,12 +1390,49 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
 
     # 2. ORDINE
     if intent == "ordine":
+        text_lower = text.lower()
+        
+        # ========================================
+        # CHECK PRODOTTI CHE NECESSITANO ACQUA BATTERIOSTATICA
+        # ========================================
+        prodotti_acqua_necessaria = [
+            'retatrutide', 'tirzepatide', 'semaglutide',
+            'gh', 'ormone della crescita', 'ormone crescita',
+            'pt141', 'pt-141', 'pt 141',
+            'bpc157', 'bpc 157', 'bpc-157', 'bpc',
+            'melatonan', 'melatonan2', 'melanotan', 'melanotan2', 'melanotan 2',
+            'cjc', 'cjc dac', 'cjc-dac',
+            'mgf', 'peg-mgf', 'peg mgf', 'pegmgf',
+            'follistatina',
+            'igf1', 'igf-1', 'igf 1'
+        ]
+        
+        # Verifica se ordina prodotti che necessitano acqua
+        needs_acqua = any(prod in text_lower for prod in prodotti_acqua_necessaria)
+        
+        # Verifica se ha già menzionato acqua batteriostatica
+        has_acqua = any(term in text_lower for term in [
+            'acqua batteriostatica', 'acqua', 'batteriostatica', 
+            'acqua per preparazione', 'solvente'
+        ])
+        
+        # Costruisci messaggio dinamico
+        msg_parts = ["🤔 <b>Sembra un ordine!</b>"]
+        
+        if needs_acqua and not has_acqua:
+            msg_parts.append("\n⚠️ <b>Serve anche confezione di acqua batteriostatica per il prodotto ordinato?</b>")
+            logger.info(f"💧 [Private] Prodotto richiede acqua batteriostatica: {text[:50]}...")
+        
+        msg_parts.append("\nC'è il metodo di pagamento?")
+        
+        message_text = "\n".join(msg_parts)
+        
         keyboard = [[
             InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
             InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
         ]]
         await message.reply_text(
-            "🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
+            message_text,
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
