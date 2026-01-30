@@ -17,6 +17,8 @@ from zoneinfo import ZoneInfo
 
 # Import database module (PostgreSQL)
 import database as db
+from memory_buffer import chat_memory
+from enhanced_logging import classification_logger, setup_enhanced_logging
 
 classifier_instance = None
 
@@ -434,10 +436,20 @@ def fuzzy_search_lista(user_message: str, lista_text: str) -> dict:
         'info', 'ciao', 'buongiorno', 'sera', 'salve'
     }
     
-    # Escludi numeri e stopwords quantità
-    numeric_stopwords = ['uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 
-    'otto', 'nove', 'dieci', 'confezioni', 'confezione', 
-    'flaconi', 'flacone', 'pezzi', 'pezzo', 'scatole', 'scatola']
+    # Escludi numeri, stopwords quantità e preposizioni/articoli comuni
+    numeric_stopwords = [
+        # Numeri
+        'uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 
+        'otto', 'nove', 'dieci', 'undici', 'dodici',
+        # Quantità
+        'confezioni', 'confezione', 'flaconi', 'flacone', 
+        'pezzi', 'pezzo', 'scatole', 'scatola', 'bottiglie', 'bottiglia',
+        # Preposizioni e articoli (causano falsi match)
+        'per', 'con', 'senza', 'da', 'su', 'in', 'di',
+        'del', 'della', 'dello', 'dei', 'delle', 'degli',
+        'al', 'alla', 'allo', 'ai', 'alle', 'agli',
+        'nel', 'nella', 'nello', 'nei', 'nelle', 'negli'
+    ]
 
     product_keywords = [
     word for word in user_normalized.split() 
@@ -590,10 +602,18 @@ def calcola_intenzione(text):
         # Inizializza se necessario
         classifier = init_classifier()
         
-        # Classifica il messaggio
-        intent_classificato, confidence = classifier.classify(text)
+        # Classifica il messaggio con threshold checking
+        intent_classificato, confidence = classifier.classify_with_threshold(text)
         
         logger.info(f"🔍 Classificazione: '{text}' -> {intent_classificato} ({confidence:.2f})")
+        
+        # Log per analisi e metriche
+        classification_logger.log_classification(
+            text=text,
+            intent=intent_classificato,
+            confidence=confidence,
+            method='hybrid_threshold'
+        )
         
         # Mappa gli intent del nuovo classificatore agli intent del vecchio sistema
         intent_map = {
@@ -1170,10 +1190,26 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     logger.info(f"✅ Cliente con tag: {user_tag}")
     
     # ========================================
+    # MEMORIA CONVERSAZIONALE
+    # ========================================
+    
+    # Recupera contesto conversazionale
+    last_entities = await chat_memory.get_last_entities(chat_id)
+    
+    # Risolvi riferimenti pronominali ("quello", "quella", etc.)
+    text_enriched = chat_memory.resolve_references(text, last_entities)
+    
+    if text_enriched != text:
+        logger.info(f"🔗 Testo arricchito: '{text}' → '{text_enriched}'")
+        text_to_classify = text_enriched
+    else:
+        text_to_classify = text
+    
+    # ========================================
     # CALCOLA INTENTO E RISPONDI
     # ========================================
     
-    intent = calcola_intenzione(text)
+    intent = calcola_intenzione(text_to_classify)
     logger.info(f"🔄 Intent ricevuto: '{intent}'")
     
     # 1. LISTA
@@ -1545,6 +1581,9 @@ async def setup_bot():
     try:
         logger.info("🔡 Inizializzazione bot...")
         
+        # Setup enhanced logging
+        setup_enhanced_logging()
+        
         # ========================================
         # INIZIALIZZA DATABASE POSTGRESQL
         # ========================================
@@ -1552,6 +1591,11 @@ async def setup_bot():
         if db.init_db():
             db.init_chat_sessions_table()
             logger.info("✅ Tabella chat_sessions pronta")
+            
+            # Inizializza memoria conversazionale
+            await chat_memory.init_db()
+            logger.info("✅ Memoria conversazionale pronta")
+            
             logger.info("✅ Database PostgreSQL pronto")
         else:
             logger.error("❌ Errore inizializzazione database!")

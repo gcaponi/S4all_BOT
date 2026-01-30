@@ -20,13 +20,10 @@ python-dotenv==1.0.0
 scikit-learn>=1.5.2
 numpy>=1.24.3
 
-# ❌ RIMOSSO: sentence-transformers e torch (troppo pesanti per 512 MB)
-# Il classificatore usa SOLO scikit-learn (Naive Bayes + CountVectorizer)
-# Questo è sufficiente per accuracy 77%+ e sta nei 512 MB di Render free
-
 # Database PostgreSQL
 psycopg2-binary==2.9.7 # PostgreSQL
 sqlalchemy==2.0.46
+aiosqlite==0.19.0  # SQLite async per memoria conversazionale
 
 # Development/Testing
 pytest>=7.4.3

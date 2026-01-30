@@ -17,6 +17,18 @@ class EnhancedIntentClassifier:
         # Configurazioni
         self.MIN_CONFIDENCE = 0.65
         self.FALLBACK_THRESHOLD = 0.45
+        
+        # Soglie specifiche per intent (hybrid confidence system)
+        self.INTENT_CONFIDENCE_THRESHOLDS = {
+            'order': 0.85,           # Ordini: alta confidenza richiesta
+            'order_confirmation': 0.80,  # Conferme ordine: alta confidenza
+            'search': 0.75,          # Ricerca prodotti: media-alta
+            'faq': 0.70,             # FAQ: media confidenza
+            'list': 0.70,            # Lista: media confidenza
+            'contact': 0.75,         # Contatti: media-alta
+            'saluto': 0.60,          # Saluti: bassa (spesso ignorati)
+            'fallback': 0.0          # Fallback: sempre accettato
+        }
         self.USE_HYBRID = True
         
         # Inizializza componenti
@@ -379,6 +391,75 @@ class EnhancedIntentClassifier:
         if debug:
             print(f"🔍 No match found → fallback")
         return "fallback", 0.0
+    
+    def _apply_fallback_rules(self, message: str, debug=False) -> tuple:
+        """
+        Fallback rules ultraleggere per casi ambigui.
+        Usate solo quando ML confidence è bassa.
+        Returns: (intent, confidence) o None
+        """
+        message_lower = message.lower()
+        
+        # Ordini con quantità esplicita
+        if re.search(r'\b(voglio|ordino|prenoto|vorrei)\s+\d', message_lower):
+            if debug:
+                print("🔧 Fallback rule: ordine con quantità")
+            return "order", 0.90
+        
+        # Ricerca prezzo/costo con prodotto
+        if re.search(r'\b(quanto|prezzo|costo)\s+(costa|è|per|del|della)\s+\w{3,}', message_lower):
+            if debug:
+                print("🔧 Fallback rule: richiesta prezzo")
+            return "search", 0.88
+        
+        # Domande FAQ chiare
+        if re.search(r'\b(come|quando)\s+(pago|spedisci|arriva|ordino)\b', message_lower):
+            if debug:
+                print("🔧 Fallback rule: domanda procedurale")
+            return "faq", 0.85
+        
+        # Lista prodotti
+        if re.search(r'\b(lista|catalogo|tutto|mostra|prodotti)\b', message_lower):
+            if debug:
+                print("🔧 Fallback rule: richiesta lista")
+            return "list", 0.87
+        
+        return None
+    
+    def classify_with_threshold(self, message: str, debug=False) -> tuple:
+        """
+        Classifica con controllo soglie specifiche per intent.
+        Applica fallback rules se confidence troppo bassa.
+        Returns: (intent, confidence)
+        """
+        # Classifica normalmente
+        intent, confidence = self.classify(message, debug)
+        
+        # Ottieni soglia specifica per questo intent
+        required_threshold = self.INTENT_CONFIDENCE_THRESHOLDS.get(intent, self.MIN_CONFIDENCE)
+        
+        if debug:
+            print(f"🎯 Intent: {intent} (conf: {confidence:.2f}, required: {required_threshold:.2f})")
+        
+        # Se confidence insufficiente, prova fallback rules
+        if confidence < required_threshold and intent != "fallback":
+            if debug:
+                print(f"⚠️ Confidence troppo bassa, applico fallback rules...")
+            
+            fallback_result = self._apply_fallback_rules(message, debug)
+            
+            if fallback_result:
+                fallback_intent, fallback_conf = fallback_result
+                if debug:
+                    print(f"✅ Fallback rules: {fallback_intent} ({fallback_conf:.2f})")
+                return fallback_intent, fallback_conf
+            
+            # Nessuna fallback rule matchata → ritorna fallback
+            if debug:
+                print(f"❌ Nessuna fallback rule matchata → fallback")
+            return "fallback", 0.0
+        
+        return intent, confidence
             
     def _classify_by_regex(self, message, debug=False):
         """Classifica usando regex patterns"""
@@ -438,6 +519,22 @@ class EnhancedIntentClassifier:
         has_category = any(category in message for category in self.category_keywords)
         is_question = '?' in message
         
+        # Fuzzy matching per errori battitura (solo se non ha match esatto)
+        if not has_product and not has_category:
+            from difflib import SequenceMatcher
+            for word in words:
+                if len(word) >= 4:  # Solo parole >= 4 caratteri
+                    for product in self.product_keywords:
+                        if len(product) >= 4:
+                            similarity = SequenceMatcher(None, word, product).ratio()
+                            if similarity >= 0.85:  # 85% similarità
+                                has_product = True
+                                if debug:
+                                    print(f"🔍 Fuzzy match: '{word}' ~ '{product}' ({similarity:.2f})")
+                                break
+                    if has_product:
+                        break
+        
         # ============================================
         # ORDINE PRIORITÀ (DAL PIÙ SPECIFICO AL GENERICO)
         # ============================================
@@ -457,6 +554,9 @@ class EnhancedIntentClassifier:
             if 'quanto' in message and 'costa' in message and has_product:
                 if 'spedizione' not in message:
                     return "search", 0.85
+            # "quanto costa [per] spedizione" senza prodotto = FAQ
+            if 'quanto' in message and 'costa' in message and 'spedizione' in message and not has_product:
+                return "faq", 0.90
             return "faq", 0.85
         
         # 2. PREZZO/QUANTO + PRODOTTO = SEARCH (non order!)
@@ -469,6 +569,29 @@ class EnhancedIntentClassifier:
         implicit_order_confidence = self._analyze_implicit_order(message, message.lower())
         if implicit_order_confidence > 0:
             return "order", max(0.98, implicit_order_confidence)
+        
+        # 2.5 NUMERI SCRITTI + PRODOTTO = ORDER
+        # "quattro anavar", "tre testosterone", "due deca"
+        numeri_scritti = ['uno', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 
+                         'otto', 'nove', 'dieci', 'undici', 'dodici']
+        for numero in numeri_scritti:
+            if numero in message and (has_product or has_category):
+                return "order", 0.95
+        
+        # 2.6 DIALETTO "ME SERVE" + PRODOTTO = ORDER
+        # "me serve testo", "me servono anavar"
+        if re.search(r'\bme\s+serv[eo]', message) and (has_product or has_category):
+            return "order", 0.93
+        
+        # 2.7 COURTESY "PERFETTO/OK ATTENDO" = FALLBACK
+        courtesy_attendo = [
+            r'\b(perfetto|ok|va bene|bene)\s+(attendo|aspetto)',
+            r'\battendo\s+(aggiornamenti|notizie|risposta)',
+            r'\baspetto\s+(notizie|aggiornamenti)'
+        ]
+        for pattern in courtesy_attendo:
+            if re.search(pattern, message, re.I):
+                return "fallback", 0.95
         
         # 3. WISH VERBS + PRODOTTO = ORDER (CORRETTO!)
         if any(verb in message for verb in self.wish_verbs):
@@ -596,15 +719,17 @@ class EnhancedIntentClassifier:
             score += 3
             matched_indicators.append('prezzo')
         
-        # 2. Quantità chiare (Es: "2 x testo", "3 pezzi")
+        # 2. Quantità chiare (Es: "2 x testo", "3 pezzi", "testo 2", "quattro anavar")
         quantita_patterns = [
-            r'\d+\s*x\s*\w+',
-            r'\d+\s+[a-z]{3,}', # "1 testo"
+            r'\d+\s*x\s*\w+',        # "2 x testo"
+            r'\d+\s+[a-z]{3,}',      # "1 testo"
+            r'[a-z]{3,}\s+\d+',      # "testo 2" ← NUOVO
             r'\b\d+\s*pezz[io]',
             r'\b\d+\s*confezioni',
             r'\bun[ao]?\s+(confezione|scatola|pezzo|flacone|fiala|boccetta)',
-            r'\bdue\s+(confezioni|scatole|pezzi|fiale)',
-            r'\btre\s+(confezioni|scatole|pezzi|fiale)',
+            # Numeri scritti + prodotto/unità
+            r'\b(uno|due|tre|quattro|cinque|sei|sette|otto|nove|dieci)\s+[a-z]{4,}',  # "quattro anavar" ← NUOVO
+            r'\b(uno|due|tre|quattro|cinque)\s+(confezioni|scatole|pezzi|fiale)',      # "tre confezioni"
         ]
         
         for pattern in quantita_patterns:
