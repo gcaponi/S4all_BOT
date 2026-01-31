@@ -273,7 +273,25 @@ class EnhancedIntentClassifier:
         ]
         
         # ========================================
-        # EARLY CHECK: CONVERSAZIONI POST-ACQUISTO (richiedono umano) = FALLBACK MUTO
+        # EARLY CHECK: FOLLOW-UP SPEDIZIONE (prima dei saluti)
+        # ========================================
+        shipping_followup_patterns = [
+            r'\b(non\s+hanno\s+spedito|ancora\s+non\s+spedito|non\s+è\s+spedito)\b',
+            r'\b(dove\s+è\s+(il\s+)?(pacco|ordine|collo)|dov\'è\s+(il\s+)?pacco)\b',
+            r'\b(quando\s+(spedite|spedisci|arriva|manda))\b',
+            r'\b(è\s+partito|è\s+in\s+consegna|tracking|codice\s+tracking)\b',
+            r'\b(non\s+è\s+ancora\s+arrivato|non\s+ricevuto|non\s+arriva)\b',
+            r'\b(ma\s+ancora|perché\s+non|quando\s+lo)\s.*\b(spedito|arrivato|consegnato)\b'
+        ]
+        
+        for pattern in shipping_followup_patterns:
+            if re.search(pattern, message_lower, re.I):
+                if debug:
+                    print(f"⏭️ Follow-up spedizione detected -> FAQ")
+                return "faq", 0.95  # Priorità alta sui saluti
+
+        # ========================================
+        # EARLY CHECK: CONVERSAZIONI  (richiedono umano) = FALLBACK MUTO
         # ========================================
         human_required_patterns = [
             # Domande su preparazione/prodotti ricevuti
@@ -296,7 +314,14 @@ class EnhancedIntentClassifier:
             r'\bmi\s+serve\b.*\baiuto\b',
             # Pattern "ok perfetto grazie" (fallback cortese)
             r'^(ok|perfetto|bene|ottimo)\s+(grazie|perfetto)$',
-            r'\bok\b.*\bperfetto\b.*\bgrazie\b'
+            r'\bok\b.*\bperfetto\b.*\bgrazie\b',
+            r'\b(sono|son)\s+(già\s+)?vostro\s+cliente\b',
+            r'\bcliente\s+(vecchio|esistente|attuale)\b',
+            r'\b(ho\s+un\s+)?secondo\s+(cell|cellulare|numero|telefono)\b',
+            r'\b(altro|nuovo)\s+(cell|cellulare|numero|telefono|account)\b',
+            r'\bmi\s+(chiamo|chiamano)\s+\w+\s+\w+',  # "mi chiamo Fabio Rossi"
+            r'\bsono\s+\w+\s+\w+\s+(e\s+)?(ho\s+)?',   # "sono Fabio Rossi e ho..."
+            r'\bcambio\s+(cellulare|numero|telefono)\b'
         ]
         
         for pattern in human_required_patterns:
