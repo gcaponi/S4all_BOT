@@ -1947,7 +1947,7 @@ def admin_stats():
 def admin_export():
     """Export low confidence cases per retraining"""
     auth_token = request.args.get('token')
-    if auth_token != os.environ.get('ADMIN_TOKEN', 'your-secret-token-123'):
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
         return {"error": "Unauthorized"}, 401
     
     from enhanced_logging import classification_logger
