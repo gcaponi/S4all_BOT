@@ -1212,6 +1212,12 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     intent = calcola_intenzione(text_to_classify)
     logger.info(f"🔄 Intent ricevuto: '{intent}'")
     
+    # 0. FALLBACK MUTO (priorità assoluta - silenzio)
+
+    if intent == "fallback_mute":
+        logger.info(f"➡️ Entrato in blocco FALLBACK MUTO - nessuna risposta, esco silenziosamente")
+        return  # 🔇 NON invia nulla, esci immediatamente
+
     # 1. LISTA
     if intent == "lista":
         logger.info(f"➡️ Entrato in blocco LISTA")
@@ -1225,7 +1231,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     if intent == "ordine":
         logger.info(f"➡️ Entrato in blocco ORDINE")
     
-                # ========================================
+        # ========================================
         # CHECK PRODOTTI CHE NECESSITANO ACQUA BATTERIOSTATICA
         # ========================================
         text_lower = text.lower()
@@ -1234,13 +1240,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         prodotti_acqua_necessaria = [
             'retatrutide', 'tirzepatide', 'semaglutide',
             'gh', 'ormone della crescita', 'ormone crescita',
-            'pt141', 'pt-141', 'pt 141',
-            'bpc157', 'bpc 157', 'bpc-157',
+            'pt141', 'pt-141', 'pt 141', 'bpc157', 'bpc 157', 'bpc-157',
             'melatonan', 'melatonan2', 'melanotan', 'melanotan2', 'melanotan 2',
-            'cjc', 'cjc dac', 'cjc-dac',
-            'mgf', 'peg-mgf', 'peg mgf',
-            'follistatina',
-            'igf1', 'igf-1'
+            'cjc', 'cjc dac', 'cjc-dac', 'mgf', 'peg-mgf', 'peg mgf',
+            'follistatina', 'igf1', 'igf-1'
         ]
         
         # Verifica se ordina prodotti che necessitano acqua
@@ -1365,10 +1368,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         )
     return
 
-    if intent == "fallback_mute":
-        logger.info(f"➡️ Entrato in blocco FALLBACK MUTO - nessuna risposta")
-        return  # Esce silenziosamente
-
 # ============================================================================
 # HANDLER MESSAGGI PRIVATI
 # ============================================================================
@@ -1381,6 +1380,11 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     text = message.text.strip()
     intent = calcola_intenzione(text)
     
+    # 0. FALLBACK MUTO (priorità assoluta - silenzio)
+    if intent == "fallback_mute":
+        logger.info(f"➡️ Entrato in blocco FALLBACK MUTO - nessuna risposta, esco silenziosamente")
+        return  # 🔇 NON invia nulla, esci immediatamente
+
     # 1. LISTA
     if intent == "lista":
         await message.reply_text(
@@ -1484,6 +1488,11 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     text = message.text.strip()
     intent = calcola_intenzione(text)
     chat_id = message.chat.id
+
+    # 0. FALLBACK MUTO (priorità assoluta - silenzio)
+    if intent == "fallback_mute":
+        logger.info(f"➡️ Entrato in blocco FALLBACK MUTO - nessuna risposta, esco silenziosamente")
+        return  # 🔇 NON invia nulla, esci immediatamente
 
     # 1. LISTA
     if intent == "lista":
