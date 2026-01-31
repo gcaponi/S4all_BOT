@@ -4,6 +4,38 @@ Inizializza il bot all'avvio di Gunicorn
 """
 import asyncio
 import logging
+import signal
+import sys
+from main import bot_application, logger
+
+# ============================================================================
+# GESTIONE CHIUSURA PULITA (deve essere prima dell'inizializzazione)
+# ============================================================================
+
+def graceful_shutdown(signum, frame):
+    """Gestisce la chiusura pulita quando Render manda segnale di terminazione"""
+    logger.info("🛑 Ricevuto segnale di arresto, chiudo il bot pulitamente...")
+    
+    if bot_application:
+        try:
+            # Ferma il bot correttamente
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(bot_application.stop())
+            loop.run_until_complete(bot_application.shutdown())
+            logger.info("✅ Bot arrestato correttamente")
+        except Exception as e:
+            logger.warning(f"⚠️ Errore durante arresto (normale): {e}")
+    
+    sys.exit(0)
+
+# Registra handler per segnali di terminazione SUBITO
+signal.signal(signal.SIGTERM, graceful_shutdown)
+signal.signal(signal.SIGINT, graceful_shutdown)
+logger.info("✅ Signal handlers registrati per graceful shutdown")
+
+# ============================================================================
+# CONFIGURAZIONE LOGGING E IMPORT
+# ============================================================================
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -60,7 +92,7 @@ if __name__ != '__main__':
             logger.error("❌ setup_bot() ha ritornato None")
             
     except Exception as e:
-        logger.error(f"❌ Errore inizializzazione: {e}", exc_info=True)
+        logger.error(f"❌ Errore inizizializzazione: {e}", exc_info=True)
     
     logger.info("=" * 70)
     logger.info("✅ WSGI pronto")
@@ -77,3 +109,5 @@ if __name__ == '__main__':
     main.bot_application = bot_application
     
     app.run(host='0.0.0.0', port=10000, debug=True)
+
+# End wsgi.py
