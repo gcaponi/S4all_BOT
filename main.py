@@ -1929,12 +1929,12 @@ def admin_stats():
                 </tr>
         """
     
-    html += """
+    html += f"""
             </table>
         </div>
         
         <div class="card">
-            <p><a href="/admin/export?token=TOKEN">📥 Export Low Confidence Cases (JSON)</a></p>
+            <p><a href="/admin/export?token={auth_token}">📥 Export Low Confidence Cases (JSON)</a></p>
         </div>
     </body>
     </html>
