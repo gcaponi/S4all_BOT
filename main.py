@@ -1831,4 +1831,134 @@ async def setup_bot():
         initialization_lock = False
         raise
 
+# ========================================
+# ENDPOINT ADMIN STATS
+# ========================================
+
+@app.route('/admin/stats', methods=['GET'])
+def admin_stats():
+    """Endpoint per vedere stats classificazione"""
+    # Simple auth (opzionale)
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'your-secret-token-123'):
+        return {"error": "Unauthorized"}, 401
+    
+    from enhanced_logging import classification_logger
+    
+    stats = classification_logger.get_stats()
+    low_conf = classification_logger.get_low_confidence_cases(limit=20)
+    
+    # HTML response carino
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Bot Stats</title>
+        <style>
+            body {{ font-family: Arial; margin: 20px; background: #f5f5f5; }}
+            .card {{ background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .metric {{ display: inline-block; margin: 10px 20px; }}
+            .metric-value {{ font-size: 32px; font-weight: bold; color: #2196F3; }}
+            .metric-label {{ font-size: 14px; color: #666; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th {{ background: #2196F3; color: white; }}
+            .low {{ color: #f44336; }}
+            .medium {{ color: #ff9800; }}
+            .high {{ color: #4caf50; }}
+        </style>
+    </head>
+    <body>
+        <h1>🤖 Bot Classification Stats</h1>
+        
+        <div class="card">
+            <h2>📊 Overview</h2>
+            <div class="metric">
+                <div class="metric-value">{stats['total_classifications']}</div>
+                <div class="metric-label">Total Classifications</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{stats['fallback_rate']*100:.1f}%</div>
+                <div class="metric-label">Fallback Rate</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🎯 By Intent</h2>
+            <table>
+                <tr>
+                    <th>Intent</th>
+                    <th>Count</th>
+                    <th>Avg Confidence</th>
+                </tr>
+    """
+    
+    for intent, data in sorted(stats['by_intent'].items(), key=lambda x: x[1]['count'], reverse=True):
+        conf = data['avg_confidence']
+        conf_class = 'high' if conf > 0.85 else 'medium' if conf > 0.70 else 'low'
+        html += f"""
+                <tr>
+                    <td><strong>{intent}</strong></td>
+                    <td>{data['count']}</td>
+                    <td class="{conf_class}">{conf:.2f}</td>
+                </tr>
+        """
+    
+    html += """
+            </table>
+        </div>
+        
+        <div class="card">
+            <h2>⚠️ Low Confidence Cases (últimas 20)</h2>
+            <table>
+                <tr>
+                    <th>Text</th>
+                    <th>Intent</th>
+                    <th>Confidence</th>
+                    <th>Timestamp</th>
+                </tr>
+    """
+    
+    for case in low_conf:
+        html += f"""
+                <tr>
+                    <td>{case['text']}</td>
+                    <td>{case['intent']}</td>
+                    <td class="low">{case['confidence']:.2f}</td>
+                    <td>{case['timestamp'][:19]}</td>
+                </tr>
+        """
+    
+    html += """
+            </table>
+        </div>
+        
+        <div class="card">
+            <p><a href="/admin/export?token=TOKEN">📥 Export Low Confidence Cases (JSON)</a></p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+
+@app.route('/admin/export', methods=['GET'])
+def admin_export():
+    """Export low confidence cases per retraining"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'your-secret-token-123'):
+        return {"error": "Unauthorized"}, 401
+    
+    from enhanced_logging import classification_logger
+    
+    output_file = classification_logger.export_for_retraining()
+    
+    if output_file and os.path.exists(output_file):
+        with open(output_file, 'r') as f:
+            data = json.load(f)
+        return {"exported": len(data), "cases": data}, 200
+    
+    return {"error": "Export failed"}, 500
+
 # End main.py
