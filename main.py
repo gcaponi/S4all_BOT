@@ -1840,7 +1840,7 @@ def admin_stats():
     """Endpoint per vedere stats classificazione"""
     # Simple auth (opzionale)
     auth_token = request.args.get('token')
-    if auth_token != os.environ.get('ADMIN_TOKEN', 'your-secret-token-123'):
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
         return {"error": "Unauthorized"}, 401
     
     from enhanced_logging import classification_logger
