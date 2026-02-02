@@ -5,7 +5,7 @@ Gestisce: user_tags, authorized_users, ordini_confermati, access_code
 import os
 import logging
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, inspect
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -48,36 +48,6 @@ class UserTag(Base):
     username = Column(String(100), nullable=True)   # @username
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-def migrate_user_tags_add_profile_columns():
-    """Migrazione: Aggiunge user_name e username a user_tags esistente"""
-    session = SessionLocal()
-    try:
-        # Controlla se migrazione è necessaria
-        inspector = inspect(session.bind)
-        columns = inspector.get_columns('user_tags')
-        existing_columns = [col['name'] for col in columns]
-        
-        if 'user_name' in existing_columns and 'username' in existing_columns:
-            logger.info("✅ Tabella user_tags già migrata")
-            return True
-            
-        logger.info("🔄 Inizio migrazione user_tags...")
-        
-        # Aggiungi nuove colonne
-        session.execute("ALTER TABLE user_tags ADD COLUMN IF NOT EXISTS user_name VARCHAR(200)")
-        session.execute("ALTER TABLE user_tags ADD COLUMN IF NOT EXISTS username VARCHAR(100)")
-        session.commit()
-        
-        logger.info("✅ Migrazione user_tags completata")
-        return True
-        
-    except Exception as e:
-        session.rollback()
-        logger.error(f"❌ Errore migrazione user_tags: {e}")
-        return False
-    finally:
-        session.close()
 
 class ChatSession(Base):
     """Tabella chat_sessions - Tracking sessioni e auto-messages"""
@@ -125,18 +95,13 @@ class AppConfig(Base):
 # ============================================================================
 
 def init_db():
-    """Crea tutte le tabelle se non esistono + migrazione automatica"""
+    """Crea tutte le tabelle se non esistono"""
     try:
-        # Crea tabelle base
         Base.metadata.create_all(bind=engine)
-        logger.info("✅ Database inizializzato")
-        
-        # MIGRAZIONE AUTOMATICA
-        migrate_user_tags_add_profile_columns()
-            
+        logger.info("âœ… Database inizializzato")
         return True
     except Exception as e:
-        logger.error(f"❌ Errore inizializzazione database: {e}")
+        logger.error(f"âŒ Errore inizializzazione database: {e}")
         return False
 
 # ============================================================================
@@ -160,17 +125,11 @@ def set_user_tag(user_id: int, tag: str):
         
         if user:
             user.tag = tag
-            user.user_name = user_name  # 🆕 Aggiorna nome
-            user.username = username    # 🆕 Aggiorna username
             user.updated_at = datetime.utcnow()
         else:
-            user = UserTag(
-                user_id=str(user_id), 
-                tag=tag,
-                user_name=user_name,    # 🆕 Salva nome
-                username=username       # 🆕 Salva username
-            )
-
+            user = UserTag(user_id=str(user_id), tag=tag)
+            session.add(user)
+        
         session.commit()
         logger.info(f"âœ… User {user_id} registrato con tag: {tag}")
     except Exception as e:
@@ -199,24 +158,6 @@ def remove_user_tag(user_id: int) -> bool:
 
 def load_user_tags() -> dict:
     """Carica tutti i tag (per compatibilitÃ  con vecchio codice)"""
-    session = SessionLocal()
-    try:
-        users = session.query(UserTag).all()
-        return {
-            user.user_id: {
-                'tag': user.tag,
-                'user_name': user.user_name,
-                'username': user.username,
-                'created_at': user.created_at,
-                'updated_at': user.updated_at
-            } 
-            for user in users
-        }
-    finally:
-        session.close()
-        
-def load_user_tags_simple() -> dict:
-    """Carica solo {user_id: tag} per retrocompatibilità"""
     session = SessionLocal()
     try:
         users = session.query(UserTag).all()
