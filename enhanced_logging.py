@@ -125,6 +125,79 @@ class ClassificationLogger:
             key=lambda x: x['confidence']
         )[:limit]
     
+    def get_cases_by_intent(self, intent: str = None, limit: int = 100) -> list:
+        """
+        Ritorna tutti i casi per un intent specifico
+        Se intent=None, ritorna tutto
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        if intent:
+            cursor.execute('''
+                SELECT text, intent, confidence, timestamp
+                FROM classifications
+                WHERE intent = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            ''', (intent, limit))
+        else:
+            cursor.execute('''
+                SELECT text, intent, confidence, timestamp
+                FROM classifications
+                ORDER BY timestamp DESC
+                LIMIT ?
+            ''', (limit,))
+        
+        cases = []
+        for row in cursor.fetchall():
+            cases.append({
+                'text': row[0],
+                'intent': row[1],
+                'confidence': row[2],
+                'timestamp': row[3]
+            })
+        
+        conn.close()
+        return cases
+    
+    def get_confidence_distribution(self, intent: str) -> dict:
+        """
+        Ritorna distribuzione delle confidence per un intent
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                COUNT(*) as total,
+                AVG(confidence) as avg_conf,
+                MIN(confidence) as min_conf,
+                MAX(confidence) as max_conf,
+                SUM(CASE WHEN confidence < 0.5 THEN 1 ELSE 0 END) as very_low,
+                SUM(CASE WHEN confidence >= 0.5 AND confidence < 0.7 THEN 1 ELSE 0 END) as low,
+                SUM(CASE WHEN confidence >= 0.7 AND confidence < 0.85 THEN 1 ELSE 0 END) as medium,
+                SUM(CASE WHEN confidence >= 0.85 THEN 1 ELSE 0 END) as high
+            FROM classifications
+            WHERE intent = ?
+        ''', (intent,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row and row[0] > 0:
+            return {
+                'total': row[0],
+                'avg_confidence': row[1],
+                'min_confidence': row[2],
+                'max_confidence': row[3],
+                'very_low': row[4],  # <0.5
+                'low': row[5],       # 0.5-0.7
+                'medium': row[6],    # 0.7-0.85
+                'high': row[7]       # >0.85
+            }
+        return {}
+    
     def export_for_retraining(self, output_file: str = None):
         """Esporta low confidence cases per retraining"""
         if not output_file:
