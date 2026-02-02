@@ -2371,23 +2371,4 @@ def admin_trends():
     
     return html
 
-@app.route('/fixdb', methods=['GET'])
-def fix_database():
-    """Endpoint temporaneo per fixare il database"""
-    import os
-    # Protezione con secret
-    if request.args.get('key') != os.environ.get('ADMIN_TOKEN', 'S4all'):
-        return "Unauthorized", 401
-    
-    try:
-        from sqlalchemy import text
-        session = db.SessionLocal()
-        session.execute(text("ALTER TABLE user_tags ADD COLUMN IF NOT EXISTS user_name VARCHAR(200)"))
-        session.execute(text("ALTER TABLE user_tags ADD COLUMN IF NOT EXISTS username VARCHAR(100)"))
-        session.commit()
-        session.close()
-        return "✅ Colonne aggiunte! Rimuovi questo endpoint ora.", 200
-    except Exception as e:
-        return f"Errore: {str(e)}", 500
-        
 # End main.py
