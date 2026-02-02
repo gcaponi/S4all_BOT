@@ -5,7 +5,7 @@ Gestisce: user_tags, authorized_users, ordini_confermati, access_code
 import os
 import logging
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -305,19 +305,6 @@ def clear_old_orders(days=1):
         session.close()
 
 # ============================================================================
-# MODELLO ADMIN - AGGIUNGI DOPO AppConfig
-# ============================================================================
-
-class Admin(Base):
-    """Tabella admins - Gestione multi-admin"""
-    __tablename__ = 'admins'
-    
-    user_id = Column(String(50), primary_key=True, index=True)
-    added_by = Column(String(50), nullable=True)
-    added_at = Column(DateTime, default=datetime.utcnow)
-    is_super = Column(Integer, default=0)  # 0=False, 1=True (SQLite compatibility)
-
-# ============================================================================
 # GESTIONE MULTI-ADMIN - DOPO load_access_code()
 # ============================================================================
 
@@ -380,11 +367,326 @@ def get_all_admins() -> list:
         return [{'user_id': int(a.user_id), 'added_by': int(a.added_by) if a.added_by else None, 'added_at': a.added_at, 'is_super': bool(a.is_super)} for a in admins]
     finally:
         session.close()
-            
+
+# ============================================================================
+# LOGGING CLASSIFICAZIONI
+# ============================================================================
+def log_classification(text: str, intent: str, confidence: float):
+    """Salva log classificazione in PostgreSQL"""
+    session = SessionLocal()
+    try:
+        log_entry = Classification(
+            text=text,
+            intent=intent,
+            confidence=str(round(confidence, 2))
+        )
+        session.add(log_entry)
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ log_classification: {e}")
+    finally:
+        session.close()
+
+def get_classification_stats() -> dict:
+    """Ottieni statistiche classificazioni"""
+    session = SessionLocal()
+    try:
+        from sqlalchemy import func
+        
+        total = session.query(func.count(Classification.id)).scalar()
+        
+        if total == 0:
+            return {'total_classifications': 0, 'fallback_rate': 0.0, 'by_intent': {}}
+        
+        fallback_count = session.query(func.count(Classification.id)).filter(
+            Classification.intent == 'fallback'
+        ).scalar()
+        
+        # Stats per intent
+        intent_stats = session.query(
+            Classification.intent,
+            func.count(Classification.id).label('count'),
+            func.avg(func.cast(Classification.confidence, Float)).label('avg_conf')
+        ).group_by(Classification.intent).all()
+        
+        by_intent = {}
+        for intent, count, avg_conf in intent_stats:
+            by_intent[intent] = {
+                'count': count,
+                'avg_confidence': float(avg_conf) if avg_conf else 0.0
+            }
+        
+        return {
+            'total_classifications': total,
+            'fallback_rate': fallback_count / total if total > 0 else 0.0,
+            'by_intent': by_intent
+        }
+    except Exception as e:
+        logger.error(f"❌ get_classification_stats: {e}")
+        return {'total_classifications': 0, 'fallback_rate': 0.0, 'by_intent': {}}
+    finally:
+        session.close()
+
+def get_low_confidence_cases(threshold: float = 0.7, limit: int = 20) -> list:
+    """Ottieni casi con bassa confidence"""
+    session = SessionLocal()
+    try:
+        cases = session.query(Classification).filter(
+            func.cast(Classification.confidence, Float) < threshold
+        ).order_by(Classification.timestamp.desc()).limit(limit).all()
+        
+        return [
+            {
+                'text': c.text,
+                'intent': c.intent,
+                'confidence': float(c.confidence),
+                'timestamp': c.timestamp.isoformat()
+            }
+            for c in cases
+        ]
+    except Exception as e:
+        logger.error(f"❌ get_low_confidence_cases: {e}")
+        return []
+    finally:
+        session.close()
+
+def get_cases_by_intent(intent: str = None, limit: int = 100) -> list:
+    """Ottieni tutti i casi per intent specifico"""
+    session = SessionLocal()
+    try:
+        query = session.query(Classification)
+        
+        if intent:
+            query = query.filter(Classification.intent == intent)
+        
+        cases = query.order_by(Classification.timestamp.desc()).limit(limit).all()
+        
+        return [
+            {
+                'text': c.text,
+                'intent': c.intent,
+                'confidence': float(c.confidence),
+                'timestamp': c.timestamp.isoformat()
+            }
+            for c in cases
+        ]
+    except Exception as e:
+        logger.error(f"❌ get_cases_by_intent: {e}")
+        return []
+    finally:
+        session.close()
+
+def get_confidence_distribution(intent: str) -> dict:
+    """Distribuzione confidence per intent"""
+    session = SessionLocal()
+    try:
+        from sqlalchemy import func, case
+        
+        stats = session.query(
+            func.count(Classification.id).label('total'),
+            func.avg(func.cast(Classification.confidence, Float)).label('avg_conf'),
+            func.min(func.cast(Classification.confidence, Float)).label('min_conf'),
+            func.max(func.cast(Classification.confidence, Float)).label('max_conf'),
+            func.sum(case((func.cast(Classification.confidence, Float) < 0.5, 1), else_=0)).label('very_low'),
+            func.sum(case((func.cast(Classification.confidence, Float).between(0.5, 0.7), 1), else_=0)).label('low'),
+            func.sum(case((func.cast(Classification.confidence, Float).between(0.7, 0.85), 1), else_=0)).label('medium'),
+            func.sum(case((func.cast(Classification.confidence, Float) >= 0.85, 1), else_=0)).label('high')
+        ).filter(Classification.intent == intent).first()
+        
+        if not stats or stats.total == 0:
+            return {}
+        
+        return {
+            'total': stats.total,
+            'avg_confidence': float(stats.avg_conf) if stats.avg_conf else 0.0,
+            'min_confidence': float(stats.min_conf) if stats.min_conf else 0.0,
+            'max_confidence': float(stats.max_conf) if stats.max_conf else 0.0,
+            'very_low': stats.very_low or 0,
+            'low': stats.low or 0,
+            'medium': stats.medium or 0,
+            'high': stats.high or 0
+        }
+    except Exception as e:
+        logger.error(f"❌ get_confidence_distribution: {e}")
+        return {}
+    finally:
+        session.close()
+
+def aggregate_monthly_stats(year_month: str = None):
+    """
+    Aggrega stats mensili prima di cleanup
+    year_month formato: "2026-02" (se None, aggrega mese precedente)
+    """
+    from calendar import monthrange
+    
+    session = SessionLocal()
+    try:
+        # Se non specificato, aggrega il mese precedente
+        if not year_month:
+            now = datetime.utcnow()
+            if now.month == 1:
+                year = now.year - 1
+                month = 12
+            else:
+                year = now.year
+                month = now.month - 1
+            year_month = f"{year}-{month:02d}"
+        
+        # Verifica se già aggregato
+        existing = session.query(ClassificationMonthlyStat).filter_by(year_month=year_month).first()
+        if existing:
+            logger.info(f"⚠️ Stats per {year_month} già aggregate")
+            return
+        
+        # Calcola date range per il mese
+        year, month = map(int, year_month.split('-'))
+        start_date = datetime(year, month, 1)
+        last_day = monthrange(year, month)[1]
+        end_date = datetime(year, month, last_day, 23, 59, 59)
+        
+        # Query dati del mese
+        from sqlalchemy import func
+        
+        total = session.query(func.count(Classification.id)).filter(
+            Classification.timestamp >= start_date,
+            Classification.timestamp <= end_date
+        ).scalar()
+        
+        if total == 0:
+            logger.info(f"📊 Nessun dato per {year_month}, skip aggregazione")
+            return
+        
+        fallback_count = session.query(func.count(Classification.id)).filter(
+            Classification.timestamp >= start_date,
+            Classification.timestamp <= end_date,
+            Classification.intent == 'fallback'
+        ).scalar()
+        
+        fallback_rate = (fallback_count / total * 100) if total > 0 else 0.0
+        
+        # Stats per intent
+        intent_stats = session.query(
+            Classification.intent,
+            func.count(Classification.id).label('count'),
+            func.avg(func.cast(Classification.confidence, Float)).label('avg_conf')
+        ).filter(
+            Classification.timestamp >= start_date,
+            Classification.timestamp <= end_date
+        ).group_by(Classification.intent).all()
+        
+        by_intent = {}
+        for intent, count, avg_conf in intent_stats:
+            by_intent[intent] = {
+                'count': count,
+                'avg_confidence': round(float(avg_conf) if avg_conf else 0.0, 2)
+            }
+        
+        # Salva stats aggregate
+        monthly_stat = ClassificationMonthlyStat(
+            year_month=year_month,
+            total_classifications=total,
+            fallback_count=fallback_count,
+            fallback_rate=f"{fallback_rate:.1f}",
+            by_intent_json=json.dumps(by_intent, ensure_ascii=False)
+        )
+        
+        session.add(monthly_stat)
+        session.commit()
+        
+        logger.info(f"📊 Stats aggregate per {year_month}: {total} classificazioni, {fallback_rate:.1f}% fallback")
+        
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ aggregate_monthly_stats: {e}")
+    finally:
+        session.close()
+        
+def cleanup_old_classifications(days: int = 30) -> int:
+    """
+    Cancella classificazioni più vecchie di N giorni
+    Prima aggrega stats mensili per i mesi che verranno cancellati
+    """
+    from datetime import timedelta
+    from calendar import monthrange
+    
+    session = SessionLocal()
+    try:
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        
+        # STEP 1: Identifica i mesi che verranno cancellati
+        oldest = session.query(func.min(Classification.timestamp)).filter(
+            Classification.timestamp < cutoff_date
+        ).scalar()
+        
+        if oldest:
+            # Aggrega ogni mese che verrà cancellato
+            current_date = oldest.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            while current_date < cutoff_date:
+                year_month = current_date.strftime("%Y-%m")
+                
+                # Aggrega solo se ci sono dati e non già aggregato
+                existing = session.query(ClassificationMonthlyStat).filter_by(year_month=year_month).first()
+                if not existing:
+                    logger.info(f"📊 Aggregazione pre-cleanup per {year_month}")
+                    session.close()  # Chiudi sessione corrente
+                    aggregate_monthly_stats(year_month)
+                    session = SessionLocal()  # Riapri nuova sessione
+                
+                # Passa al mese successivo
+                if current_date.month == 12:
+                    current_date = current_date.replace(year=current_date.year + 1, month=1)
+                else:
+                    current_date = current_date.replace(month=current_date.month + 1)
+        
+        # STEP 2: Cancella i dettagli
+        deleted = session.query(Classification).filter(
+            Classification.timestamp < cutoff_date
+        ).delete()
+        
+        session.commit()
+        logger.info(f"🗑️ Cancellate {deleted} classificazioni più vecchie di {days} giorni")
+        return deleted
+        
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ cleanup_old_classifications: {e}")
+        return 0
+    finally:
+        session.close()
+def get_monthly_trends(months: int = 6) -> list:
+    """
+    Ottieni trend storici ultimi N mesi
+    Ritorna lista ordinata dal più recente al più vecchio
+    """
+    session = SessionLocal()
+    try:
+        trends = session.query(ClassificationMonthlyStat).order_by(
+            ClassificationMonthlyStat.year_month.desc()
+        ).limit(months).all()
+        
+        result = []
+        for trend in trends:
+            by_intent = json.loads(trend.by_intent_json) if trend.by_intent_json else {}
+            result.append({
+                'year_month': trend.year_month,
+                'total': trend.total_classifications,
+                'fallback_count': trend.fallback_count,
+                'fallback_rate': trend.fallback_rate,
+                'by_intent': by_intent,
+                'created_at': trend.created_at.isoformat()
+            })
+        
+        return result
+    except Exception as e:
+        logger.error(f"❌ get_monthly_trends: {e}")
+        return []
+    finally:
+        session.close()
+        
 # ============================================================================
 # FUNZIONI APP CONFIG (access_code, ecc.)
 # ============================================================================
-
 def get_config(key: str, default: str = None) -> str:
     """Ottieni valore configurazione"""
     session = SessionLocal()
@@ -430,9 +732,45 @@ def save_access_code(code: str):
     set_config('access_code', code)
 
 # ============================================================================
+# MODELLO ADMIN
+# ============================================================================
+class Admin(Base):
+    """Tabella admins - Gestione multi-admin"""
+    __tablename__ = 'admins'
+    
+    user_id = Column(String(50), primary_key=True, index=True)
+    added_by = Column(String(50), nullable=True)
+    added_at = Column(DateTime, default=datetime.utcnow)
+    is_super = Column(Integer, default=0)  # 0=False, 1=True (SQLite compatibility)
+
+# ============================================================================
+# DASHBOARD LOGS
+# ============================================================================
+class Classification(Base):
+    """Tabella classifications - Log classificazioni intent"""
+    __tablename__ = 'classifications'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    text = Column(Text, nullable=False)
+    intent = Column(String(50), nullable=False, index=True)
+    confidence = Column(String(10), nullable=False)  # Salviamo come string per compatibilità
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+class ClassificationMonthlyStat(Base):
+    """Tabella classification_monthly_stats - Stats aggregate mensili"""
+    __tablename__ = 'classification_monthly_stats'
+    
+    year_month = Column(String(7), primary_key=True)  # Formato: "2026-02"
+    total_classifications = Column(Integer, default=0)
+    fallback_count = Column(Integer, default=0)
+    fallback_rate = Column(String(10))  # Percentuale come string (es. "27.6")
+    by_intent_json = Column(Text)  # JSON con stats per intent
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+# ============================================================================
 # COMPATIBILITÀ CON JSON (per facilitare migrazione)
 # ============================================================================
-
 def save_user_tags(tags_dict):
     """CompatibilitÃ  - non fa nulla, giÃ  salvato nel DB"""
     pass
