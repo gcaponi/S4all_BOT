@@ -83,11 +83,7 @@ class OrdineConfermato(Base):
 class AppConfig(Base):
     """Tabella app_config - Configurazioni app (access_code, ecc.)"""
     __tablename__ = 'app_config'
-
-    user_id = Column(String(50), primary_key=True, index=True)
-    added_by = Column(String(50), nullable=True)
-    added_at = Column(DateTime, default=datetime.utcnow)
-    is_super = Column(Integer, default=0)  # 0=False, 1=True (SQLite compatibility)
+    
     key = Column(String(100), primary_key=True)
     value = Column(Text)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -309,7 +305,7 @@ def clear_old_orders(days=1):
         session.close()
 
 # ============================================================================
-# MODELLO ADMIN (AGGIUNGI AI MODELLI ESISTENTI)
+# MODELLO ADMIN - AGGIUNGI DOPO AppConfig
 # ============================================================================
 
 class Admin(Base):
@@ -322,114 +318,69 @@ class Admin(Base):
     is_super = Column(Integer, default=0)  # 0=False, 1=True (SQLite compatibility)
 
 # ============================================================================
-# GESTIONE MULTI-ADMIN
+# GESTIONE MULTI-ADMIN - DOPO load_access_code()
 # ============================================================================
 
 def init_admins_table():
-    """Crea tabella admins se non esiste - gestito da Base.metadata.create_all"""
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Tabella admins verificata/creata")
-    except Exception as e:
-        logger.error(f"❌ Errore init_admins_table: {e}")
+    """Già gestito da Base.metadata.create_all in init_db()"""
+    pass
 
 def add_admin(user_id: int, added_by: int = None, is_super: bool = False) -> bool:
-    """Aggiunge un admin al sistema"""
     session = SessionLocal()
     try:
         admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
-        
         if not admin:
-            admin = Admin(
-                user_id=str(user_id),
-                added_by=str(added_by) if added_by else None,
-                is_super=1 if is_super else 0
-            )
+            admin = Admin(user_id=str(user_id), added_by=str(added_by) if added_by else None, is_super=1 if is_super else 0)
             session.add(admin)
             session.commit()
-            logger.info(f"✅ Admin aggiunto: {user_id} (super={is_super})")
+            logger.info(f"✅ Admin aggiunto: {user_id}")
             return True
-        else:
-            logger.info(f"⚠️ Admin {user_id} già esistente")
-            return False
+        return False
     except Exception as e:
         session.rollback()
-        logger.error(f"❌ Errore add_admin: {e}")
+        logger.error(f"❌ add_admin: {e}")
         return False
     finally:
         session.close()
 
 def remove_admin(user_id: int) -> bool:
-    """Rimuove un admin (non può rimuovere super admin)"""
     session = SessionLocal()
     try:
         admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
-        
-        if not admin:
-            logger.warning(f"⚠️ Admin {user_id} non trovato")
+        if not admin or admin.is_super:
             return False
-        
-        # Non permettere rimozione super admin
-        if admin.is_super:
-            logger.warning(f"⚠️ Tentativo rimozione SUPER ADMIN {user_id} bloccato")
-            return False
-        
         session.delete(admin)
         session.commit()
-        logger.info(f"✅ Admin rimosso: {user_id}")
         return True
     except Exception as e:
         session.rollback()
-        logger.error(f"❌ Errore remove_admin: {e}")
         return False
     finally:
         session.close()
 
 def is_admin(user_id: int) -> bool:
-    """Verifica se un user è admin"""
     session = SessionLocal()
     try:
-        admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
-        return admin is not None
-    except Exception as e:
-        logger.error(f"❌ Errore is_admin: {e}")
-        return False
+        return session.query(Admin).filter_by(user_id=str(user_id)).first() is not None
     finally:
         session.close()
 
 def is_super_admin(user_id: int) -> bool:
-    """Verifica se un user è SUPER ADMIN"""
     session = SessionLocal()
     try:
         admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
         return admin is not None and admin.is_super == 1
-    except Exception as e:
-        logger.error(f"❌ Errore is_super_admin: {e}")
-        return False
     finally:
         session.close()
 
 def get_all_admins() -> list:
-    """Ritorna lista di tutti gli admin con dettagli"""
     session = SessionLocal()
     try:
-        admins = session.query(Admin).order_by(Admin.is_super.desc(), Admin.added_at.asc()).all()
-        
-        return [
-            {
-                'user_id': int(admin.user_id),
-                'added_by': int(admin.added_by) if admin.added_by else None,
-                'added_at': admin.added_at,
-                'is_super': bool(admin.is_super)
-            }
-            for admin in admins
-        ]
-    except Exception as e:
-        logger.error(f"❌ Errore get_all_admins: {e}")
-        return []
+        admins = session.query(Admin).order_by(Admin.is_super.desc()).all()
+        return [{'user_id': int(a.user_id), 'added_by': int(a.added_by) if a.added_by else None, 'added_at': a.added_at, 'is_super': bool(a.is_super)} for a in admins]
     finally:
         session.close()
-
+            
 # ============================================================================
 # FUNZIONI APP CONFIG (access_code, ecc.)
 # ============================================================================
@@ -547,127 +498,7 @@ def update_auto_message_time(chat_id):
         else:
             chat_session = ChatSession(
                 chat_id=str(chat_id),
-                last_auto_msg_time=datetime.utcnow()# ============================================================================
-# MODELLO ADMIN (AGGIUNGI AI MODELLI ESISTENTI)
-# ============================================================================
-
-class Admin(Base):
-    """Tabella admins - Gestione multi-admin"""
-    __tablename__ = 'admins'
-    
-    user_id = Column(String(50), primary_key=True, index=True)
-    added_by = Column(String(50), nullable=True)
-    added_at = Column(DateTime, default=datetime.utcnow)
-    is_super = Column(Integer, default=0)  # 0=False, 1=True (SQLite compatibility)
-
-# ============================================================================
-# GESTIONE MULTI-ADMIN
-# ============================================================================
-
-def init_admins_table():
-    """Crea tabella admins se non esiste - gestito da Base.metadata.create_all"""
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("✅ Tabella admins verificata/creata")
-    except Exception as e:
-        logger.error(f"❌ Errore init_admins_table: {e}")
-
-def add_admin(user_id: int, added_by: int = None, is_super: bool = False) -> bool:
-    """Aggiunge un admin al sistema"""
-    session = SessionLocal()
-    try:
-        admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
-        
-        if not admin:
-            admin = Admin(
-                user_id=str(user_id),
-                added_by=str(added_by) if added_by else None,
-                is_super=1 if is_super else 0
-            )
-            session.add(admin)
-            session.commit()
-            logger.info(f"✅ Admin aggiunto: {user_id} (super={is_super})")
-            return True
-        else:
-            logger.info(f"⚠️ Admin {user_id} già esistente")
-            return False
-    except Exception as e:
-        session.rollback()
-        logger.error(f"❌ Errore add_admin: {e}")
-        return False
-    finally:
-        session.close()
-
-def remove_admin(user_id: int) -> bool:
-    """Rimuove un admin (non può rimuovere super admin)"""
-    session = SessionLocal()
-    try:
-        admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
-        
-        if not admin:
-            logger.warning(f"⚠️ Admin {user_id} non trovato")
-            return False
-        
-        # Non permettere rimozione super admin
-        if admin.is_super:
-            logger.warning(f"⚠️ Tentativo rimozione SUPER ADMIN {user_id} bloccato")
-            return False
-        
-        session.delete(admin)
-        session.commit()
-        logger.info(f"✅ Admin rimosso: {user_id}")
-        return True
-    except Exception as e:
-        session.rollback()
-        logger.error(f"❌ Errore remove_admin: {e}")
-        return False
-    finally:
-        session.close()
-
-def is_admin(user_id: int) -> bool:
-    """Verifica se un user è admin"""
-    session = SessionLocal()
-    try:
-        admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
-        return admin is not None
-    except Exception as e:
-        logger.error(f"❌ Errore is_admin: {e}")
-        return False
-    finally:
-        session.close()
-
-def is_super_admin(user_id: int) -> bool:
-    """Verifica se un user è SUPER ADMIN"""
-    session = SessionLocal()
-    try:
-        admin = session.query(Admin).filter_by(user_id=str(user_id)).first()
-        return admin is not None and admin.is_super == 1
-    except Exception as e:
-        logger.error(f"❌ Errore is_super_admin: {e}")
-        return False
-    finally:
-        session.close()
-
-def get_all_admins() -> list:
-    """Ritorna lista di tutti gli admin con dettagli"""
-    session = SessionLocal()
-    try:
-        admins = session.query(Admin).order_by(Admin.is_super.desc(), Admin.added_at.asc()).all()
-        
-        return [
-            {
-                'user_id': int(admin.user_id),
-                'added_by': int(admin.added_by) if admin.added_by else None,
-                'added_at': admin.added_at,
-                'is_super': bool(admin.is_super)
-            }
-            for admin in admins
-        ]
-    except Exception as e:
-        logger.error(f"❌ Errore get_all_admins: {e}")
-        return []
-    finally:
-        session.close()
+                last_auto_msg_time=datetime.utcnow()
             )
             session.add(chat_session)
         
