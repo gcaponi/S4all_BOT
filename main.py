@@ -743,6 +743,7 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "• /aggiorna_lista - Scarica il listino da JustPaste\n"
         "• /cambia_codice - Rigenera il token di sicurezza\n"
         "• /clearordini [giorni] - Cancella ordini vecchi\n"
+        "• /cleanlogs [giorni] - Cancella log classificazioni vecchi (default: 30)\n"
         "• /genera_link - Crea link autorizzazione utenti\n"
         "• /lista_autorizzati - Vedi utenti autorizzati\n"
         "• /listadmins - Vedi lista admin\n"
@@ -910,6 +911,25 @@ async def clear_ordini_command(update: Update, context: ContextTypes.DEFAULT_TYP
     deleted = db.clear_old_orders(giorni)
     await update.message.reply_text(
         f"🗑️ Cancellati {deleted} ordini più vecchi di {giorni} giorn{'o' if giorni == 1 else 'i'}"
+    )
+
+async def cleanlogs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancella log classificazioni vecchi - /cleanlogs [giorni]"""
+    if not is_admin(update.effective_user.id):
+        return
+    
+    giorni = 30
+    
+    if context.args:
+        try:
+            giorni = int(context.args[0])
+        except:
+            await update.message.reply_text("❌ Uso: /cleanlogs [giorni]\nEsempio: /cleanlogs 30")
+            return
+    
+    deleted = db.cleanup_old_classifications(giorni)
+    await update.message.reply_text(
+        f"🗑️ Cancellati {deleted} log di classificazione più vecchi di {giorni} giorn{'o' if giorni == 1 else 'i'}"
     )
 
 async def addadmin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1781,6 +1801,11 @@ async def setup_bot():
                 add_admin(ADMIN_CHAT_ID, added_by=None, is_super=True)
                 logger.info(f"✅ SUPER ADMIN configurato: {ADMIN_CHAT_ID}")
             
+            # Auto-cleanup classificazioni vecchie (retention: 30 giorni)
+            deleted = db.cleanup_old_classifications(days=30)
+            if deleted > 0:
+                logger.info(f"🗑️ Auto-cleanup: {deleted} log rimossi")
+
             # Inizializza memoria conversazionale
             await chat_memory.init_db()
             logger.info("✅ Memoria conversazionale pronta")
@@ -1857,6 +1882,7 @@ async def setup_bot():
         application.add_handler(CommandHandler("listtags", list_tags_command))
         application.add_handler(CommandHandler("removetag", remove_tag_command))
         application.add_handler(CommandHandler("clearordini", clear_ordini_command))
+        application.add_handler(CommandHandler("cleanlogs", cleanlogs_command))
         application.add_handler(CommandHandler("addadmin", addadmin_command))
         application.add_handler(CommandHandler("removeadmin", removeadmin_command))
         application.add_handler(CommandHandler("listadmins", listadmins_command))
@@ -1930,6 +1956,7 @@ async def setup_bot():
             ("listtags", "Lista clienti con tag"),
             ("removetag", "Rimuovi tag cliente"),
             ("clearordini", "Cancella ordini vecchi"),
+            ("cleanlogs", "Cancella log classificazioni vecchi"),
             ("addadmin", "Aggiungi admin"),
             ("removeadmin", "Rimuovi admin"),
             ("listadmins", "Lista admin")
@@ -2009,26 +2036,11 @@ def admin_stats():
         conf_class = 'high' if conf > 0.85 else 'medium' if conf > 0.70 else 'low'
         html += f"""
                 <tr>
-                    <td><strong>{intent}</strong></td>
+                    <td><a href="/admin/intent/{intent}?token={auth_token}" style="text-decoration: none; color: #2196F3;"><strong>{intent}</strong></a></td>
                     <td>{data['count']}</td>
                     <td class="{conf_class}">{conf:.2f}</td>
                 </tr>
         """
-    
-    html += """
-            </table>
-        </div>
-        
-        <div class="card">
-            <h2>⚠️ Low Confidence Cases (últimas 20)</h2>
-            <table>
-                <tr>
-                    <th>Text</th>
-                    <th>Intent</th>
-                    <th>Confidence</th>
-                    <th>Timestamp</th>
-                </tr>
-    """
     
     for case in low_conf:
         html += f"""
@@ -2046,13 +2058,13 @@ def admin_stats():
         
         <div class="card">
             <p><a href="/admin/export?token={auth_token}">📥 Export Low Confidence Cases (JSON)</a></p>
+            <p><a href="/admin/trends?token={auth_token}">📈 Visualizza Trend Storici</a></p>
         </div>
     </body>
     </html>
     """
     
     return html
-
 
 @app.route('/admin/export', methods=['GET'])
 def admin_export():
@@ -2071,5 +2083,301 @@ def admin_export():
         return {"exported": len(data), "cases": data}, 200
     
     return {"error": "Export failed"}, 500
+
+@app.route('/admin/intent/<intent_name>', methods=['GET'])
+def admin_intent_detail(intent_name):
+    """Analisi dettagliata di un intent specifico"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
+        return {"error": "Unauthorized"}, 401
+    
+    from enhanced_logging import classification_logger
+    
+    # Ottieni distribuzione confidence
+    distribution = classification_logger.get_confidence_distribution(intent_name)
+    
+    if not distribution:
+        return f"<h1>Intent '{intent_name}' non trovato</h1>", 404
+    
+    # Ottieni tutti i casi per questo intent
+    cases = classification_logger.get_cases_by_intent(intent_name, limit=100)
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Intent: {intent_name}</title>
+        <style>
+            body {{ font-family: Arial; margin: 20px; background: #f5f5f5; }}
+            .card {{ background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .metric {{ display: inline-block; margin: 10px 20px; }}
+            .metric-value {{ font-size: 32px; font-weight: bold; color: #2196F3; }}
+            .metric-label {{ font-size: 14px; color: #666; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th {{ background: #2196F3; color: white; }}
+            .very-low {{ background: #ffebee; color: #c62828; }}
+            .low {{ background: #fff3e0; color: #e65100; }}
+            .medium {{ background: #fff9c4; color: #f57f17; }}
+            .high {{ background: #e8f5e9; color: #2e7d32; }}
+            .back-btn {{ display: inline-block; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 20px; }}
+        </style>
+    </head>
+    <body>
+        <a href="/admin/stats?token={auth_token}" class="back-btn">← Torna al Dashboard</a>
+        
+        <h1>📊 Intent: <code>{intent_name}</code></h1>
+        
+        <div class="card">
+            <h2>📈 Distribuzione Confidence</h2>
+            <div class="metric">
+                <div class="metric-value">{distribution['total']}</div>
+                <div class="metric-label">Totale Casi</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{distribution['avg_confidence']:.2f}</div>
+                <div class="metric-label">Media Confidence</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{distribution['min_confidence']:.2f}</div>
+                <div class="metric-label">Min</div>
+            </div>
+            <div class="metric">
+                <div class="metric-value">{distribution['max_confidence']:.2f}</div>
+                <div class="metric-label">Max</div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📊 Breakdown per Livello</h2>
+            <table>
+                <tr>
+                    <th>Livello</th>
+                    <th>Range Confidence</th>
+                    <th>Conteggio</th>
+                    <th>Percentuale</th>
+                </tr>
+                <tr class="high">
+                    <td><strong>Alta</strong></td>
+                    <td>≥ 0.85</td>
+                    <td>{distribution['high']}</td>
+                    <td>{(distribution['high']/distribution['total']*100):.1f}%</td>
+                </tr>
+                <tr class="medium">
+                    <td><strong>Media</strong></td>
+                    <td>0.70 - 0.85</td>
+                    <td>{distribution['medium']}</td>
+                    <td>{(distribution['medium']/distribution['total']*100):.1f}%</td>
+                </tr>
+                <tr class="low">
+                    <td><strong>Bassa</strong></td>
+                    <td>0.50 - 0.70</td>
+                    <td>{distribution['low']}</td>
+                    <td>{(distribution['low']/distribution['total']*100):.1f}%</td>
+                </tr>
+                <tr class="very-low">
+                    <td><strong>Molto Bassa</strong></td>
+                    <td>&lt; 0.50</td>
+                    <td>{distribution['very_low']}</td>
+                    <td>{(distribution['very_low']/distribution['total']*100):.1f}%</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="card">
+            <h2>💬 Tutti i Messaggi ({len(cases)} totali)</h2>
+            <table>
+                <tr>
+                    <th>Messaggio</th>
+                    <th>Confidence</th>
+                    <th>Timestamp</th>
+                </tr>
+    """
+    
+    for case in cases:
+        conf = case['confidence']
+        conf_class = 'high' if conf >= 0.85 else 'medium' if conf >= 0.70 else 'low' if conf >= 0.50 else 'very-low'
+        
+        html += f"""
+                <tr class="{conf_class}">
+                    <td>{case['text']}</td>
+                    <td><strong>{conf:.2f}</strong></td>
+                    <td>{case['timestamp'][:19]}</td>
+                </tr>
+        """
+    
+    html += f"""
+            </table>
+        </div>
+        
+        <div class="card">
+            <h3>📥 Export Dati</h3>
+            <p><a href="/admin/export_intent/{intent_name}?token={auth_token}">📥 Download JSON per questo intent</a></p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+@app.route('/admin/export_intent/<intent_name>', methods=['GET'])
+def admin_export_intent(intent_name):
+    """Export JSON per un intent specifico"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
+        return {"error": "Unauthorized"}, 401
+    
+    from enhanced_logging import classification_logger
+    
+    cases = classification_logger.get_cases_by_intent(intent_name, limit=500)
+    
+    if not cases:
+        return {"error": "No data found"}, 404
+    
+    return {
+        "intent": intent_name,
+        "total_cases": len(cases),
+        "cases": cases
+    }, 200
+
+@app.route('/admin/trends', methods=['GET'])
+def admin_trends():
+    """Dashboard trend storici mensili"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
+        return {"error": "Unauthorized"}, 401
+    
+    months = int(request.args.get('months', 6))
+    trends = db.get_monthly_trends(months)
+    
+    if not trends:
+        return "<h1>Nessun trend storico disponibile</h1>", 404
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Trend Storici</title>
+        <style>
+            body {{ font-family: Arial; margin: 20px; background: #f5f5f5; }}
+            .card {{ background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+            .back-btn {{ display: inline-block; padding: 10px 20px; background: #2196F3; color: white; text-decoration: none; border-radius: 5px; margin-bottom: 20px; }}
+            table {{ width: 100%; border-collapse: collapse; }}
+            th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+            th {{ background: #2196F3; color: white; }}
+            .chart {{ margin: 20px 0; }}
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    </head>
+    <body>
+        <a href="/admin/stats?token={auth_token}" class="back-btn">← Torna al Dashboard</a>
+        
+        <h1>📈 Trend Storici - Ultimi {months} Mesi</h1>
+        
+        <div class="card">
+            <canvas id="trendChart" width="400" height="150"></canvas>
+        </div>
+        
+        <div class="card">
+            <h2>📊 Dettaglio Mensile</h2>
+            <table>
+                <tr>
+                    <th>Mese</th>
+                    <th>Totale</th>
+                    <th>Fallback</th>
+                    <th>Fallback Rate</th>
+                    <th>Top 3 Intent</th>
+                </tr>
+    """
+    
+    # Dati per il grafico
+    labels = []
+    fallback_rates = []
+    totals = []
+    
+    for trend in reversed(trends):  # Ordine cronologico per grafico
+        labels.append(trend['year_month'])
+        fallback_rates.append(float(trend['fallback_rate']))
+        totals.append(trend['total'])
+        
+        # Top 3 intent per questo mese
+        by_intent = trend['by_intent']
+        top_intents = sorted(by_intent.items(), key=lambda x: x[1]['count'], reverse=True)[:3]
+        top_intents_str = ", ".join([f"{intent} ({data['count']})" for intent, data in top_intents])
+        
+        html += f"""
+                <tr>
+                    <td><strong>{trend['year_month']}</strong></td>
+                    <td>{trend['total']}</td>
+                    <td>{trend['fallback_count']}</td>
+                    <td>{trend['fallback_rate']}%</td>
+                    <td>{top_intents_str}</td>
+                </tr>
+        """
+    
+    html += f"""
+            </table>
+        </div>
+        
+        <script>
+            const ctx = document.getElementById('trendChart').getContext('2d');
+            const chart = new Chart(ctx, {{
+                type: 'line',
+                data: {{
+                    labels: {json.dumps(labels)},
+                    datasets: [
+                        {{
+                            label: 'Fallback Rate (%)',
+                            data: {json.dumps(fallback_rates)},
+                            borderColor: 'rgb(255, 99, 132)',
+                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
+                            yAxisID: 'y'
+                        }},
+                        {{
+                            label: 'Totale Classificazioni',
+                            data: {json.dumps(totals)},
+                            borderColor: 'rgb(54, 162, 235)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                            yAxisID: 'y1'
+                        }}
+                    ]
+                }},
+                options: {{
+                    responsive: true,
+                    interaction: {{
+                        mode: 'index',
+                        intersect: false
+                    }},
+                    scales: {{
+                        y: {{
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {{
+                                display: true,
+                                text: 'Fallback Rate (%)'
+                            }}
+                        }},
+                        y1: {{
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {{
+                                display: true,
+                                text: 'Totale'
+                            }},
+                            grid: {{
+                                drawOnChartArea: false
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    
+    return html
 
 # End main.py
