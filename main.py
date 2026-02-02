@@ -856,7 +856,8 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     
-    tags = load_user_tags()
+    # USA LA FUNZIONE COMPATIBILE CHE NON USA LE NUOVE COLONNE
+    tags = load_user_tags_simple()  # ✅ Questa funzione esiste già!
     
     if not tags:
         await update.message.reply_text("Nessun cliente registrato con tag")
@@ -869,7 +870,7 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user = await context.bot.get_chat(int(user_id))
             nome = user.first_name or "Sconosciuto"
             username = f"@{user.username}" if user.username else "nessuno"
-            msg += f"• {nome} ({username}) → <b>{tag}</b>\n"
+            msg += f"• {nome} ({username}) ID <code>{user_id}</code> → <b>{tag}</b>\n"
         except:
             msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
     
@@ -1143,17 +1144,13 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     user_id = message.from_user.id
     chat_id = message.chat.id
     
-    # ========================================
-    # IGNORA BOT
-    # ========================================
+    #   [IGNORA BOT]
     
     if message.from_user and message.from_user.is_bot:
         logger.info(f"🤖 Bot ignorato")
         return
     
-    # ========================================
-    # HELPER INVIO RISPOSTE
-    # ========================================
+    #   [HELPER INVIO RISPOSTE]
     
     async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
         try:
@@ -1168,9 +1165,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         except Exception as e:
             logger.error(f"❌ Errore invio: {e}")
 
-    # ========================================
-    # RILEVA ADMIN AUTOMATICAMENTE
-    # ========================================
+    #   [RILEVA ADMIN AUTOMATICAMENTE]
     
     # Se from_user.id != chat.id → Admin sta scrivendo al cliente
     if user_id != chat_id:
@@ -1204,31 +1199,30 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 return
             
             # Registra il cliente (chat_id = ID del cliente)
-            set_user_tag(chat_id, tag)
-            
-            await context.bot.send_message(
-                business_connection_id=business_connection_id,
-                chat_id=chat_id,
-                text=f"✅ Cliente registrato con tag: <b>{tag}</b>",
-                parse_mode='HTML'
-            )
-            
-            logger.info(f"👨‍💼 Admin ha registrato cliente {chat_id} con tag {tag}")
-            return
+            try:
+                # Nel Business Message, il cliente è quello della chat
+                client_user = update.business_message.chat
+                client_name = getattr(client_user, 'first_name', None) or "Sconosciuto"
+                client_username = getattr(client_user, 'username', None)
+                
+                # Registra il cliente con tutti i dati
+                set_user_tag(chat_id, tag, client_name, client_username)
+                
+                logger.info(f"👤 Cliente registrato: {client_name} (@{client_username}) con tag {tag}")
+            except Exception as e:
+                logger.error(f"❌ Errore estrazione dati cliente: {e}")
+                # Fallback: registra solo con tag
+                set_user_tag(chat_id, tag)
         
         # Ignora tutti gli altri messaggi dell'admin (inclusi automatici!)
         logger.info(f"⏭️ Messaggio admin ignorato")
         return
-    
-    # ========================================
-    # MESSAGGIO DAL CLIENTE
-    # ========================================
+
+    #   [MESSAGGIO DAL CLIENTE]
     
     logger.info(f"📱 Messaggio da cliente {user_id}: '{text}'")
     
-    # ========================================
-    # CHECK PAUSA BOT (admin attivo)
-    # ========================================
+    #   [CHECK PAUSA BOT (admin attivo)]
     
     session = db.get_chat_session(chat_id)
     
@@ -1244,9 +1238,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             db.set_admin_active(chat_id, active=False)
             logger.info(f"▶️ Bot RIATTIVATO - timeout admin (30 min)")
     
-    # ========================================
-    # CHECK AUTO-MESSAGE (ogni 30 min)
-    # ========================================
+    #   [CHECK AUTO-MESSAGE (ogni 30 min)]
     
     should_send_auto = True
     
@@ -1258,9 +1250,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             should_send_auto = False
             logger.info(f"⏭️ Auto-msg skip (inviato {elapsed/60:.0f} min fa)")
     
-    # ========================================
-    # CHECK FASCIA ORARIA AUTO-MESSAGE
-    # ========================================
+    #   [CHECK FASCIA ORARIA AUTO-MESSAGE]
 
     now = datetime.now(ZoneInfo("Europe/Rome"))
     weekday = now.weekday()  # 0=Lun, 4=Ven, 5=Sab, 6=Dom
@@ -1294,9 +1284,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         db.update_auto_message_time(chat_id)
         logger.info(f"📨 Auto-message inviato a {chat_id}")
 
-    # ========================================
-    # CHECK WHITELIST TAG
-    # ========================================
+    #   [CHECK WHITELIST TAG]   
     
     user_tag = get_user_tag(user_id)
     
@@ -1306,9 +1294,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     logger.info(f"✅ Cliente con tag: {user_tag}")
     
-    # ========================================
-    # MEMORIA CONVERSAZIONALE
-    # ========================================
+    #   [MEMORIA CONVERSAZIONALE]       
     
     # Recupera contesto conversazionale
     last_entities = await chat_memory.get_last_entities(chat_id)
@@ -1322,9 +1308,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     else:
         text_to_classify = text
     
-    # ========================================
-    # CALCOLA INTENTO E RISPONDI
-    # ========================================
+    #   [CALCOLA INTENTO E RISPONDI]        
     
     intent = calcola_intenzione(text_to_classify)
     logger.info(f"🔄 Intent ricevuto: '{intent}'")
@@ -1348,9 +1332,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     if intent == "ordine":
         logger.info(f"➡️ Entrato in blocco ORDINE")
     
-        # ========================================
-        # CHECK PRODOTTI CHE NECESSITANO ACQUA BATTERIOSTATICA
-        # ========================================
+        # Check prodotti bisogno acqua
         text_lower = text.lower()
         
         # Prodotti che richiedono acqua batteriostatica per preparazione
@@ -1513,9 +1495,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     if intent == "ordine":
         text_lower = text.lower()
         
-        # ========================================
-        # CHECK PRODOTTI CHE NECESSITANO ACQUA BATTERIOSTATICA
-        # ========================================
+        # Check prodotti bisogno acqua
         prodotti_acqua_necessaria = [
             'retatrutide', 'tirzepatide', 'semaglutide',
             'gh', 'ormone della crescita', 'ormone crescita',
@@ -1793,6 +1773,16 @@ async def setup_bot():
             db.init_chat_sessions_table()
             logger.info("✅ Tabella chat_sessions pronta")
             
+            logger.info("🔍 DEBUG: Checking user_tags columns...")
+        try:
+            session = db.SessionLocal()
+            inspector = inspect(session.bind)
+            columns = inspector.get_columns('user_tags')
+            logger.info(f"🗂️ user_tags columns: {[col['name'] for col in columns]}")
+            session.close()
+        except Exception as e:
+            logger.error(f"❌ Column check failed: {e}")
+
             # Inizializza tabella admins
             init_admins_table()
             
