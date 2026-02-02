@@ -44,6 +44,8 @@ class UserTag(Base):
     
     user_id = Column(String(50), primary_key=True, index=True)
     tag = Column(String(20), nullable=False)
+    user_name = Column(String(200), nullable=True)  # Nome completo
+    username = Column(String(100), nullable=True)   # @username
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -123,11 +125,17 @@ def set_user_tag(user_id: int, tag: str):
         
         if user:
             user.tag = tag
+            user.user_name = user_name  # 🆕 Aggiorna nome
+            user.username = username    # 🆕 Aggiorna username
             user.updated_at = datetime.utcnow()
         else:
-            user = UserTag(user_id=str(user_id), tag=tag)
-            session.add(user)
-        
+            user = UserTag(
+                user_id=str(user_id), 
+                tag=tag,
+                user_name=user_name,    # 🆕 Salva nome
+                username=username       # 🆕 Salva username
+            )
+
         session.commit()
         logger.info(f"âœ… User {user_id} registrato con tag: {tag}")
     except Exception as e:
@@ -156,6 +164,24 @@ def remove_user_tag(user_id: int) -> bool:
 
 def load_user_tags() -> dict:
     """Carica tutti i tag (per compatibilitÃ  con vecchio codice)"""
+    session = SessionLocal()
+    try:
+        users = session.query(UserTag).all()
+        return {
+            user.user_id: {
+                'tag': user.tag,
+                'user_name': user.user_name,
+                'username': user.username,
+                'created_at': user.created_at,
+                'updated_at': user.updated_at
+            } 
+            for user in users
+        }
+    finally:
+        session.close()
+        
+def load_user_tags_simple() -> dict:
+    """Carica solo {user_id: tag} per retrocompatibilità"""
     session = SessionLocal()
     try:
         users = session.query(UserTag).all()
