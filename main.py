@@ -106,6 +106,7 @@ get_user_tag = db.get_user_tag
 set_user_tag = db.set_user_tag
 remove_user_tag = db.remove_user_tag
 load_user_tags = db.load_user_tags
+load_user_tags_simple = db.load_user_tags_simple
 
 # Authorized users - usa database.py
 is_user_authorized = db.is_user_authorized
