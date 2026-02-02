@@ -5,7 +5,7 @@ Gestisce: user_tags, authorized_users, ordini_confermati, access_code
 import os
 import logging
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, inspect
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -48,6 +48,36 @@ class UserTag(Base):
     username = Column(String(100), nullable=True)   # @username
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+def migrate_user_tags_add_profile_columns():
+    """Migrazione: Aggiunge user_name e username a user_tags esistente"""
+    session = SessionLocal()
+    try:
+        # Controlla se migrazione è necessaria
+        inspector = inspect(session.bind)
+        columns = inspector.get_columns('user_tags')
+        existing_columns = [col['name'] for col in columns]
+        
+        if 'user_name' in existing_columns and 'username' in existing_columns:
+            logger.info("✅ Tabella user_tags già migrata")
+            return True
+            
+        logger.info("🔄 Inizio migrazione user_tags...")
+        
+        # Aggiungi nuove colonne
+        session.execute("ALTER TABLE user_tags ADD COLUMN IF NOT EXISTS user_name VARCHAR(200)")
+        session.execute("ALTER TABLE user_tags ADD COLUMN IF NOT EXISTS username VARCHAR(100)")
+        session.commit()
+        
+        logger.info("✅ Migrazione user_tags completata")
+        return True
+        
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore migrazione user_tags: {e}")
+        return False
+    finally:
+        session.close()
 
 class ChatSession(Base):
     """Tabella chat_sessions - Tracking sessioni e auto-messages"""
@@ -95,13 +125,18 @@ class AppConfig(Base):
 # ============================================================================
 
 def init_db():
-    """Crea tutte le tabelle se non esistono"""
+    """Crea tutte le tabelle se non esistono + migrazione automatica"""
     try:
+        # Crea tabelle base
         Base.metadata.create_all(bind=engine)
-        logger.info("âœ… Database inizializzato")
+        logger.info("✅ Database inizializzato")
+        
+        # MIGRAZIONE AUTOMATICA
+        migrate_user_tags_add_profile_columns()
+            
         return True
     except Exception as e:
-        logger.error(f"âŒ Errore inizializzazione database: {e}")
+        logger.error(f"❌ Errore inizializzazione database: {e}")
         return False
 
 # ============================================================================
