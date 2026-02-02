@@ -856,7 +856,8 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         return
     
-    tags = load_user_tags()
+    # USA LA FUNZIONE COMPATIBILE CHE NON USA LE NUOVE COLONNE
+    tags = load_user_tags_simple()
     
     if not tags:
         await update.message.reply_text("Nessun cliente registrato con tag")
@@ -864,28 +865,14 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     msg = "📋 <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
     
-    for user_id, user_data in tags.items():
-        tag = user_data['tag']
-        cached_name = user_data.get('user_name')
-        cached_username = user_data.get('username')
-        
-        # 🆕 USA DATI CACHED SE DISPONIBILI
-        if cached_name and cached_name != 'Sconosciuto':
-            username_display = f"@{cached_username}" if cached_username else "nessuno"
-            msg += f"• {cached_name} ({username_display}) ID <code>{user_id}</code> → <b>{tag}</b>\n"
-        else:
-            # 🔄 FALLBACK: Prova API e aggiorna cache
-            try:
-                user = await context.bot.get_chat(int(user_id))
-                nome = user.first_name or "Sconosciuto"
-                username_api = user.username
-                username_display = f"@{username_api}" if username_api else "nessuno"
-                msg += f"• {nome} ({username_display}) ID <code>{user_id}</code> → <b>{tag}</b>\n"
-                
-                # 🆕 AGGIORNA CACHE per il futuro
-                set_user_tag(int(user_id), tag, nome, username_api)
-            except:
-                msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
+    for user_id, tag in tags.items():
+        try:
+            user = await context.bot.get_chat(int(user_id))
+            nome = user.first_name or "Sconosciuto"
+            username = f"@{user.username}" if user.username else "nessuno"
+            msg += f"• {nome} ({username}) ID <code>{user_id}</code> → <b>{tag}</b>\n"
+        except:
+            msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
     
     if len(msg) > 4000:
         for i in range(0, len(msg), 4000):
