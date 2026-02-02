@@ -1,0 +1,570 @@
+"""
+Database Module - PostgreSQL con SQLAlchemy
+Gestisce: user_tags, authorized_users, ordini_confermati, access_code
+"""
+import os
+import logging
+from datetime import datetime
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, scoped_session
+
+logger = logging.getLogger(__name__)
+
+# ============================================================================
+# CONFIGURAZIONE DATABASE
+# ============================================================================
+
+DATABASE_URL = os.environ.get('DATABASE_URL')
+
+if not DATABASE_URL:
+    logger.error("âŒ DATABASE_URL non trovato nelle variabili ambiente!")
+    raise RuntimeError("DATABASE_URL non configurato")
+
+# Fix per Render (usa postgresql:// invece di postgres://)
+if DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+
+# Crea engine
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=False)
+
+# Crea session factory
+SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
+
+# Base per i modelli
+Base = declarative_base()
+
+# ============================================================================
+# MODELLI DATABASE
+# ============================================================================
+
+class UserTag(Base):
+    """Tabella user_tags - Tag clienti per scontistica"""
+    __tablename__ = 'user_tags'
+    
+    user_id = Column(String(50), primary_key=True, index=True)
+    tag = Column(String(20), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ChatSession(Base):
+    """Tabella chat_sessions - Tracking sessioni e auto-messages"""
+    __tablename__ = 'chat_sessions'
+    
+    chat_id = Column(String(50), primary_key=True, index=True)
+    admin_active = Column(Integer, default=0)  # 0=False, 1=True (SQLite compatibility)
+    last_admin_time = Column(DateTime, nullable=True)
+    last_auto_msg_time = Column(DateTime, default=datetime.utcnow)
+
+class AuthorizedUser(Base):
+    """Tabella authorized_users - Utenti autorizzati bot"""
+    __tablename__ = 'authorized_users'
+    
+    user_id = Column(String(50), primary_key=True, index=True)
+    name = Column(String(200))
+    username = Column(String(100))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class OrdineConfermato(Base):
+    """Tabella ordini_confermati - Ordini confermati dai clienti"""
+    __tablename__ = 'ordini_confermati'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(50), nullable=False, index=True)
+    user_name = Column(String(200))
+    username = Column(String(100))
+    message = Column(Text)
+    chat_id = Column(String(50))
+    message_id = Column(String(50))
+    data = Column(String(20))  # YYYY-MM-DD
+    ora = Column(String(20))   # HH:MM:SS
+    timestamp = Column(DateTime, default=datetime.utcnow)
+
+class AppConfig(Base):
+    """Tabella app_config - Configurazioni app (access_code, ecc.)"""
+    __tablename__ = 'app_config'
+    
+    key = Column(String(100), primary_key=True)
+    value = Column(Text)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# ============================================================================
+# INIZIALIZZAZIONE DATABASE
+# ============================================================================
+
+def init_db():
+    """Crea tutte le tabelle se non esistono"""
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("âœ… Database inizializzato")
+        return True
+    except Exception as e:
+        logger.error(f"âŒ Errore inizializzazione database: {e}")
+        return False
+
+# ============================================================================
+# FUNZIONI USER TAGS
+# ============================================================================
+
+def get_user_tag(user_id: int) -> str:
+    """Ottieni tag di un user"""
+    session = SessionLocal()
+    try:
+        user = session.query(UserTag).filter_by(user_id=str(user_id)).first()
+        return user.tag if user else None
+    finally:
+        session.close()
+
+def set_user_tag(user_id: int, tag: str):
+    """Imposta tag per un user"""
+    session = SessionLocal()
+    try:
+        user = session.query(UserTag).filter_by(user_id=str(user_id)).first()
+        
+        if user:
+            user.tag = tag
+            user.updated_at = datetime.utcnow()
+        else:
+            user = UserTag(user_id=str(user_id), tag=tag)
+            session.add(user)
+        
+        session.commit()
+        logger.info(f"âœ… User {user_id} registrato con tag: {tag}")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"âŒ Errore set_user_tag: {e}")
+    finally:
+        session.close()
+
+def remove_user_tag(user_id: int) -> bool:
+    """Rimuovi tag di un user"""
+    session = SessionLocal()
+    try:
+        user = session.query(UserTag).filter_by(user_id=str(user_id)).first()
+        if user:
+            session.delete(user)
+            session.commit()
+            logger.info(f"âœ… Tag rimosso per user {user_id}")
+            return True
+        return False
+    except Exception as e:
+        session.rollback()
+        logger.error(f"âŒ Errore remove_user_tag: {e}")
+        return False
+    finally:
+        session.close()
+
+def load_user_tags() -> dict:
+    """Carica tutti i tag (per compatibilitÃ  con vecchio codice)"""
+    session = SessionLocal()
+    try:
+        users = session.query(UserTag).all()
+        return {user.user_id: user.tag for user in users}
+    finally:
+        session.close()
+
+# ============================================================================
+# FUNZIONI AUTHORIZED USERS
+# ============================================================================
+
+def is_user_authorized(user_id: int) -> bool:
+    """Verifica se user Ã¨ autorizzato"""
+    session = SessionLocal()
+    try:
+        user = session.query(AuthorizedUser).filter_by(user_id=str(user_id)).first()
+        return user is not None
+    finally:
+        session.close()
+
+def authorize_user(user_id: int, first_name: str = None, last_name: str = None, username: str = None) -> bool:
+    """Autorizza un nuovo user"""
+    session = SessionLocal()
+    try:
+        user = session.query(AuthorizedUser).filter_by(user_id=str(user_id)).first()
+        
+        if not user:
+            full_name = f"{first_name or ''} {last_name or ''}".strip() or "Sconosciuto"
+            user = AuthorizedUser(
+                user_id=str(user_id),
+                name=full_name,
+                username=username
+            )
+            session.add(user)
+            session.commit()
+            logger.info(f"âœ… User {user_id} autorizzato")
+            return True
+        return False
+    except Exception as e:
+        session.rollback()
+        logger.error(f"âŒ Errore authorize_user: {e}")
+        return False
+    finally:
+        session.close()
+
+def load_authorized_users() -> dict:
+    """Carica tutti gli utenti autorizzati (per compatibilitÃ )"""
+    session = SessionLocal()
+    try:
+        users = session.query(AuthorizedUser).all()
+        return {
+            user.user_id: {
+                "id": int(user.user_id),
+                "name": user.name,
+                "username": user.username
+            }
+            for user in users
+        }
+    finally:
+        session.close()
+
+def revoke_user(user_id: int) -> bool:
+    """Revoca autorizzazione user"""
+    session = SessionLocal()
+    try:
+        user = session.query(AuthorizedUser).filter_by(user_id=str(user_id)).first()
+        if user:
+            session.delete(user)
+            session.commit()
+            return True
+        return False
+    finally:
+        session.close()
+
+# ============================================================================
+# FUNZIONI ORDINI CONFERMATI - CLEAR ORDINI
+# ============================================================================
+
+def add_ordine_confermato(user_id: int, user_name: str, username: str, 
+                         message_text: str, chat_id: int, message_id: int):
+    """Registra un ordine confermato"""
+    session = SessionLocal()
+    try:
+        ordine = OrdineConfermato(
+            user_id=str(user_id),
+            user_name=user_name,
+            username=username,
+            message=message_text,
+            chat_id=str(chat_id),
+            message_id=str(message_id),
+            data=datetime.now().strftime("%Y-%m-%d"),
+            ora=datetime.now().strftime("%H:%M:%S")
+        )
+        session.add(ordine)
+        session.commit()
+        logger.info(f"âœ… Ordine salvato: {user_name} ({user_id})")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"âŒ Errore add_ordine: {e}")
+    finally:
+        session.close()
+
+def get_ordini_oggi() -> list:
+    """Recupera ordini confermati oggi"""
+    session = SessionLocal()
+    try:
+        oggi = datetime.now().strftime("%Y-%m-%d")
+        ordini = session.query(OrdineConfermato).filter_by(data=oggi).all()
+        
+        return [
+            {
+                "user_id": o.user_id,
+                "user_name": o.user_name,
+                "username": o.username,
+                "message": o.message,
+                "chat_id": o.chat_id,
+                "message_id": o.message_id,
+                "data": o.data,
+                "ora": o.ora
+            }
+            for o in ordini
+        ]
+    finally:
+        session.close()
+        
+# CLEAR ORDINI
+def clear_old_orders(days=1):
+    """Cancella ordini più vecchi di N giorni"""
+    from datetime import timedelta
+    
+    session = SessionLocal()
+    try:
+        cutoff_date = datetime.now() - timedelta(days=days)
+        
+        deleted = session.query(OrdineConfermato).filter(
+            OrdineConfermato.timestamp < cutoff_date
+        ).delete()
+        
+        session.commit()
+        logger.info(f"🗑️ Cancellati {deleted} ordini più vecchi di {days} giorni")
+        return deleted
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore clear_old_orders: {e}")
+        return 0
+    finally:
+        session.close()
+
+# ============================================================================
+# GESTIONE MULTI-ADMIN
+# ============================================================================
+
+def init_admins_table():
+    """Crea tabella admins se non esiste"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS admins (
+            user_id BIGINT PRIMARY KEY,
+            added_by BIGINT,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_super BOOLEAN DEFAULT FALSE
+        )
+    ''')
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+    logger.info("✅ Tabella admins verificata/creata")
+
+def add_admin(user_id: int, added_by: int = None, is_super: bool = False) -> bool:
+    """Aggiunge un admin al sistema"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO admins (user_id, added_by, is_super)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id) DO NOTHING
+        ''', (user_id, added_by, is_super))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Admin aggiunto: {user_id} (super={is_super})")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Errore add_admin: {e}")
+        return False
+
+def remove_admin(user_id: int) -> bool:
+    """Rimuove un admin (non può rimuovere super admin)"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Non permettere rimozione super admin
+        cursor.execute('SELECT is_super FROM admins WHERE user_id = %s', (user_id,))
+        result = cursor.fetchone()
+        
+        if result and result[0]:  # is_super = True
+            logger.warning(f"⚠️ Tentativo rimozione SUPER ADMIN {user_id} bloccato")
+            cursor.close()
+            conn.close()
+            return False
+        
+        cursor.execute('DELETE FROM admins WHERE user_id = %s', (user_id,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"✅ Admin rimosso: {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Errore remove_admin: {e}")
+        return False
+
+def is_admin(user_id: int) -> bool:
+    """Verifica se un user è admin"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT user_id FROM admins WHERE user_id = %s', (user_id,))
+        result = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        return result is not None
+    except Exception as e:
+        logger.error(f"❌ Errore is_admin: {e}")
+        return False
+
+def is_super_admin(user_id: int) -> bool:
+    """Verifica se un user è SUPER ADMIN"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT is_super FROM admins WHERE user_id = %s', (user_id,))
+        result = cursor.fetchone()
+        
+        cursor.close()
+        conn.close()
+        
+        return result is not None and result[0]
+    except Exception as e:
+        logger.error(f"❌ Errore is_super_admin: {e}")
+        return False
+
+def get_all_admins() -> list:
+    """Ritorna lista di tutti gli admin con dettagli"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT user_id, added_by, added_at, is_super 
+            FROM admins 
+            ORDER BY is_super DESC, added_at ASC
+        ''')
+        
+        admins = []
+        for row in cursor.fetchall():
+            admins.append({
+                'user_id': row[0],
+                'added_by': row[1],
+                'added_at': row[2],
+                'is_super': row[3]
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return admins
+    except Exception as e:
+        logger.error(f"❌ Errore get_all_admins: {e}")
+        return []
+            
+# ============================================================================
+# FUNZIONI APP CONFIG (access_code, ecc.)
+# ============================================================================
+
+def get_config(key: str, default: str = None) -> str:
+    """Ottieni valore configurazione"""
+    session = SessionLocal()
+    try:
+        config = session.query(AppConfig).filter_by(key=key).first()
+        return config.value if config else default
+    finally:
+        session.close()
+
+def set_config(key: str, value: str):
+    """Imposta valore configurazione"""
+    session = SessionLocal()
+    try:
+        config = session.query(AppConfig).filter_by(key=key).first()
+        
+        if config:
+            config.value = value
+            config.updated_at = datetime.utcnow()
+        else:
+            config = AppConfig(key=key, value=value)
+            session.add(config)
+        
+        session.commit()
+        logger.info(f"âœ… Config '{key}' aggiornata")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"âŒ Errore set_config: {e}")
+    finally:
+        session.close()
+
+def load_access_code() -> str:
+    """Carica access code (compatibilitÃ )"""
+    import secrets
+    
+    code = get_config('access_code')
+    if not code:
+        code = secrets.token_urlsafe(12)
+        set_config('access_code', code)
+    return code
+
+def save_access_code(code: str):
+    """Salva access code (compatibilitÃ )"""
+    set_config('access_code', code)
+
+# ============================================================================
+# COMPATIBILITÀ CON JSON (per facilitare migrazione)
+# ============================================================================
+
+def save_user_tags(tags_dict):
+    """CompatibilitÃ  - non fa nulla, giÃ  salvato nel DB"""
+    pass
+
+def save_authorized_users(users_dict):
+    """CompatibilitÃ  - non fa nulla, giÃ  salvato nel DB"""
+    pass
+
+def init_chat_sessions_table():
+    """Crea tabella tracking sessioni chat - già gestito da Base.metadata.create_all"""
+    pass  # La tabella viene creata automaticamente da init_db()
+
+def set_admin_active(chat_id, active=True):
+    """Imposta admin attivo/inattivo in chat"""
+    session = SessionLocal()
+    try:
+        chat_session = session.query(ChatSession).filter_by(chat_id=str(chat_id)).first()
+        
+        if chat_session:
+            chat_session.admin_active = 1 if active else 0
+            chat_session.last_admin_time = datetime.utcnow()
+        else:
+            chat_session = ChatSession(
+                chat_id=str(chat_id),
+                admin_active=1 if active else 0,
+                last_admin_time=datetime.utcnow()
+            )
+            session.add(chat_session)
+        
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore set_admin_active: {e}")
+    finally:
+        session.close()
+
+def get_chat_session(chat_id):
+    """Ottieni stato sessione: (admin_active, last_admin_time, last_auto_msg_time)"""
+    session = SessionLocal()
+    try:
+        chat_session = session.query(ChatSession).filter_by(chat_id=str(chat_id)).first()
+        
+        if not chat_session:
+            return None
+        
+        # Ritorna tupla come prima (per compatibilità)
+        return (
+            bool(chat_session.admin_active),  # Convert 0/1 to False/True
+            chat_session.last_admin_time,
+            chat_session.last_auto_msg_time
+        )
+    finally:
+        session.close()
+
+def update_auto_message_time(chat_id):
+    """Aggiorna timestamp ultimo auto-message"""
+    session = SessionLocal()
+    try:
+        chat_session = session.query(ChatSession).filter_by(chat_id=str(chat_id)).first()
+        
+        if chat_session:
+            chat_session.last_auto_msg_time = datetime.utcnow()
+        else:
+            chat_session = ChatSession(
+                chat_id=str(chat_id),
+                last_auto_msg_time=datetime.utcnow()
+            )
+            session.add(chat_session)
+        
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore update_auto_message_time: {e}")
+    finally:
+        session.close()
+
+# End database.py
