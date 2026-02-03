@@ -167,6 +167,79 @@ class ClassificationLogger:
 # Istanza globale
 classification_logger = ClassificationLogger()
 
+def export_intent_for_correction(self, intent_name: str, limit: int = 1000) -> dict:
+        """
+        Esporta tutti i messaggi di un intent specifico in formato JSON
+        pronto per correzione manuale
+        
+        Args:
+            intent_name: Nome dell'intent da esportare
+            limit: Numero massimo di messaggi (default: 1000)
+        
+        Returns:
+            Dict con struttura:
+            {
+                "intent": "nome_intent",
+                "total_cases": 123,
+                "cases": [
+                    {
+                        "text": "messaggio...",
+                        "intent": "intent_classificato",
+                        "confidence": 0.95,
+                        "timestamp": "2026-02-03T12:34:56",
+                        "correct_intent": ""  # <-- DA COMPILARE
+                    }
+                ]
+            }
+        """
+        try:
+            cases = self.get_cases_by_intent(intent_name, limit)
+            
+            if not cases:
+                return {
+                    "error": f"Nessun caso trovato per intent '{intent_name}'",
+                    "intent": intent_name,
+                    "total_cases": 0,
+                    "cases": []
+                }
+            
+            # Aggiungi campo "correct_intent" vuoto per ogni caso
+            for case in cases:
+                case['correct_intent'] = ""  # L'utente compilerà questo campo
+                case['notes'] = ""  # Campo opzionale per note
+            
+            export_data = {
+                "intent": intent_name,
+                "total_cases": len(cases),
+                "export_date": datetime.now().isoformat(),
+                "instructions": {
+                    "it": "Compila il campo 'correct_intent' per ogni messaggio classificato erroneamente. Lascia vuoto se la classificazione è corretta.",
+                    "en": "Fill the 'correct_intent' field for each misclassified message. Leave empty if classification is correct."
+                },
+                "available_intents": [
+                    "order",
+                    "order_confirmation", 
+                    "search",
+                    "faq",
+                    "list",
+                    "contact",
+                    "saluto",
+                    "fallback",
+                    "fallback_mute"
+                ],
+                "cases": cases
+            }
+            
+            return export_data
+            
+        except Exception as e:
+            logging.error(f"❌ export_intent_for_correction error: {e}")
+            return {
+                "error": str(e),
+                "intent": intent_name,
+                "total_cases": 0,
+                "cases": []
+            }
 
 def setup_enhanced_logging():
     """

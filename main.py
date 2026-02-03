@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from flask import Flask, request
+from flask import Flask, request, make_response
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ChatMemberHandler, filters, ContextTypes, TypeHandler
 import secrets
@@ -2212,24 +2212,30 @@ def admin_intent_detail(intent_name):
     return html
 
 @app.route('/admin/export_intent/<intent_name>', methods=['GET'])
+@app.route('/admin/export_intent/<intent_name>', methods=['GET'])
 def admin_export_intent(intent_name):
-    """Export JSON per un intent specifico"""
+    """
+    Export JSON completo per un intent specifico
+    Include campo 'correct_intent' vuoto per correzioni manuali
+    """
     auth_token = request.args.get('token')
     if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
         return {"error": "Unauthorized"}, 401
     
     from enhanced_logging import classification_logger
     
-    cases = classification_logger.get_cases_by_intent(intent_name, limit=500)
+    # Usa il nuovo metodo che include correct_intent
+    export_data = classification_logger.export_intent_for_correction(intent_name, limit=1000)
     
-    if not cases:
-        return {"error": "No data found"}, 404
+    if "error" in export_data:
+        return export_data, 404
     
-    return {
-        "intent": intent_name,
-        "total_cases": len(cases),
-        "cases": cases
-    }, 200
+    # Ritorna JSON con headers per download
+    response = make_response(json.dumps(export_data, indent=2, ensure_ascii=False))
+    response.headers['Content-Type'] = 'application/json; charset=utf-8'
+    response.headers['Content-Disposition'] = f'attachment; filename=intent_{intent_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    
+    return response
 
 @app.route('/admin/trends', methods=['GET'])
 def admin_trends():
