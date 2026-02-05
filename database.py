@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 if not DATABASE_URL:
-    logger.error("âŒ DATABASE_URL non trovato nelle variabili ambiente!")
+    logger.error("❌ DATABASE_URL non trovato nelle variabili ambiente!")
     raise RuntimeError("DATABASE_URL non configurato")
 
 # Fix per Render (usa postgresql:// invece di postgres://)
@@ -152,7 +152,7 @@ def get_user_tag(user_id: int) -> str:
     finally:
         session.close()
 
-def set_user_tag(user_id: int, tag: str):
+def set_user_tag(user_id: int, tag: str, user_name: str = None, username: str = None):
     """Imposta tag per un user"""
     session = SessionLocal()
     try:
@@ -160,22 +160,24 @@ def set_user_tag(user_id: int, tag: str):
         
         if user:
             user.tag = tag
-            user.user_name = user_name  # 🆕 Aggiorna nome
-            user.username = username    # 🆕 Aggiorna username
+            if user_name:
+                user.user_name = user_name
+            if username:
+                user.username = username
             user.updated_at = datetime.utcnow()
         else:
             user = UserTag(
                 user_id=str(user_id), 
                 tag=tag,
-                user_name=user_name,    # 🆕 Salva nome
-                username=username       # 🆕 Salva username
+                user_name=user_name,
+                username=username
             )
 
         session.commit()
-        logger.info(f"âœ… User {user_id} registrato con tag: {tag}")
+        logger.info(f"✅ User {user_id} registrato con tag: {tag}")
     except Exception as e:
         session.rollback()
-        logger.error(f"âŒ Errore set_user_tag: {e}")
+        logger.error(f"❌ Errore set_user_tag: {e}")
     finally:
         session.close()
 
@@ -187,12 +189,12 @@ def remove_user_tag(user_id: int) -> bool:
         if user:
             session.delete(user)
             session.commit()
-            logger.info(f"âœ… Tag rimosso per user {user_id}")
+            logger.info(f"✅ Tag rimosso per user {user_id}")
             return True
         return False
     except Exception as e:
         session.rollback()
-        logger.error(f"âŒ Errore remove_user_tag: {e}")
+        logger.error(f"❌ Errore remove_user_tag: {e}")
         return False
     finally:
         session.close()
@@ -252,12 +254,12 @@ def authorize_user(user_id: int, first_name: str = None, last_name: str = None, 
             )
             session.add(user)
             session.commit()
-            logger.info(f"âœ… User {user_id} autorizzato")
+            logger.info(f"✅ User {user_id} autorizzato")
             return True
         return False
     except Exception as e:
         session.rollback()
-        logger.error(f"âŒ Errore authorize_user: {e}")
+        logger.error(f"❌ Errore authorize_user: {e}")
         return False
     finally:
         session.close()
@@ -312,10 +314,10 @@ def add_ordine_confermato(user_id: int, user_name: str, username: str,
         )
         session.add(ordine)
         session.commit()
-        logger.info(f"âœ… Ordine salvato: {user_name} ({user_id})")
+        logger.info(f"✅ Ordine salvato: {user_name} ({user_id})")
     except Exception as e:
         session.rollback()
-        logger.error(f"âŒ Errore add_ordine: {e}")
+        logger.error(f"❌ Errore add_ordine: {e}")
     finally:
         session.close()
 
@@ -771,10 +773,10 @@ def set_config(key: str, value: str):
             session.add(config)
         
         session.commit()
-        logger.info(f"âœ… Config '{key}' aggiornata")
+        logger.info(f"✅ Config '{key}' aggiornata")
     except Exception as e:
         session.rollback()
-        logger.error(f"âŒ Errore set_config: {e}")
+        logger.error(f"❌ Errore set_config: {e}")
     finally:
         session.close()
 

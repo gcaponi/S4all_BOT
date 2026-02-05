@@ -20,10 +20,23 @@ import database as db
 from database import is_admin, is_super_admin, add_admin, remove_admin, get_all_admins, init_admins_table
 from memory_buffer import chat_memory
 from enhanced_logging import classification_logger, setup_enhanced_logging
+from response_handlers import ResponseBuilder, HandlerResponseDispatcher, create_dispatcher
+from error_handlers import (
+    async_log_errors, async_safe_execute, safe_execute, ErrorContext,
+    log_db_error, log_api_error, log_validation_error
+)
 
 classifier_instance = None
+response_dispatcher = None  # Global dispatcher per risposte
 
 data_ora = datetime.now().strftime("%d-%m-%Y %H:%M")
+
+def get_dispatcher():
+    """Ottiene il dispatcher globale, inizializzandolo se necessario."""
+    global response_dispatcher
+    if response_dispatcher is None:
+        response_dispatcher = create_dispatcher()
+    return response_dispatcher
 # ============================================================================
 # CONFIGURAZIONE LOGGING
 # ============================================================================
@@ -125,19 +138,17 @@ save_access_code = db.save_access_code
 # UTILS: WEB FETCH, PARSING, I/O
 # ============================================================================
 
+@async_safe_execute(default_return="", operation_name="fetch_markdown_from_html", log_level="error")
 def fetch_markdown_from_html(url: str) -> str:
     """Scarica il contenuto HTML da JustPaste e lo converte in testo pulito"""
-    try:
-        r = requests.get(url, timeout=10)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        content = soup.select_one("#articleContent")
-        if content is None:
-            raise RuntimeError("Contenuto non trovato nel selettore #articleContent")
-        return content.get_text("\n").strip()
-    except Exception as e:
-        logger.error(f"Errore durante il fetch da {url}: {e}")
-        return ""
+    r = requests.get(url, timeout=10)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    content = soup.select_one("#articleContent")
+    if content is None:
+        log_api_error(endpoint=url, response="Contenuto non trovato in #articleContent")
+        raise RuntimeError("Contenuto non trovato nel selettore #articleContent")
+    return content.get_text("\n").strip()
 
 def parse_faq(markdown: str) -> list:
     """Parsa FAQ - versione semplificata robusta"""
@@ -225,21 +236,20 @@ def update_faq_from_web():
     logger.info(f"✅ FAQ sincronizzate: {len(faq)} elementi salvati.")
     return True
 
+@async_safe_execute(default_return=False, operation_name="update_lista_from_web")
 def update_lista_from_web():
     """Scarica il listino prodotti e lo salva nel file locale lista.txt"""
-    try:
-        r = requests.get(LISTA_URL, timeout=10)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
-        content = soup.select_one("#articleContent")
-        if content:
-            text = content.get_text("\n").strip()
-            with open(LISTA_FILE, "w", encoding="utf-8") as f:
-                f.write(text)
-            logger.info("Listino prodotti aggiornato con successo.")
-            return True
-    except Exception as e:
-        logger.error(f"Errore aggiornamento listino: {e}")
+    r = requests.get(LISTA_URL, timeout=10)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    content = soup.select_one("#articleContent")
+    if content:
+        text = content.get_text("\n").strip()
+        with open(LISTA_FILE, "w", encoding="utf-8") as f:
+            f.write(text)
+        logger.info("✅ Listino prodotti aggiornato con successo.")
+        return True
+    log_api_error(endpoint=LISTA_URL, response="Contenuto non trovato")
     return False
 
 def load_lista():
@@ -249,14 +259,12 @@ def load_lista():
             return f.read()
     return ""
 
+@safe_execute(default_return={}, operation_name="load_json_file")
 def load_json_file(filename, default=None):
     """Carica in sicurezza file JSON evitando crash se il file è corrotto o assente"""
     if os.path.exists(filename):
-        try:
-            with open(filename, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Errore lettura file JSON {filename}: {e}")
+        with open(filename, 'r', encoding='utf-8') as f:
+            return json.load(f)
     return default if default is not None else {}
 
 def save_json_file(filename, data):
@@ -649,25 +657,6 @@ def calcola_intenzione(text):
     except Exception as e:
         logger.error(f"❌ Errore in calcola_intenzione: {e}")
         return "fallback"
-
-    def debug_intent(text: str):
-        """Funzione di debug per vedere come viene classificato il testo"""
-        global intent_classifier
-    
-        if intent_classifier is None:
-            estrai_parole_chiave_lista()
-    
-        result = intent_classifier.classify(text)
-    
-        print("\n" + "="*60)
-    print(f"🔍 DEBUG INTENT: '{text}'")
-    print(f"🎯 Risultato: {result.intent.value}")
-    print(f"📊 Confidence: {result.confidence:.2f}")
-    print(f"💡 Reason: {result.reason}")
-    print(f"🔑 Matched: {result.matched_keywords}")
-    print("="*60 + "\n")
-    
-    return result.intent.value
 
 # ============================================================================
 # HANDLERS: COMANDI
@@ -1315,16 +1304,18 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     logger.info(f"🔄 Intent ricevuto: '{intent}'")
     
     # 0. FALLBACK MUTO (priorità assoluta - silenzio)
-
     if intent == "fallback_mute":
         logger.info(f"➡️ Entrato in blocco FALLBACK MUTO - nessuna risposta, esco silenziosamente")
         return  # 🔇 NON invia nulla, esci immediatamente
 
+    dispatcher = get_dispatcher()
+    text_lower = text.lower()
+
     # 1. LISTA
     if intent == "lista":
         logger.info(f"➡️ Entrato in blocco LISTA")
-        await send_business_reply(
-            "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
+        await dispatcher.send_lista(
+            send_func=lambda **kwargs: send_business_reply(**{**kwargs, 'parse_mode': None}),
             parse_mode=None
         )
         return
@@ -1332,77 +1323,36 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     # 2. ORDINE
     if intent == "ordine":
         logger.info(f"➡️ Entrato in blocco ORDINE")
-    
-        # Check prodotti bisogno acqua
-        text_lower = text.lower()
         
-        # Prodotti che richiedono acqua batteriostatica per preparazione
-        prodotti_acqua_necessaria = [
-            'retatrutide', 'tirzepatide', 'semaglutide',
-            'gh', 'ormone della crescita', 'ormone crescita',
-            'pt141', 'pt-141', 'pt 141', 'bpc157', 'bpc 157', 'bpc-157',
-            'melatonan', 'melatonan2', 'melanotan', 'melanotan2', 'melanotan 2',
-            'cjc', 'cjc dac', 'cjc-dac', 'mgf', 'peg-mgf', 'peg mgf',
-            'follistatina', 'igf1', 'igf-1'
-        ]
-        
-        # Verifica se ordina prodotti che necessitano acqua
-        needs_acqua = any(prod in text_lower for prod in prodotti_acqua_necessaria)
-        
-        # Verifica se ha già menzionato acqua batteriostatica (evita duplicati)
-        has_acqua = any(term in text_lower for term in [
-            'acqua batteriostatica', 'acqua', 'batteriostatica', 
-            'acqua per preparazione', 'solvente'
-        ])
-        
-        # Costruisci messaggio dinamico
-        msg_parts = ["🤔 <b>Sembra un ordine!</b>"]
-        
-        if needs_acqua and not has_acqua:
-            msg_parts.append("\n⚠️ <b>Serve anche confezione di acqua batteriostatica per il prodotto ordinato?</b>")
-            logger.info("💧 Prodotto richiede acqua batteriostatica - domanda automatica aggiunta")
-        
-        msg_parts.append("\nC'è il metodo di pagamento?")
-        
-        message_text = "\n".join(msg_parts)
-    
         # Salva l'ordine temporaneamente
+        callback_data = f"pay_ok_{user_id}_{message.message_id}"
         order_data = {
             'text': text,
             'user_id': user_id,
             'chat_id': chat_id,
             'message_id': message.message_id
         }
-    
-        # Usa callback_data per passare info
-        callback_data = f"pay_ok_{user_id}_{message.message_id}"
-    
-        keyboard = [[
-            InlineKeyboardButton("✅ Sì", callback_data=callback_data),
-            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-        ]]
-    
-        # Salva in context per recuperarlo dopo
+        
         if not hasattr(context, 'bot_data'):
             context.bot_data = {}
         if 'pending_orders' not in context.bot_data:
             context.bot_data['pending_orders'] = {}
-    
         context.bot_data['pending_orders'][callback_data] = order_data
         logger.info(f"💾 Ordine temporaneo salvato: {callback_data}")
-    
-        await send_business_reply(
-            message_text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
+        
+        await dispatcher.send_ordine(
+            send_func=send_business_reply,
+            text_lower=text_lower,
+            message_id=message.message_id,
+            user_id=user_id,
+            parse_mode="HTML"
         )
         return
     
     # 2.5 CONFERMA ORDINE
     if intent == "conferma_ordine":
         logger.info(f"➡️ Entrato in blocco CONFERMA ORDINE")
-        await send_business_reply(
-            "✅ Ricevuto! I tempi di spedizione trovi nel nostro FAQ"
-        )
+        await dispatcher.send_conferma_ordine(send_func=send_business_reply)
         return
     
     # 3. FAQ
@@ -1411,8 +1361,10 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
         if res.get("match"):
-            await send_business_reply(
-                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}"
+            await dispatcher.send_faq(
+                send_func=send_business_reply,
+                domanda=res['item']['domanda'],
+                risposta=res['item']['risposta']
             )
         return
     
@@ -1421,8 +1373,9 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         logger.info(f"➡️ Entrato in blocco RICERCA")
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
-            await send_business_reply(
-                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}"
+            await dispatcher.send_ricerca_prodotti(
+                send_func=send_business_reply,
+                snippet=l_res['snippet']
             )
             return
     
@@ -1431,7 +1384,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
         logger.info(f"➡️ Entrato in blocco FALLBACK")
 
         # Controlla se è una conversazione che richiede umano (parole chiave)
-        text_lower = text.lower()
         human_keywords = ['preparato', 'acqua', 'dosi', 'consegnato', 'ritirato', 
                          'disturbo', 'speriamo', 'tra l\'altro', 'non sono stato']
         
@@ -1439,33 +1391,7 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             logger.info(f"⏸️ Fallback silenzioso: conversazione umana rilevata")
             return  # NON invia nulla
     
-    # Suggerimenti intelligenti basati su parole chiave
-    text_lower = text.lower()
-    
-    if any(word in text_lower for word in ['listino', 'catalogo', 'prezzi', 'prodotti']):
-        await send_business_reply(
-            "📋 Vuoi vedere il listino completo? Scrivi 'lista'"
-        )
-    elif any(word in text_lower for word in ['ordina', 'compra', 'acquista', 'voglio']):
-        await send_business_reply(
-            "🛒 Per fare un ordine, scrivi cosa vorresti acquistare, es: 'voglio 2 fiale di susta'"
-        )
-    elif any(word in text_lower for word in ['costa', 'prezzo', 'quanto']):
-        await send_business_reply(
-            "💰 Per sapere il prezzo di un prodotto, scrivi ad esempio: 'quanto costa testo?'"
-        )
-    elif any(word in text_lower for word in ['spedizione', 'consegna', 'tempo', 'giorni']):
-        await send_business_reply(
-            "🚚 Per info sulle spedizioni, scrivi 'spedizione'"
-        )
-    else:
-        await send_business_reply(
-            "❓ Non ho capito. Prova con:\n"
-            "• 'lista' per il catalogo\n"
-            "• 'quanto costa X' per un prodotto\n"
-            "• Info su spedizioni e pagamenti\n"
-            "• Scrivi direttamente cosa vorresti"
-        )
+    await dispatcher.send_fallback(send_func=send_business_reply, text_lower=text_lower)
     return
 
 # ============================================================================
@@ -1480,6 +1406,9 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     text = message.text.strip()
     intent = calcola_intenzione(text)
     
+    dispatcher = get_dispatcher()
+    text_lower = text.lower()
+    
     # 0. FALLBACK MUTO (priorità assoluta - silenzio)
     if intent == "fallback_mute":
         logger.info(f"➡️ Entrato in blocco FALLBACK MUTO - nessuna risposta, esco silenziosamente")
@@ -1487,55 +1416,15 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
 
     # 1. LISTA
     if intent == "lista":
-        await message.reply_text(
-            "Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk"
-        )
+        await dispatcher.send_lista(send_func=message.reply_text)
         return
 
     # 2. ORDINE
     if intent == "ordine":
-        text_lower = text.lower()
-        
-        # Check prodotti bisogno acqua
-        prodotti_acqua_necessaria = [
-            'retatrutide', 'tirzepatide', 'semaglutide',
-            'gh', 'ormone della crescita', 'ormone crescita',
-            'pt141', 'pt-141', 'pt 141',
-            'bpc157', 'bpc 157', 'bpc-157', 'bpc',
-            'melatonan', 'melatonan2', 'melanotan', 'melanotan2', 'melanotan 2',
-            'cjc', 'cjc dac', 'cjc-dac',
-            'mgf', 'peg-mgf', 'peg mgf', 'pegmgf',
-            'follistatina',
-            'igf1', 'igf-1', 'igf 1'
-        ]
-        
-        # Verifica se ordina prodotti che necessitano acqua
-        needs_acqua = any(prod in text_lower for prod in prodotti_acqua_necessaria)
-        
-        # Verifica se ha già menzionato acqua batteriostatica
-        has_acqua = any(term in text_lower for term in [
-            'acqua batteriostatica', 'acqua', 'batteriostatica', 
-            'acqua per preparazione', 'solvente'
-        ])
-        
-        # Costruisci messaggio dinamico
-        msg_parts = ["🤔 <b>Sembra un ordine!</b>"]
-        
-        if needs_acqua and not has_acqua:
-            msg_parts.append("\n⚠️ <b>Serve anche confezione di acqua batteriostatica per il prodotto ordinato?</b>")
-            logger.info(f"💧 [Private] Prodotto richiede acqua batteriostatica: {text[:50]}...")
-        
-        msg_parts.append("\nC'è il metodo di pagamento?")
-        
-        message_text = "\n".join(msg_parts)
-        
-        keyboard = [[
-            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
-            InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
-        ]]
-        await message.reply_text(
-            message_text,
-            reply_markup=InlineKeyboardMarkup(keyboard),
+        await dispatcher.send_ordine(
+            send_func=message.reply_text,
+            text_lower=text_lower,
+            message_id=message.message_id,
             parse_mode="HTML"
         )
         return
@@ -1543,9 +1432,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     # 2.5 CONFERMA ORDINE
     if intent == "conferma_ordine":
         logger.info(f"➡️ Entrato in blocco CONFERMA ORDINE")
-        await message.reply_text(
-            "✅ Ricevuto! I tempi di spedizione trovi nel nostro FAQ"
-        )
+        await dispatcher.send_conferma_ordine(send_func=message.reply_text)
         return
 
     # 3. FAQ
@@ -1553,9 +1440,10 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
         if res.get("match"):
-            await message.reply_text(
-                f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
-                parse_mode="HTML"
+            await dispatcher.send_faq(
+                send_func=message.reply_text,
+                domanda=res['item']['domanda'],
+                risposta=res['item']['risposta']
             )
             return
 
@@ -1563,9 +1451,9 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     if intent == "ricerca_prodotti":
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
-            await message.reply_text(
-                f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
-                parse_mode="HTML"
+            await dispatcher.send_ricerca_prodotti(
+                send_func=message.reply_text,
+                snippet=l_res['snippet']
             )
             return
 
@@ -1586,6 +1474,16 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     text = message.text.strip()
     intent = calcola_intenzione(text)
     chat_id = message.chat.id
+    
+    dispatcher = get_dispatcher()
+
+    # Helper per inviare messaggi in gruppo con reply
+    async def send_group_reply(**kwargs):
+        await context.bot.send_message(
+            chat_id=message.chat.id,
+            reply_to_message_id=message.message_id,
+            **kwargs
+        )
 
     # 0. FALLBACK MUTO (priorità assoluta - silenzio)
     if intent == "fallback_mute":
@@ -1594,25 +1492,19 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # 1. LISTA
     if intent == "lista":
-        await context.bot.send_message(
-            chat_id=message.chat.id,
-            text="Ciao clicca qui per visualizzare il listino sempre aggiornato https://t.me/+uepM4qLBCrM0YTRk",
-            reply_to_message_id=message.message_id
-        )
+        await dispatcher.send_lista(send_func=send_group_reply)
         return
 
-    # 2. ORDINE
+    # 2. ORDINE (semplificato per gruppi - senza check acqua)
     if intent == "ordine":
         keyboard = [[
             InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
             InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
         ]]
-        await context.bot.send_message(
-            chat_id=message.chat.id,
+        await send_group_reply(
             text="🤔 <b>Sembra un ordine!</b>\nC'è il metodo di pagamento?",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML",
-            reply_to_message_id=message.message_id
+            parse_mode="HTML"
         )
         return
 
@@ -1621,11 +1513,10 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         faq_data = load_faq()
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
         if res.get("match"):
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=f"✅ <b>{res['item']['domanda']}</b>\n\n{res['item']['risposta']}",
-                parse_mode="HTML",
-                reply_to_message_id=message.message_id
+            await dispatcher.send_faq(
+                send_func=send_group_reply,
+                domanda=res['item']['domanda'],
+                risposta=res['item']['risposta']
             )
         return
 
@@ -1633,11 +1524,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if intent == "ricerca_prodotti":
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
-            await context.bot.send_message(
-                chat_id=message.chat.id,
-                text=f"📦 <b>Nel listino ho trovato:</b>\n\n{l_res['snippet']}",
-                parse_mode="HTML",
-                reply_to_message_id=message.message_id
+            await dispatcher.send_ricerca_prodotti(
+                send_func=send_group_reply,
+                snippet=l_res['snippet']
             )
             return
     
@@ -1648,11 +1537,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     
     if any(word in text.lower() for word in trigger_words):
-        await context.bot.send_message(
-            chat_id=message.chat.id,
-            text="❓ Non ho capito. Usa /lista o /help.",
-            reply_to_message_id=message.message_id
-        )
+        await send_group_reply(text="❓ Non ho capito. Usa /lista o /help.")
 
 # ============================================================================
 # HANDLER CALLBACK QUERY (BOTTONI)
