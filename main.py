@@ -138,7 +138,7 @@ save_access_code = db.save_access_code
 # UTILS: WEB FETCH, PARSING, I/O
 # ============================================================================
 
-@async_safe_execute(default_return="", operation_name="fetch_markdown_from_html", log_level="error")
+@safe_execute(default_return="", operation_name="fetch_markdown_from_html", log_level="error")
 def fetch_markdown_from_html(url: str) -> str:
     """Scarica il contenuto HTML da JustPaste e lo converte in testo pulito"""
     r = requests.get(url, timeout=10)
@@ -198,11 +198,14 @@ def write_faq_json(faq: list, filename: str):
     with open(filename, "w", encoding="utf-8") as f:
         json.dump({"faq": faq}, f, ensure_ascii=False, indent=2)
 
-def update_faq_from_web():
+async def update_faq_from_web():
     """Sincronizza le FAQ scaricandole dal link JustPaste configurato"""
     logger.info(f"📥 Tentativo download FAQ da: {PASTE_URL}")
     
-    markdown = fetch_markdown_from_html(PASTE_URL)
+    # Esegui fetch in thread separato (operazione I/O bloccante)
+    import asyncio
+    loop = asyncio.get_event_loop()
+    markdown = await loop.run_in_executor(None, fetch_markdown_from_html, PASTE_URL)
     
     if not markdown:
         logger.error("❌ Markdown vuoto o errore fetch")
@@ -236,7 +239,7 @@ def update_faq_from_web():
     logger.info(f"✅ FAQ sincronizzate: {len(faq)} elementi salvati.")
     return True
 
-@async_safe_execute(default_return=False, operation_name="update_lista_from_web")
+@safe_execute(default_return=False, operation_name="update_lista_from_web")
 def update_lista_from_web():
     """Scarica il listino prodotti e lo salva nel file locale lista.txt"""
     r = requests.get(LISTA_URL, timeout=10)
@@ -750,7 +753,7 @@ async def admin_help_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def aggiorna_faq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id): return
-    if update_faq_from_web():
+    if await update_faq_from_web():
         await update.message.reply_text("✅ FAQ sincronizzate con successo.")
     else:
         await update.message.reply_text("❌ Errore durante l'aggiornamento FAQ.")

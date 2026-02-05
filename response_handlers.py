@@ -223,12 +223,13 @@ class HandlerResponseDispatcher:
         self,
         send_func: Callable,
         text_lower: str,
-        parse_mode: Optional[str] = None
+        parse_mode: Optional[str] = 'HTML'
     ) -> None:
         """Invia risposta fallback con suggerimento intelligente."""
         suggestion = self.builder.fallback_suggestion(text_lower)
         text = suggestion if suggestion else self.builder.fallback_default()
-        await send_func(text=text, parse_mode=parse_mode)
+        # Chiama la funzione con la firma corretta (text_reply, parse_mode, reply_markup)
+        await send_func(text, parse_mode)
 
 # ============================================================================
 # FACTORY FUNCTIONS
