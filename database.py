@@ -5,7 +5,7 @@ Gestisce: user_tags, authorized_users, ordini_confermati, access_code
 import os
 import logging
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, inspect
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, inspect, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -451,6 +451,44 @@ def log_classification(text: str, intent: str, confidence: float):
     finally:
         session.close()
 
+def get_recent_classifications(limit: int = 100) -> list:
+    """Recupera le classificazioni più recenti per la dashboard"""
+    session = SessionLocal()
+    try:
+        classifications = session.query(Classification).order_by(
+            Classification.timestamp.desc()
+        ).limit(limit).all()
+        
+        return [{
+            'id': c.id,
+            'text': c.text,
+            'intent': c.intent,
+            'confidence': float(c.confidence),
+            'timestamp': c.timestamp.isoformat()
+        } for c in classifications]
+    except Exception as e:
+        logger.error(f"❌ get_recent_classifications: {e}")
+        return []
+    finally:
+        session.close()
+
+def get_classification_by_id(classification_id: int) -> dict:
+    """Recupera una classificazione specifica per ID"""
+    session = SessionLocal()
+    try:
+        c = session.query(Classification).filter_by(id=classification_id).first()
+        if c:
+            return {
+                'id': c.id,
+                'text': c.text,
+                'intent': c.intent,
+                'confidence': c.confidence,
+                'timestamp': c.timestamp.isoformat()
+            }
+        return None
+    finally:
+        session.close()
+
 def get_classification_stats() -> dict:
     """Ottieni statistiche classificazioni"""
     session = SessionLocal()
@@ -830,6 +868,24 @@ class ClassificationMonthlyStat(Base):
     by_intent_json = Column(Text)  # JSON con stats per intent
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ClassificationFeedback(Base):
+    """Tabella classification_feedback - Correzioni admin per retraining"""
+    __tablename__ = 'classification_feedback'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    original_text = Column(Text, nullable=False)          # Testo classificato
+    predicted_intent = Column(String(50), nullable=False) # Intent predetto dal bot
+    correct_intent = Column(String(50), nullable=False)   # Intent corretto (da admin)
+    user_id = Column(String(50), nullable=True)          # Chi ha fatto la correzione
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    used_for_training = Column(Integer, default=0)       # 0=no, 1=già usato per training
+    
+    # Indici per query veloci
+    __table_args__ = (
+        Index('idx_feedback_used', 'used_for_training', 'timestamp'),
+        Index('idx_feedback_correct', 'correct_intent'),
+    )
     
 # ============================================================================
 # COMPATIBILITÀ CON JSON (per facilitare migrazione)
@@ -907,6 +963,98 @@ def update_auto_message_time(chat_id):
     except Exception as e:
         session.rollback()
         logger.error(f"❌ Errore update_auto_message_time: {e}")
+    finally:
+        session.close()
+
+# ============================================================================
+# CLASSIFICATION FEEDBACK - Per retraining ML
+# ============================================================================
+
+def save_classification_feedback(original_text: str, predicted_intent: str, 
+                                  correct_intent: str, user_id: int = None) -> bool:
+    """Salva correzione admin per retraining futuro"""
+    session = SessionLocal()
+    try:
+        feedback = ClassificationFeedback(
+            original_text=original_text,
+            predicted_intent=predicted_intent,
+            correct_intent=correct_intent,
+            user_id=str(user_id) if user_id else None,
+            used_for_training=0
+        )
+        session.add(feedback)
+        session.commit()
+        logger.info(f"✅ Feedback salvato: '{original_text[:30]}...' {predicted_intent} → {correct_intent}")
+        return True
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore save_classification_feedback: {e}")
+        return False
+    finally:
+        session.close()
+
+def get_pending_feedback(limit: int = 100) -> list:
+    """Recupera feedback non ancora usati per training"""
+    session = SessionLocal()
+    try:
+        feedbacks = session.query(ClassificationFeedback).filter(
+            ClassificationFeedback.used_for_training == 0
+        ).order_by(ClassificationFeedback.timestamp).limit(limit).all()
+        
+        return [{
+            'id': f.id,
+            'text': f.original_text,
+            'predicted': f.predicted_intent,
+            'correct': f.correct_intent,
+            'timestamp': f.timestamp.isoformat()
+        } for f in feedbacks]
+    finally:
+        session.close()
+
+def mark_feedback_as_used(feedback_ids: list) -> int:
+    """Marca feedback come usati per training"""
+    session = SessionLocal()
+    try:
+        updated = session.query(ClassificationFeedback).filter(
+            ClassificationFeedback.id.in_(feedback_ids)
+        ).update({'used_for_training': 1})
+        session.commit()
+        logger.info(f"✅ {updated} feedback marcati come usati")
+        return updated
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore mark_feedback_as_used: {e}")
+        return 0
+    finally:
+        session.close()
+
+def get_feedback_stats() -> dict:
+    """Statistiche sui feedback raccolti"""
+    session = SessionLocal()
+    try:
+        from sqlalchemy import func
+        
+        total = session.query(func.count(ClassificationFeedback.id)).scalar()
+        pending = session.query(func.count(ClassificationFeedback.id)).filter(
+            ClassificationFeedback.used_for_training == 0
+        ).scalar()
+        used = total - pending
+        
+        # Per intent corretto
+        by_intent = session.query(
+            ClassificationFeedback.correct_intent,
+            func.count(ClassificationFeedback.id).label('count')
+        ).group_by(ClassificationFeedback.correct_intent).all()
+        
+        return {
+            'total': total,
+            'pending': pending,
+            'used': used,
+            'by_intent': {intent: count for intent, count in by_intent}
+        }
+    except Exception as e:
+        logger.error(f"❌ Errore get_feedback_stats: {e}")
+        return {'total': 0, 'pending': 0, 'used': 0, 'by_intent': {}}
     finally:
         session.close()
 

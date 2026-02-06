@@ -26,6 +26,7 @@ from error_handlers import (
     log_db_error, log_api_error, log_validation_error
 )
 
+
 classifier_instance = None
 response_dispatcher = None  # Global dispatcher per risposte
 
@@ -1017,7 +1018,7 @@ async def listadmins_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         msg += "\n"
     
     await update.message.reply_text(msg, parse_mode='HTML')
-        
+
 # ============================================================================
 # FLASK ROUTES
 # ============================================================================
@@ -1684,7 +1685,7 @@ async def setup_bot():
             deleted = db.cleanup_old_classifications(days=30)
             if deleted > 0:
                 logger.info(f"🗑️ Auto-cleanup: {deleted} log rimossi")
-
+            
             # Inizializza memoria conversazionale
             await chat_memory.init_db()
             logger.info("✅ Memoria conversazionale pronta")
@@ -1819,6 +1820,49 @@ async def setup_bot():
         await application.initialize()
         await application.start()
         logger.info("🤖 Bot pronto!")
+        
+        # ========================================
+        # SCHEDULER RETRAINING AUTOMATICO
+        # ========================================
+        async def scheduled_retraining():
+            """Controlla ogni ora se è necessario retraining"""
+            while True:
+                try:
+                    await asyncio.sleep(3600)  # Ogni 1 ora
+                    
+                    from feedback_handler import get_retraining_status, trigger_retraining
+                    
+                    status = get_retraining_status()
+                    if status['can_retrain']:
+                        logger.info(f"🔄 Avvio retraining automatico ({status['feedback_pending']} feedback pending)")
+                        result = trigger_retraining()
+                        
+                        if result['success']:
+                            logger.info(f"✅ Retraining auto completato: {result['accuracy']:.2%}")
+                            # Notifica admin
+                            if ADMIN_CHAT_ID:
+                                try:
+                                    await application.bot.send_message(
+                                        ADMIN_CHAT_ID,
+                                        f"🤖 <b>Retraining Automatico Completato</b>\n\n"
+                                        f"🎯 Accuracy: {result['accuracy']:.2%}\n"
+                                        f"📚 Train: {result['train_size']} esempi\n"
+                                        f"🧪 Test: {result['test_size']} esempi",
+                                        parse_mode='HTML'
+                                    )
+                                except Exception as e:
+                                    logger.error(f"❌ Errore notifica admin: {e}")
+                        else:
+                            logger.warning(f"⚠️ Retraining auto fallito: {result['message']}")
+                    else:
+                        logger.debug(f"⏭️ Retraining auto: solo {status['feedback_pending']} feedback")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Errore scheduler retraining: {e}")
+        
+        # Avvia scheduler in background
+        asyncio.create_task(scheduled_retraining())
+        logger.info("⏰ Scheduler retraining avviato (ogni 1 ora)")
 
         await application.bot.set_my_commands([
             ("start", "Avvia il bot"),
@@ -1854,96 +1898,494 @@ async def setup_bot():
 
 @app.route('/admin/stats', methods=['GET'])
 def admin_stats():
-    """Endpoint per vedere stats classificazione"""
-    # Simple auth (opzionale)
+    """Dashboard interattiva per correzione classificazioni"""
     auth_token = request.args.get('token')
     if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
         return {"error": "Unauthorized"}, 401
     
     from enhanced_logging import classification_logger
     
+    # Recupera tutti i messaggi classificati (ultimi 100)
+    cases = classification_logger.get_recent_classifications(limit=100)
     stats = classification_logger.get_stats()
-    low_conf = classification_logger.get_low_confidence_cases(limit=20)
+    feedback_stats = db.get_feedback_stats()
     
-    # HTML response carino
+    # Lista intent disponibili
+    available_intents = ['order', 'search', 'faq', 'list', 'contact', 'saluto', 'order_confirmation', 'fallback', 'fallback_mute']
+    
     html = f"""
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Bot Stats</title>
+        <title>Bot ML Training Dashboard</title>
+        <meta charset="UTF-8">
         <style>
-            body {{ font-family: Arial; margin: 20px; background: #f5f5f5; }}
-            .card {{ background: white; padding: 20px; margin: 10px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-            .metric {{ display: inline-block; margin: 10px 20px; }}
-            .metric-value {{ font-size: 32px; font-weight: bold; color: #2196F3; }}
-            .metric-label {{ font-size: 14px; color: #666; }}
-            table {{ width: 100%; border-collapse: collapse; }}
-            th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
-            th {{ background: #2196F3; color: white; }}
-            .low {{ color: #f44336; }}
-            .medium {{ color: #ff9800; }}
-            .high {{ color: #4caf50; }}
+            * {{ box-sizing: border-box; }}
+            body {{ 
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; 
+                margin: 0; 
+                padding: 20px; 
+                background: #f0f2f5; 
+            }}
+            .header {{ 
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                color: white; 
+                padding: 30px; 
+                border-radius: 12px; 
+                margin-bottom: 20px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }}
+            .header h1 {{ margin: 0; font-size: 28px; }}
+            .stats-bar {{ 
+                display: flex; 
+                gap: 20px; 
+                margin-top: 15px;
+                flex-wrap: wrap;
+            }}
+            .stat-box {{ 
+                background: rgba(255,255,255,0.2); 
+                padding: 15px 25px; 
+                border-radius: 8px;
+                backdrop-filter: blur(10px);
+            }}
+            .stat-value {{ font-size: 24px; font-weight: bold; }}
+            .stat-label {{ font-size: 12px; opacity: 0.9; }}
+            
+            .container {{ max-width: 1400px; margin: 0 auto; }}
+            
+            .filters {{ 
+                background: white; 
+                padding: 20px; 
+                border-radius: 12px; 
+                margin-bottom: 20px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                display: flex;
+                gap: 15px;
+                align-items: center;
+                flex-wrap: wrap;
+            }}
+            .filters label {{ font-weight: 600; color: #555; }}
+            .filters select, .filters input {{
+                padding: 10px 15px;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
+                font-size: 14px;
+                min-width: 150px;
+            }}
+            .filters select:focus, .filters input:focus {{
+                outline: none;
+                border-color: #667eea;
+            }}
+            
+            .messages-table {{
+                background: white;
+                border-radius: 12px;
+                overflow: hidden;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            }}
+            table {{ 
+                width: 100%; 
+                border-collapse: collapse; 
+            }}
+            th {{ 
+                background: #f8f9fa; 
+                padding: 15px; 
+                text-align: left; 
+                font-weight: 600; 
+                color: #555;
+                border-bottom: 2px solid #e0e0e0;
+                position: sticky;
+                top: 0;
+            }}
+            td {{ 
+                padding: 15px; 
+                border-bottom: 1px solid #f0f0f0;
+                vertical-align: middle;
+            }}
+            tr:hover {{ background: #f8f9fa; }}
+            
+            .message-text {{ 
+                max-width: 400px; 
+                word-break: break-word;
+                font-family: monospace;
+                font-size: 13px;
+                background: #f5f5f5;
+                padding: 8px 12px;
+                border-radius: 6px;
+            }}
+            
+            .intent-badge {{
+                display: inline-block;
+                padding: 6px 12px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: 600;
+                text-transform: uppercase;
+            }}
+            .intent-order {{ background: #e3f2fd; color: #1565c0; }}
+            .intent-search {{ background: #f3e5f5; color: #7b1fa2; }}
+            .intent-faq {{ background: #e8f5e9; color: #2e7d32; }}
+            .intent-list {{ background: #fff3e0; color: #ef6c00; }}
+            .intent-fallback {{ background: #ffebee; color: #c62828; }}
+            .intent-saluto {{ background: #e0f7fa; color: #00838f; }}
+            
+            .confidence {{
+                font-weight: 600;
+                padding: 4px 8px;
+                border-radius: 4px;
+            }}
+            .conf-high {{ color: #2e7d32; background: #e8f5e9; }}
+            .conf-medium {{ color: #f57c00; background: #fff3e0; }}
+            .conf-low {{ color: #c62828; background: #ffebee; }}
+            
+            .correction-select {{
+                padding: 8px 12px;
+                border: 2px solid #e0e0e0;
+                border-radius: 6px;
+                font-size: 13px;
+                cursor: pointer;
+                min-width: 140px;
+            }}
+            .correction-select:hover {{ border-color: #667eea; }}
+            .correction-select.corrected {{ 
+                border-color: #4caf50; 
+                background: #e8f5e9;
+            }}
+            
+            .save-btn {{
+                background: #667eea;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 600;
+            }}
+            .save-btn:hover {{ background: #5a6fd6; }}
+            .save-btn:disabled {{ 
+                background: #ccc; 
+                cursor: not-allowed;
+            }}
+            
+            .saved-badge {{
+                display: inline-block;
+                background: #4caf50;
+                color: white;
+                padding: 4px 10px;
+                border-radius: 4px;
+                font-size: 11px;
+                font-weight: 600;
+            }}
+            
+            .toast {{
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: #333;
+                color: white;
+                padding: 15px 25px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                display: none;
+                z-index: 1000;
+            }}
+            .toast.success {{ background: #4caf50; }}
+            .toast.error {{ background: #f44336; }}
+            
+            .feedback-info {{
+                background: #e3f2fd;
+                padding: 15px 20px;
+                border-radius: 8px;
+                margin-bottom: 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }}
+            .feedback-info.pending {{
+                background: #fff3e0;
+            }}
+            .feedback-info.ready {{
+                background: #e8f5e9;
+            }}
         </style>
     </head>
     <body>
-        <h1>🤖 Bot Classification Stats</h1>
-        
-        <div class="card">
-            <h2>📊 Overview</h2>
-            <div class="metric">
-                <div class="metric-value">{stats['total_classifications']}</div>
-                <div class="metric-label">Total Classifications</div>
+        <div class="container">
+            <div class="header">
+                <h1>🤖 Bot ML Training Dashboard</h1>
+                <div class="stats-bar">
+                    <div class="stat-box">
+                        <div class="stat-value">{stats['total_classifications']}</div>
+                        <div class="stat-label">Classificazioni Totali</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">{stats['fallback_rate']*100:.1f}%</div>
+                        <div class="stat-label">Fallback Rate</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">{feedback_stats['pending']}</div>
+                        <div class="stat-label">Feedback Pending</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value">{feedback_stats['used']}</div>
+                        <div class="stat-label">Feedback Usati</div>
+                    </div>
+                </div>
             </div>
-            <div class="metric">
-                <div class="metric-value">{stats['fallback_rate']*100:.1f}%</div>
-                <div class="metric-label">Fallback Rate</div>
+            
+            <div class="feedback-info {{'ready' if feedback_stats['pending'] >= 10 else 'pending'}}">
+                <div>
+                    <strong>🔄 Retraining Automatico:</strong>
+                    {'Pronto per retraining!' if feedback_stats['pending'] >= 10 else f'Reservi altri {10 - feedback_stats["pending"]} feedback per il retraining automatico'}
+                    <br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>
+                </div>
+                <div>
+                    <span style="font-size: 12px; opacity: 0.8; margin-right: 15px;">
+                        Min: 10 | Attuali: {feedback_stats['pending']}
+                    </span>
+                    {'<button class="save-btn" onclick="forceRetrain()">🚀 Forza Retraining</button>' if feedback_stats['pending'] >= 10 else ''}
+                </div>
             </div>
-        </div>
-        
-        <div class="card">
-            <h2>🎯 By Intent</h2>
-            <table>
-                <tr>
-                    <th>Intent</th>
-                    <th>Count</th>
-                    <th>Avg Confidence</th>
-                </tr>
+            
+            <div class="filters">
+                <label>🔍 Filtra per intent:</label>
+                <select id="intentFilter" onchange="filterTable()">
+                    <option value="">Tutti</option>
+                    {''.join([f'<option value="{intent}">{intent}</option>' for intent in available_intents])}
+                </select>
+                
+                <label>📊 Confidence:</label>
+                <select id="confFilter" onchange="filterTable()">
+                    <option value="">Tutte</option>
+                    <option value="high">Alta (≥0.85)</option>
+                    <option value="medium">Media (0.70-0.85)</option>
+                    <option value="low">Bassa (<0.70)</option>
+                </select>
+                
+                <label>🔎 Cerca:</label>
+                <input type="text" id="searchFilter" placeholder="Cerca nel testo..." onkeyup="filterTable()">
+            </div>
+            
+            <div class="messages-table">
+                <table id="messagesTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Messaggio</th>
+                            <th>Intent Predetto</th>
+                            <th>Confidence</th>
+                            <th>Correggi a...</th>
+                            <th>Azione</th>
+                        </tr>
+                    </thead>
+                    <tbody>
     """
     
-    for intent, data in sorted(stats['by_intent'].items(), key=lambda x: x[1]['count'], reverse=True):
-        conf = data['avg_confidence']
-        conf_class = 'high' if conf > 0.85 else 'medium' if conf > 0.70 else 'low'
+    for case in cases:
+        conf = case['confidence']
+        conf_class = 'conf-high' if conf >= 0.85 else 'conf-medium' if conf >= 0.70 else 'conf-low'
+        intent_class = f"intent-{case['intent']}"
+        
         html += f"""
-                <tr>
-                    <td><a href="/admin/intent/{intent}?token={auth_token}" style="text-decoration: none; color: #2196F3;"><strong>{intent}</strong></a></td>
-                    <td>{data['count']}</td>
-                    <td class="{conf_class}">{conf:.2f}</td>
-                </tr>
-        """
-    
-    for case in low_conf:
-        html += f"""
-                <tr>
-                    <td>{case['text']}</td>
-                    <td>{case['intent']}</td>
-                    <td class="low">{case['confidence']:.2f}</td>
-                    <td>{case['timestamp'][:19]}</td>
-                </tr>
+                        <tr data-intent="{case['intent']}" data-confidence="{conf}">
+                            <td>#{case['id']}</td>
+                            <td class="message-text">{case['text'][:100]}{'...' if len(case['text']) > 100 else ''}</td>
+                            <td><span class="intent-badge {intent_class}">{case['intent']}</span></td>
+                            <td><span class="confidence {conf_class}">{conf:.2f}</span></td>
+                            <td>
+                                <select class="correction-select" id="select-{case['id']}" onchange="enableSave({case['id']})">
+                                    <option value="">-- Seleziona --</option>
+                                    {''.join([f'<option value="{intent}">{intent}</option>' for intent in available_intents if intent != case['intent']])}
+                                </select>
+                            </td>
+                            <td>
+                                <button class="save-btn" id="btn-{case['id']}" onclick="saveCorrection({case['id']}, '{case['text'].replace("'", "\\'")}', '{case['intent']}')" disabled>
+                                    Salva
+                                </button>
+                            </td>
+                        </tr>
         """
     
     html += f"""
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
         
-        <div class="card">
-            <p><a href="/admin/export?token={auth_token}">📥 Export Low Confidence Cases (JSON)</a></p>
-            <p><a href="/admin/trends?token={auth_token}">📈 Visualizza Trend Storici</a></p>
-        </div>
+        <div class="toast" id="toast"></div>
+        
+        <script>
+            function enableSave(id) {{
+                const select = document.getElementById('select-' + id);
+                const btn = document.getElementById('btn-' + id);
+                btn.disabled = select.value === '';
+                if (select.value !== '') {{
+                    select.classList.add('corrected');
+                }} else {{
+                    select.classList.remove('corrected');
+                }}
+            }}
+            
+            async function saveCorrection(id, text, predictedIntent) {{
+                const select = document.getElementById('select-' + id);
+                const correctIntent = select.value;
+                const btn = document.getElementById('btn-' + id);
+                
+                if (!correctIntent) return;
+                
+                btn.disabled = true;
+                btn.textContent = 'Salvataggio...';
+                
+                try {{
+                    const response = await fetch('/admin/api/correct', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{
+                            text: text,
+                            predicted_intent: predictedIntent,
+                            correct_intent: correctIntent
+                        }})
+                    }});
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {{
+                        showToast('✅ Correzione salvata!', 'success');
+                        btn.outerHTML = '<span class="saved-badge">✓ Salvato</span>';
+                        select.disabled = true;
+                    }} else {{
+                        showToast('❌ Errore: ' + result.message, 'error');
+                        btn.disabled = false;
+                        btn.textContent = 'Salva';
+                    }}
+                }} catch (e) {{
+                    showToast('❌ Errore di rete', 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Salva';
+                }}
+            }}
+            
+            function showToast(message, type) {{
+                const toast = document.getElementById('toast');
+                toast.textContent = message;
+                toast.className = 'toast ' + type;
+                toast.style.display = 'block';
+                setTimeout(() => {{ toast.style.display = 'none'; }}, 3000);
+            }}
+            
+            function filterTable() {{
+                const intentFilter = document.getElementById('intentFilter').value;
+                const confFilter = document.getElementById('confFilter').value;
+                const searchFilter = document.getElementById('searchFilter').value.toLowerCase();
+                
+                const rows = document.querySelectorAll('#messagesTable tbody tr');
+                
+                rows.forEach(row => {{
+                    const intent = row.getAttribute('data-intent');
+                    const confidence = parseFloat(row.getAttribute('data-confidence'));
+                    const text = row.querySelector('.message-text').textContent.toLowerCase();
+                    
+                    let show = true;
+                    
+                    if (intentFilter && intent !== intentFilter) show = false;
+                    
+                    if (confFilter) {{
+                        if (confFilter === 'high' && confidence < 0.85) show = false;
+                        if (confFilter === 'medium' && (confidence < 0.70 || confidence >= 0.85)) show = false;
+                        if (confFilter === 'low' && confidence >= 0.70) show = false;
+                    }}
+                    
+                    if (searchFilter && !text.includes(searchFilter)) show = false;
+                    
+                    row.style.display = show ? '' : 'none';
+                }});
+            }}
+            
+            async function forceRetrain() {{
+                if (!confirm('🚀 Vuoi forzare il retraining ora?\\n\\nQuesto può richiedere alcuni secondi.')) return;
+                
+                showToast('🔄 Avvio retraining...', 'success');
+                
+                try {{
+                    const response = await fetch('/admin/api/retrain', {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}}
+                    }});
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {{
+                        showToast(`✅ Retraining completato! Accuracy: ${{(result.accuracy * 100).toFixed(1)}}%`, 'success');
+                        setTimeout(() => location.reload(), 2000);
+                    }} else {{
+                        showToast('❌ ' + result.message, 'error');
+                    }}
+                }} catch (e) {{
+                    showToast('❌ Errore di rete', 'error');
+                }}
+            }}
+        </script>
     </body>
     </html>
     """
     
     return html
+
+@app.route('/admin/api/correct', methods=['POST'])
+def admin_api_correct():
+    """API per salvare correzione da dashboard"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
+        return {"success": False, "message": "Unauthorized"}, 401
+    
+    try:
+        data = request.get_json()
+        text = data.get('text')
+        predicted_intent = data.get('predicted_intent')
+        correct_intent = data.get('correct_intent')
+        
+        if not all([text, predicted_intent, correct_intent]):
+            return {"success": False, "message": "Dati mancanti"}, 400
+        
+        success = db.save_classification_feedback(
+            original_text=text,
+            predicted_intent=predicted_intent,
+            correct_intent=correct_intent
+        )
+        
+        if success:
+            return {"success": True, "message": "Correzione salvata"}
+        else:
+            return {"success": False, "message": "Errore database"}, 500
+            
+    except Exception as e:
+        logger.error(f"❌ Errore API correct: {e}")
+        return {"success": False, "message": str(e)}, 500
+
+@app.route('/admin/api/retrain', methods=['POST'])
+def admin_api_retrain():
+    """API per forzare retraining manuale dalla dashboard"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
+        return {"success": False, "message": "Unauthorized"}, 401
+    
+    try:
+        from feedback_handler import get_retraining_status, trigger_retraining
+        
+        status = get_retraining_status()
+        if not status['can_retrain']:
+            return {
+                "success": False, 
+                "message": f"Feedback insufficienti. Hai {status['feedback_pending']}, servono 10."
+            }, 400
+        
+        result = trigger_retraining()
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Errore API retrain: {e}")
+        return {"success": False, "message": str(e)}, 500
 
 @app.route('/admin/export', methods=['GET'])
 def admin_export():
