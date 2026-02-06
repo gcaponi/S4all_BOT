@@ -121,17 +121,22 @@ class ModelRetrainer:
         # 3. Carica dati
         all_data, feedback_data = self.load_training_data()
         
-        if len(all_data) < 20:
+        if len(all_data) < 10:
             return {
                 'success': False,
                 'accuracy': 0.0,
-                'message': f"Dati insufficienti: {len(all_data)} esempi"
+                'message': f"Dati insufficienti: {len(all_data)} esempi (min: 10)"
             }
         
-        # 4. Split train/test (80/20)
+        # 4. Split train/test (80/20) - minimo 2 esempi per test
         import random
         random.shuffle(all_data)
-        split_idx = int(len(all_data) * 0.8)
+        
+        if len(all_data) >= 10:
+            split_idx = max(int(len(all_data) * 0.8), len(all_data) - 2)  # Almeno 2 per test
+        else:
+            split_idx = len(all_data) - 1  # Solo 1 per test se pochi dati
+        
         train_data = all_data[:split_idx]
         test_data = all_data[split_idx:]
         
