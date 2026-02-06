@@ -452,10 +452,19 @@ def log_classification(text: str, intent: str, confidence: float):
         session.close()
 
 def get_recent_classifications(limit: int = 100) -> list:
-    """Recupera le classificazioni più recenti per la dashboard"""
+    """Recupera le classificazioni più recenti per la dashboard (escludi già corrette)"""
     session = SessionLocal()
     try:
-        classifications = session.query(Classification).order_by(
+        # Ottieni ID dei feedback già salvati
+        feedback_ids = session.query(ClassificationFeedback.id).all()
+        feedback_id_list = [f[0] for f in feedback_ids]
+        
+        # Query classificazioni escludendo quelle già corrette
+        query = session.query(Classification)
+        if feedback_id_list:
+            query = query.filter(~Classification.id.in_(feedback_id_list))
+        
+        classifications = query.order_by(
             Classification.timestamp.desc()
         ).limit(limit).all()
         

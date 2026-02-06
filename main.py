@@ -2200,7 +2200,7 @@ def admin_stats():
                                 </select>
                             </td>
                             <td>
-                                <button class="save-btn" id="btn-{case['id']}" onclick="saveCorrection({case['id']}, '{case['text'].replace("'", "\\'")}', '{case['intent']}')" disabled>
+                                <button class="save-btn" id="btn-{case['id']}" onclick='saveCorrection({case['id']}, {json.dumps(case["text"], ensure_ascii=False)}, {json.dumps(case["intent"])})' disabled>
                                     Salva
                                 </button>
                             </td>
