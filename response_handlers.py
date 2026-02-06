@@ -171,7 +171,7 @@ class HandlerResponseDispatcher:
     ) -> None:
         """Invia risposta lista prodotti."""
         text = self.builder.lista()
-        await send_func(text=text, parse_mode=parse_mode)
+        await send_func(text, parse_mode)
     
     async def send_ordine(
         self,
@@ -183,20 +183,17 @@ class HandlerResponseDispatcher:
     ) -> None:
         """Invia risposta ordine con tastiera."""
         message_text, keyboard = self.builder.ordine(text_lower, message_id, user_id)
-        await send_func(
-            text=message_text,
-            reply_markup=keyboard,
-            parse_mode=parse_mode
-        )
+        # send_business_reply ha firma: (text_reply, parse_mode='HTML', reply_markup=None)
+        await send_func(message_text, parse_mode, keyboard)
     
     async def send_conferma_ordine(
         self,
         send_func: Callable,
-        parse_mode: Optional[str] = None
+        parse_mode: Optional[str] = 'HTML'
     ) -> None:
         """Invia risposta conferma ordine."""
         text = self.builder.conferma_ordine()
-        await send_func(text=text, parse_mode=parse_mode)
+        await send_func(text, parse_mode)
     
     async def send_faq(
         self,
@@ -207,7 +204,7 @@ class HandlerResponseDispatcher:
     ) -> None:
         """Invia risposta FAQ."""
         text = self.builder.faq(domanda, risposta)
-        await send_func(text=text, parse_mode=parse_mode)
+        await send_func(text, parse_mode)
     
     async def send_ricerca_prodotti(
         self,
@@ -217,7 +214,7 @@ class HandlerResponseDispatcher:
     ) -> None:
         """Invia risposta ricerca prodotti."""
         text = self.builder.ricerca_prodotti(snippet)
-        await send_func(text=text, parse_mode=parse_mode)
+        await send_func(text, parse_mode)
     
     async def send_fallback(
         self,
@@ -228,7 +225,6 @@ class HandlerResponseDispatcher:
         """Invia risposta fallback con suggerimento intelligente."""
         suggestion = self.builder.fallback_suggestion(text_lower)
         text = suggestion if suggestion else self.builder.fallback_default()
-        # Chiama la funzione con la firma corretta (text_reply, parse_mode, reply_markup)
         await send_func(text, parse_mode)
 
 # ============================================================================
