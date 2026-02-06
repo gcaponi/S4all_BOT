@@ -2227,6 +2227,10 @@ def admin_stats():
                 }}
             }}
             
+            // Estrai token dall'URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const authToken = urlParams.get('token');
+            
             async function saveCorrection(id, text, predictedIntent) {{
                 const select = document.getElementById('select-' + id);
                 const correctIntent = select.value;
@@ -2238,7 +2242,7 @@ def admin_stats():
                 btn.textContent = 'Salvataggio...';
                 
                 try {{
-                    const response = await fetch('/admin/api/correct', {{
+                    const response = await fetch('/admin/api/correct?token=' + authToken, {{
                         method: 'POST',
                         headers: {{'Content-Type': 'application/json'}},
                         body: JSON.stringify({{
@@ -2308,7 +2312,7 @@ def admin_stats():
                 showToast('🔄 Avvio retraining...', 'success');
                 
                 try {{
-                    const response = await fetch('/admin/api/retrain', {{
+                    const response = await fetch('/admin/api/retrain?token=' + authToken, {{
                         method: 'POST',
                         headers: {{'Content-Type': 'application/json'}}
                     }});
