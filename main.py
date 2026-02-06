@@ -1905,8 +1905,8 @@ def admin_stats():
     
     from enhanced_logging import classification_logger
     
-    # Recupera tutti i messaggi classificati (ultimi 100)
-    cases = classification_logger.get_recent_classifications(limit=100)
+    # Recupera tutti i messaggi classificati (ultimi 100) dal database
+    cases = db.get_recent_classifications(limit=100)
     stats = classification_logger.get_stats()
     feedback_stats = db.get_feedback_stats()
     
