@@ -1847,7 +1847,9 @@ async def setup_bot():
                                         f"🤖 <b>Retraining Automatico Completato</b>\n\n"
                                         f"🎯 Accuracy: {result['accuracy']:.2%}\n"
                                         f"📚 Train: {result['train_size']} esempi\n"
-                                        f"🧪 Test: {result['test_size']} esempi",
+                                        f"🧪 Test: {result['test_size']} esempi\n\n"
+                                        f"⚠️ <b>IMPORTANTE:</b> Scarica il modello aggiornato dalla dashboard per non perderlo in caso di riavvio!\n"
+                                        f"🔗 https://s4all-bot-nsf6.onrender.com/admin/stats?token=S4all",
                                         parse_mode='HTML'
                                     )
                                 except Exception as e:
@@ -2134,6 +2136,24 @@ def admin_stats():
                 </div>
             </div>
             
+            <!-- Info Modello -->
+            <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <h3 style="margin: 0 0 5px 0;">🤖 Modello ML Attuale</h3>
+                        <p style="margin: 0; opacity: 0.9;">
+                            {'📅 Ultimo aggiornamento: ' + datetime.fromtimestamp(os.path.getmtime('intent_classifier_model.pkl')).strftime('%d/%m/%Y %H:%M') if os.path.exists('intent_classifier_model.pkl') else '⚠️ Modello non trovato'}
+                        </p>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 24px; font-weight: bold;">
+                            {len([f for f in os.listdir('training/backups') if f.startswith('model_backup_')]) if os.path.exists('training/backups') else 0}
+                        </div>
+                        <div style="font-size: 12px; opacity: 0.8;">Backup disponibili</div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="feedback-info {{'ready' if feedback_stats['pending'] >= 10 else 'pending'}}">
                 <div>
                     <strong>🔄 Retraining Automatico:</strong>
@@ -2211,6 +2231,18 @@ def admin_stats():
                     </tbody>
                 </table>
             </div>
+            
+            <div class="card" style="margin-top: 20px; background: #f8f9fa;">
+                <h3>💾 Modello ML</h3>
+                <p>
+                    <a href="/admin/download-model?token={auth_token}" class="save-btn" style="text-decoration: none; display: inline-block;">
+                        📥 Scarica Modello Aggiornato (.pkl)
+                    </a>
+                </p>
+                <small style="color: #666;">
+                    Scarica il file <code>intent_classifier_model.pkl</code> per backup locale o test.
+                </small>
+            </div>
         </div>
         
         <div class="toast" id="toast"></div>
@@ -2258,6 +2290,8 @@ def admin_stats():
                         showToast('✅ Correzione salvata!', 'success');
                         btn.outerHTML = '<span class="saved-badge">✓ Salvato</span>';
                         select.disabled = true;
+                        // Aggiorna contatore feedback
+                        updateFeedbackCounter(1);
                     }} else {{
                         showToast('❌ Errore: ' + result.message, 'error');
                         btn.disabled = false;
@@ -2276,6 +2310,33 @@ def admin_stats():
                 toast.className = 'toast ' + type;
                 toast.style.display = 'block';
                 setTimeout(() => {{ toast.style.display = 'none'; }}, 3000);
+            }}
+            
+            function updateFeedbackCounter(increment) {{
+                // Aggiorna contatore pending
+                const pendingEl = document.querySelector('.stat-box:nth-child(3) .stat-value');
+                if (pendingEl) {{
+                    const current = parseInt(pendingEl.textContent);
+                    pendingEl.textContent = current + increment;
+                }}
+                
+                // Aggiorna testo retraining
+                const retrainInfo = document.querySelector('.feedback-info div:first-child');
+                if (retrainInfo) {{
+                    const current = parseInt(document.querySelector('.stat-box:nth-child(3) .stat-value').textContent);
+                    if (current >= 10) {{
+                        retrainInfo.innerHTML = '<strong>🔄 Retraining Automatico:</strong> Pronto per retraining!<br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>';
+                        document.querySelector('.feedback-info').className = 'feedback-info ready';
+                        // Aggiungi bottone se non c'è
+                        if (!document.querySelector('.feedback-info button')) {{
+                            const btnDiv = document.querySelector('.feedback-info div:last-child');
+                            const span = btnDiv.querySelector('span');
+                            if (span) span.insertAdjacentHTML('beforebegin', '<button class="save-btn" onclick="forceRetrain()">🚀 Forza Retraining</button>');
+                        }}
+                    }} else {{
+                        retrainInfo.innerHTML = `<strong>🔄 Retraining Automatico:</strong> Reservi altri ${10 - current} feedback per il retraining automatico<br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>`;
+                    }}
+                }}
             }}
             
             function filterTable() {{
@@ -2366,6 +2427,26 @@ def admin_api_correct():
     except Exception as e:
         logger.error(f"❌ Errore API correct: {e}")
         return {"success": False, "message": str(e)}, 500
+
+@app.route('/admin/download-model', methods=['GET'])
+def admin_download_model():
+    """Scarica il modello ML aggiornato"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
+        return {"error": "Unauthorized"}, 401
+    
+    model_path = 'intent_classifier_model.pkl'
+    
+    if not os.path.exists(model_path):
+        return {"error": "Modello non trovato"}, 404
+    
+    from flask import send_file
+    return send_file(
+        model_path,
+        mimetype='application/octet-stream',
+        as_attachment=True,
+        download_name=f'intent_classifier_model_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pkl'
+    )
 
 @app.route('/admin/api/retrain', methods=['POST'])
 def admin_api_retrain():
