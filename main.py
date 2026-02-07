@@ -2315,16 +2315,17 @@ def admin_stats():
             function updateFeedbackCounter(increment) {{
                 // Aggiorna contatore pending
                 const pendingEl = document.querySelector('.stat-box:nth-child(3) .stat-value');
+                let newCount = 0;
                 if (pendingEl) {{
                     const current = parseInt(pendingEl.textContent);
-                    pendingEl.textContent = current + increment;
+                    newCount = current + increment;
+                    pendingEl.textContent = newCount;
                 }}
                 
                 // Aggiorna testo retraining
                 const retrainInfo = document.querySelector('.feedback-info div:first-child');
-                if (retrainInfo) {{
-                    const current = parseInt(document.querySelector('.stat-box:nth-child(3) .stat-value').textContent);
-                    if (current >= 10) {{
+                if (retrainInfo && newCount > 0) {{
+                    if (newCount >= 10) {{
                         retrainInfo.innerHTML = '<strong>🔄 Retraining Automatico:</strong> Pronto per retraining!<br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>';
                         document.querySelector('.feedback-info').className = 'feedback-info ready';
                         // Aggiungi bottone se non c'è
@@ -2334,7 +2335,7 @@ def admin_stats():
                             if (span) span.insertAdjacentHTML('beforebegin', '<button class="save-btn" onclick="forceRetrain()">🚀 Forza Retraining</button>');
                         }}
                     }} else {{
-                        retrainInfo.innerHTML = `<strong>🔄 Retraining Automatico:</strong> Reservi altri ${10 - current} feedback per il retraining automatico<br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>`;
+                        retrainInfo.innerHTML = '<strong>🔄 Retraining Automatico:</strong> Reservi altri ' + (10 - newCount) + ' feedback per il retraining automatico<br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>';
                     }}
                 }}
             }}
