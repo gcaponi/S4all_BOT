@@ -861,23 +861,32 @@ async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📭 Nessun cliente registrato con tag")
             return
         
-        msg = "📋 <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
+        # Costruisci le linee individuali
+        lines = ["📋 <b>CLIENTI REGISTRATI CON TAG</b>\n"]
         
         for user_id, tag in tags.items():
             try:
                 user = await context.bot.get_chat(int(user_id))
                 nome = user.first_name or "Sconosciuto"
                 username = f"@{user.username}" if user.username else "nessuno"
-                msg += f"• {nome} ({username}) ID <code>{user_id}</code> → <b>{tag}</b>\n"
+                lines.append(f"• {nome} ({username}) ID <code>{user_id}</code> → <b>{tag}</b>")
             except Exception:
-                msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
+                lines.append(f"• ID <code>{user_id}</code> → <b>{tag}</b>")
         
-        if len(msg) > 4000:
-            # Spezza il messaggio senza HTML per evitare tag non chiusi
-            for i in range(0, len(msg), 4000):
-                await update.message.reply_text(msg[i:i+4000])
-        else:
-            await update.message.reply_text(msg, parse_mode='HTML')
+        # Invia i messaggi spezzati per linee complete (max ~4000 char per messaggio)
+        current_msg = ""
+        for line in lines:
+            if len(current_msg) + len(line) + 1 > 4000:
+                # Invia il messaggio corrente
+                await update.message.reply_text(current_msg, parse_mode='HTML')
+                current_msg = line + "\n"
+            else:
+                current_msg += line + "\n"
+        
+        # Invia l'ultimo messaggio rimanente
+        if current_msg:
+            await update.message.reply_text(current_msg, parse_mode='HTML')
+            
     except Exception as e:
         logger.error(f"❌ Errore in list_tags_command: {e}", exc_info=True)
         await update.message.reply_text("❌ Errore durante il caricamento dei tag. Riprova più tardi.")
