@@ -2349,6 +2349,9 @@ def admin_stats():
                         showToast('✅ Correzione salvata!', 'success');
                         btn.outerHTML = '<span class="saved-badge">✓ Salvato</span>';
                         select.disabled = true;
+                        // Nascondi pulsante Corretta
+                        const correctBtn = document.getElementById('correct-btn-' + id);
+                        if (correctBtn) correctBtn.style.display = 'none';
                         // Aggiorna contatore feedback
                         updateFeedbackCounter(1);
                     }} else {{
