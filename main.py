@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import html as html_lib
 
 # Import database module (PostgreSQL)
 import database as db
@@ -2207,8 +2208,11 @@ def admin_stats():
         conf_class = 'conf-high' if conf >= 0.85 else 'conf-medium' if conf >= 0.70 else 'conf-low'
         intent_class = f"intent-{case['intent']}"
         
+        # Escape text safely for HTML attribute
+        safe_text = html_lib.escape(case['text'], quote=True)
+        
         html += f"""
-                        <tr data-intent="{case['intent']}" data-confidence="{conf}">
+                        <tr id="row-{case['id']}" data-intent="{case['intent']}" data-confidence="{conf}" data-full-text="{safe_text}">
                             <td>#{case['id']}</td>
                             <td class="message-text">{case['text'][:100]}{'...' if len(case['text']) > 100 else ''}</td>
                             <td><span class="intent-badge {intent_class}">{case['intent']}</span></td>
@@ -2220,7 +2224,7 @@ def admin_stats():
                                 </select>
                             </td>
                             <td>
-                                <button class="save-btn" id="btn-{case['id']}" onclick='saveCorrection({case['id']}, {json.dumps(case["text"], ensure_ascii=False)}, {json.dumps(case["intent"])})' disabled>
+                                <button class="save-btn" id="btn-{case['id']}" onclick="saveCorrection({case['id']})" disabled>
                                     Salva
                                 </button>
                             </td>
@@ -2263,7 +2267,11 @@ def admin_stats():
             const urlParams = new URLSearchParams(window.location.search);
             const authToken = urlParams.get('token');
             
-            async function saveCorrection(id, text, predictedIntent) {{
+            async function saveCorrection(id) {{
+                const row = document.getElementById('row-' + id);
+                const text = row.getAttribute('data-full-text');
+                const predictedIntent = row.getAttribute('data-intent');
+                
                 const select = document.getElementById('select-' + id);
                 const correctIntent = select.value;
                 const btn = document.getElementById('btn-' + id);
@@ -2278,6 +2286,7 @@ def admin_stats():
                         method: 'POST',
                         headers: {{'Content-Type': 'application/json'}},
                         body: JSON.stringify({{
+                            id: id,
                             text: text,
                             predicted_intent: predictedIntent,
                             correct_intent: correctIntent
@@ -2407,6 +2416,7 @@ def admin_api_correct():
     
     try:
         data = request.get_json()
+        classification_id = data.get('id')
         text = data.get('text')
         predicted_intent = data.get('predicted_intent')
         correct_intent = data.get('correct_intent')
@@ -2417,7 +2427,8 @@ def admin_api_correct():
         success = db.save_classification_feedback(
             original_text=text,
             predicted_intent=predicted_intent,
-            correct_intent=correct_intent
+            correct_intent=correct_intent,
+            classification_id=classification_id
         )
         
         if success:

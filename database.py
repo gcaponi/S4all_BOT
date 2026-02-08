@@ -79,6 +79,36 @@ def migrate_user_tags_add_profile_columns():
     finally:
         session.close()
 
+def migrate_classification_feedback_add_classification_id():
+    """Migrazione: Aggiunge classification_id a classification_feedback"""
+    session = SessionLocal()
+    try:
+        inspector = inspect(session.bind)
+        columns = inspector.get_columns('classification_feedback')
+        existing_columns = [col['name'] for col in columns]
+        
+        if 'classification_id' in existing_columns:
+            logger.info("✅ Tabella classification_feedback già migrata")
+            return True
+            
+        logger.info("🔄 Inizio migrazione classification_feedback...")
+        
+        # Aggiungi nuova colonna (PostgreSQL syntax)
+        from sqlalchemy import text
+        session.execute(text("ALTER TABLE classification_feedback ADD COLUMN classification_id INTEGER"))
+        session.execute(text("CREATE INDEX idx_feedback_classification_id ON classification_feedback(classification_id)"))
+        session.commit()
+        
+        logger.info("✅ Migrazione classification_feedback completata")
+        return True
+        
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Errore migrazione classification_feedback: {e}")
+        return False
+    finally:
+        session.close()
+
 class ChatSession(Base):
     """Tabella chat_sessions - Tracking sessioni e auto-messages"""
     __tablename__ = 'chat_sessions'
@@ -131,8 +161,9 @@ def init_db():
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database inizializzato")
         
-        # MIGRAZIONE AUTOMATICA
+        # MIGRAZIONI AUTOMATICHE
         migrate_user_tags_add_profile_columns()
+        migrate_classification_feedback_add_classification_id()
             
         return True
     except Exception as e:
@@ -455,8 +486,10 @@ def get_recent_classifications(limit: int = 100) -> list:
     """Recupera le classificazioni più recenti per la dashboard (escludi già corrette)"""
     session = SessionLocal()
     try:
-        # Ottieni ID dei feedback già salvati
-        feedback_ids = session.query(ClassificationFeedback.id).all()
+        # Ottieni ID delle classificazioni già corrette (non nulli)
+        feedback_ids = session.query(ClassificationFeedback.classification_id).filter(
+            ClassificationFeedback.classification_id.isnot(None)
+        ).all()
         feedback_id_list = [f[0] for f in feedback_ids]
         
         # Query classificazioni escludendo quelle già corrette
@@ -548,6 +581,7 @@ def get_low_confidence_cases(threshold: float = 0.7, limit: int = 20) -> list:
         
         return [
             {
+                'id': c.id,
                 'text': c.text,
                 'intent': c.intent,
                 'confidence': float(c.confidence),
@@ -883,6 +917,7 @@ class ClassificationFeedback(Base):
     __tablename__ = 'classification_feedback'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    classification_id = Column(Integer, nullable=True)    # ID della classificazione originale
     original_text = Column(Text, nullable=False)          # Testo classificato
     predicted_intent = Column(String(50), nullable=False) # Intent predetto dal bot
     correct_intent = Column(String(50), nullable=False)   # Intent corretto (da admin)
@@ -894,6 +929,7 @@ class ClassificationFeedback(Base):
     __table_args__ = (
         Index('idx_feedback_used', 'used_for_training', 'timestamp'),
         Index('idx_feedback_correct', 'correct_intent'),
+        Index('idx_feedback_classification_id', 'classification_id'),
     )
     
 # ============================================================================
@@ -980,11 +1016,13 @@ def update_auto_message_time(chat_id):
 # ============================================================================
 
 def save_classification_feedback(original_text: str, predicted_intent: str, 
-                                  correct_intent: str, user_id: int = None) -> bool:
+                                  correct_intent: str, user_id: int = None,
+                                  classification_id: int = None) -> bool:
     """Salva correzione admin per retraining futuro"""
     session = SessionLocal()
     try:
         feedback = ClassificationFeedback(
+            classification_id=classification_id,
             original_text=original_text,
             predicted_intent=predicted_intent,
             correct_intent=correct_intent,
@@ -993,7 +1031,7 @@ def save_classification_feedback(original_text: str, predicted_intent: str,
         )
         session.add(feedback)
         session.commit()
-        logger.info(f"✅ Feedback salvato: '{original_text[:30]}...' {predicted_intent} → {correct_intent}")
+        logger.info(f"✅ Feedback salvato: ID={classification_id} '{original_text[:30]}...' {predicted_intent} → {correct_intent}")
         return True
     except Exception as e:
         session.rollback()
