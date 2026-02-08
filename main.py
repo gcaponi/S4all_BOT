@@ -1147,12 +1147,12 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
     
     #   [HELPER INVIO RISPOSTE]
     
-    async def send_business_reply(text_reply, parse_mode='HTML', reply_markup=None):
+    async def send_business_reply(text, parse_mode='HTML', reply_markup=None):
         try:
             await context.bot.send_message(
                 business_connection_id=business_connection_id,
                 chat_id=chat_id,
-                text=text_reply,
+                text=text,
                 parse_mode=parse_mode,
                 reply_markup=reply_markup
             )
@@ -1338,8 +1338,6 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
             'message_id': message.message_id
         }
         
-        if not hasattr(context, 'bot_data'):
-            context.bot_data = {}
         if 'pending_orders' not in context.bot_data:
             context.bot_data['pending_orders'] = {}
         context.bot_data['pending_orders'][callback_data] = order_data
@@ -1413,6 +1411,10 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     
     dispatcher = get_dispatcher()
     text_lower = text.lower()
+
+    # Helper wrapper per standardizzare firma
+    async def send_private_reply(text, parse_mode='HTML', reply_markup=None):
+        await message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
     
     # 0. FALLBACK MUTO (priorità assoluta - silenzio)
     if intent == "fallback_mute":
@@ -1421,15 +1423,30 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
 
     # 1. LISTA
     if intent == "lista":
-        await dispatcher.send_lista(send_func=message.reply_text)
+        await dispatcher.send_lista(send_func=send_private_reply)
         return
 
     # 2. ORDINE
     if intent == "ordine":
+        # Salva l'ordine temporaneamente
+        user_id = message.from_user.id
+        callback_data = f"pay_ok_{user_id}_{message.message_id}"
+        order_data = {
+            'text': text,
+            'user_id': user_id,
+            'chat_id': message.chat.id,
+            'message_id': message.message_id
+        }
+        if 'pending_orders' not in context.bot_data:
+            context.bot_data['pending_orders'] = {}
+        context.bot_data['pending_orders'][callback_data] = order_data
+        logger.info(f"💾 Ordine temporaneo salvato (privato): {callback_data}")
+        
         await dispatcher.send_ordine(
-            send_func=message.reply_text,
+            send_func=send_private_reply,
             text_lower=text_lower,
             message_id=message.message_id,
+            user_id=user_id,
             parse_mode="HTML"
         )
         return
@@ -1437,7 +1454,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
     # 2.5 CONFERMA ORDINE
     if intent == "conferma_ordine":
         logger.info(f"➡️ Entrato in blocco CONFERMA ORDINE")
-        await dispatcher.send_conferma_ordine(send_func=message.reply_text)
+        await dispatcher.send_conferma_ordine(send_func=send_private_reply)
         return
 
     # 3. FAQ
@@ -1446,7 +1463,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         res = fuzzy_search_faq(text, faq_data.get("faq", []))
         if res.get("match"):
             await dispatcher.send_faq(
-                send_func=message.reply_text,
+                send_func=send_private_reply,
                 domanda=res['item']['domanda'],
                 risposta=res['item']['risposta']
             )
@@ -1457,7 +1474,7 @@ async def handle_private_message(update: Update, context: ContextTypes.DEFAULT_T
         l_res = fuzzy_search_lista(text, load_lista())
         if l_res.get("match"):
             await dispatcher.send_ricerca_prodotti(
-                send_func=message.reply_text,
+                send_func=send_private_reply,
                 snippet=l_res['snippet']
             )
             return
@@ -1483,10 +1500,13 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     dispatcher = get_dispatcher()
 
     # Helper per inviare messaggi in gruppo con reply
-    async def send_group_reply(**kwargs):
+    async def send_group_reply(text, parse_mode='HTML', reply_markup=None, **kwargs):
         await context.bot.send_message(
             chat_id=message.chat.id,
             reply_to_message_id=message.message_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
             **kwargs
         )
 
@@ -1502,8 +1522,22 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # 2. ORDINE (semplificato per gruppi - senza check acqua)
     if intent == "ordine":
+        # Salva l'ordine temporaneamente
+        user_id = message.from_user.id
+        callback_data = f"pay_ok_{user_id}_{message.message_id}"
+        order_data = {
+            'text': text,
+            'user_id': user_id,
+            'chat_id': chat_id,
+            'message_id': message.message_id
+        }
+        if 'pending_orders' not in context.bot_data:
+            context.bot_data['pending_orders'] = {}
+        context.bot_data['pending_orders'][callback_data] = order_data
+        logger.info(f"💾 Ordine temporaneo salvato (gruppo): {callback_data}")
+
         keyboard = [[
-            InlineKeyboardButton("✅ Sì", callback_data=f"pay_ok_{message.message_id}"),
+            InlineKeyboardButton("✅ Sì", callback_data=callback_data),
             InlineKeyboardButton("❌ No", callback_data=f"pay_no_{message.message_id}")
         ]]
         await send_group_reply(
@@ -2071,6 +2105,19 @@ def admin_stats():
                 cursor: not-allowed;
             }}
             
+            .correct-btn {{
+                background: #4caf50;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 600;
+                margin-left: 5px;
+            }}
+            .correct-btn:hover {{ background: #45a049; }}
+            
             .saved-badge {{
                 display: inline-block;
                 background: #4caf50;
@@ -2227,6 +2274,9 @@ def admin_stats():
                                 <button class="save-btn" id="btn-{case['id']}" onclick="saveCorrection({case['id']})" disabled>
                                     Salva
                                 </button>
+                                <button class="correct-btn" id="correct-btn-{case['id']}" onclick="markCorrect({case['id']})" title="Segna come corretto">
+                                    ✓ Corretta
+                                </button>
                             </td>
                         </tr>
         """
@@ -2310,6 +2360,49 @@ def admin_stats():
                     showToast('❌ Errore di rete', 'error');
                     btn.disabled = false;
                     btn.textContent = 'Salva';
+                }}
+            }}
+            
+            async function markCorrect(id) {{
+                const row = document.getElementById('row-' + id);
+                const text = row.getAttribute('data-full-text');
+                const predictedIntent = row.getAttribute('data-intent');
+                const btn = document.getElementById('correct-btn-' + id);
+                
+                btn.disabled = true;
+                btn.textContent = 'Salvataggio...';
+                
+                try {{
+                    const response = await fetch('/admin/api/correct?token=' + authToken, {{
+                        method: 'POST',
+                        headers: {{'Content-Type': 'application/json'}},
+                        body: JSON.stringify({{
+                            id: id,
+                            text: text,
+                            predicted_intent: predictedIntent,
+                            correct_intent: predictedIntent,
+                            is_correct: true
+                        }})
+                    }});
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {{
+                        showToast('✅ Segnato come corretto!', 'success');
+                        btn.outerHTML = '<span class="saved-badge">✓ Corretta</span>';
+                        const select = document.getElementById('select-' + id);
+                        if (select) select.disabled = true;
+                        const saveBtn = document.getElementById('btn-' + id);
+                        if (saveBtn) saveBtn.style.display = 'none';
+                    }} else {{
+                        showToast('❌ Errore: ' + result.message, 'error');
+                        btn.disabled = false;
+                        btn.textContent = '✓ Corretta';
+                    }}
+                }} catch (e) {{
+                    showToast('❌ Errore di rete', 'error');
+                    btn.disabled = false;
+                    btn.textContent = '✓ Corretta';
                 }}
             }}
             
@@ -2420,6 +2513,7 @@ def admin_api_correct():
         text = data.get('text')
         predicted_intent = data.get('predicted_intent')
         correct_intent = data.get('correct_intent')
+        is_correct = data.get('is_correct', False)
         
         if not all([text, predicted_intent, correct_intent]):
             return {"success": False, "message": "Dati mancanti"}, 400
@@ -2432,6 +2526,8 @@ def admin_api_correct():
         )
         
         if success:
+            action = "confermato come corretto" if is_correct else f"corretto in {correct_intent}"
+            logger.info(f"✅ Feedback {action}: ID={classification_id} '{text[:40]}...'")
             return {"success": True, "message": "Correzione salvata"}
         else:
             return {"success": False, "message": "Errore database"}, 500
@@ -2618,7 +2714,7 @@ def admin_intent_detail(intent_name):
         
         html += f"""
                 <tr class="{conf_class}">
-                    <td>{case['text']}</td>
+                    <td>{html_lib.escape(case['text'])}</td>
                     <td><strong>{conf:.2f}</strong></td>
                     <td>{case['timestamp'][:19]}</td>
                 </tr>
