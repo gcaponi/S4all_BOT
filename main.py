@@ -848,32 +848,39 @@ async def ordini_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def list_tags_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mostra tutti i clienti registrati con tag - /listtags"""
-    if not is_admin(update.effective_user.id):
-        return
-    
-    # USA LA FUNZIONE COMPATIBILE CHE NON USA LE NUOVE COLONNE
-    tags = load_user_tags_simple()  # ✅ Questa funzione esiste già!
-    
-    if not tags:
-        await update.message.reply_text("Nessun cliente registrato con tag")
-        return
-    
-    msg = "📋 <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
-    
-    for user_id, tag in tags.items():
-        try:
-            user = await context.bot.get_chat(int(user_id))
-            nome = user.first_name or "Sconosciuto"
-            username = f"@{user.username}" if user.username else "nessuno"
-            msg += f"• {nome} ({username}) ID <code>{user_id}</code> → <b>{tag}</b>\n"
-        except:
-            msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
-    
-    if len(msg) > 4000:
-        for i in range(0, len(msg), 4000):
-            await update.message.reply_text(msg[i:i+4000], parse_mode='HTML')
-    else:
-        await update.message.reply_text(msg, parse_mode='HTML')
+    try:
+        user_id = update.effective_user.id
+        if not is_admin(user_id):
+            await update.message.reply_text("⛔️ Comando riservato agli admin")
+            return
+        
+        # USA LA FUNZIONE COMPATIBILE CHE NON USA LE NUOVE COLONNE
+        tags = load_user_tags_simple()
+        
+        if not tags:
+            await update.message.reply_text("📭 Nessun cliente registrato con tag")
+            return
+        
+        msg = "📋 <b>CLIENTI REGISTRATI CON TAG</b>\n\n"
+        
+        for user_id, tag in tags.items():
+            try:
+                user = await context.bot.get_chat(int(user_id))
+                nome = user.first_name or "Sconosciuto"
+                username = f"@{user.username}" if user.username else "nessuno"
+                msg += f"• {nome} ({username}) ID <code>{user_id}</code> → <b>{tag}</b>\n"
+            except Exception:
+                msg += f"• ID <code>{user_id}</code> → <b>{tag}</b>\n"
+        
+        if len(msg) > 4000:
+            # Spezza il messaggio senza HTML per evitare tag non chiusi
+            for i in range(0, len(msg), 4000):
+                await update.message.reply_text(msg[i:i+4000])
+        else:
+            await update.message.reply_text(msg, parse_mode='HTML')
+    except Exception as e:
+        logger.error(f"❌ Errore in list_tags_command: {e}", exc_info=True)
+        await update.message.reply_text("❌ Errore durante il caricamento dei tag. Riprova più tardi.")
 
 async def remove_tag_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Rimuovi tag cliente - /removetag USER_ID"""
