@@ -9,7 +9,6 @@ import re
 import requests
 import pickle
 import asyncio
-import html
 from intent_classifier import EnhancedIntentClassifier
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
@@ -2209,9 +2208,9 @@ def admin_stats():
         intent_class = f"intent-{case['intent']}"
         
         html += f"""
-                        <tr id="row-{case['id']}" data-intent="{case['intent']}" data-confidence="{conf}" data-full-text="{html.escape(case['text'], quote=True)}">
+                        <tr data-intent="{case['intent']}" data-confidence="{conf}">
                             <td>#{case['id']}</td>
-                            <td class="message-text">{html.escape(case['text'][:100])}{'...' if len(case['text']) > 100 else ''}</td>
+                            <td class="message-text">{case['text'][:100]}{'...' if len(case['text']) > 100 else ''}</td>
                             <td><span class="intent-badge {intent_class}">{case['intent']}</span></td>
                             <td><span class="confidence {conf_class}">{conf:.2f}</span></td>
                             <td>
@@ -2221,7 +2220,7 @@ def admin_stats():
                                 </select>
                             </td>
                             <td>
-                                <button class="save-btn" id="btn-{case['id']}" onclick="saveCorrection({case['id']})" disabled>
+                                <button class="save-btn" id="btn-{case['id']}" onclick='saveCorrection({case['id']}, {json.dumps(case["text"], ensure_ascii=False)}, {json.dumps(case["intent"])})' disabled>
                                     Salva
                                 </button>
                             </td>
@@ -2264,11 +2263,7 @@ def admin_stats():
             const urlParams = new URLSearchParams(window.location.search);
             const authToken = urlParams.get('token');
             
-            async function saveCorrection(id) {{
-                const row = document.getElementById('row-' + id);
-                const text = row.getAttribute('data-full-text');
-                const predictedIntent = row.getAttribute('data-intent');
-                
+            async function saveCorrection(id, text, predictedIntent) {{
                 const select = document.getElementById('select-' + id);
                 const correctIntent = select.value;
                 const btn = document.getElementById('btn-' + id);
@@ -2308,7 +2303,6 @@ def admin_stats():
                     btn.textContent = 'Salva';
                 }}
             }}
-
             
             function showToast(message, type) {{
                 const toast = document.getElementById('toast');
