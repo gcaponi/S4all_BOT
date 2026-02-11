@@ -1127,7 +1127,7 @@ class EnhancedIntentClassifier:
                 return
             
             sb = create_client(url, key)
-            bucket = 'bot-models'
+            bucket = 'S4all_BOT'
             
             # Crea bucket se non esiste
             try:
@@ -1163,7 +1163,7 @@ class EnhancedIntentClassifier:
             sb = create_client(url, key)
             
             # Download
-            data = sb.storage.from_('bot-models').download('intent_classifier_model.pkl')
+            data = sb.storage.from_('S4all_BOT').download('intent_classifier_model.pkl')
             
             # Salva localmente
             with open('intent_classifier_model.pkl', 'wb') as f:
