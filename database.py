@@ -4,8 +4,9 @@ Gestisce: user_tags, authorized_users, ordini_confermati, access_code
 """
 import os
 import logging
+import json
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, inspect, Index
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Float, inspect, func, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, scoped_session
 
@@ -64,6 +65,7 @@ def migrate_user_tags_add_profile_columns():
     """Migrazione: Aggiunge user_name e username a user_tags esistente"""
     session = SessionLocal()
     try:
+        from sqlalchemy import inspect, func
         # Controlla se migrazione è necessaria
         inspector = inspect(session.bind)
         columns = inspector.get_columns('user_tags')
@@ -764,7 +766,8 @@ def cleanup_old_classifications(days: int = 30) -> int:
     """
     from datetime import timedelta
     from calendar import monthrange
-    
+    from sqlalchemy import func
+
     session = SessionLocal()
     try:
         cutoff_date = datetime.utcnow() - timedelta(days=days)
