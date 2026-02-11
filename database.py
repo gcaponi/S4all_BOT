@@ -25,7 +25,18 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-# Crea engine
+# Crea engine (psycopg2 non funziona)
+# engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=False)
+
+# Crea engine (pg8000):
+import os
+DATABASE_URL = os.getenv('DATABASE_URL', '')
+# Sostituisci il protocollo per usare pg8000
+if DATABASE_URL.startswith('postgresql://'):
+    DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+pg8000://', 1)
+elif DATABASE_URL.startswith('postgres://'):
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql+pg8000://', 1)
+
 engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=False)
 
 # Crea session factory
