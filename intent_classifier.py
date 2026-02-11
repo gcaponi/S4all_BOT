@@ -1150,30 +1150,44 @@ class EnhancedIntentClassifier:
             print(f"⚠️ Errore salvataggio Supabase: {e}")
     
     def load_from_supabase(self):
-        """Carica modello da Supabase Storage"""
-        try:
-            from supabase import create_client
-            import os
-            
-            url = os.getenv('SUPABASE_URL')
-            key = os.getenv('SUPABASE_SERVICE_KEY')
-            if not url or not key:
-                return False
-            
-            sb = create_client(url, key)
-            
-            # Download
-            data = sb.storage.from_('S4all_BOT').download('intent_classifier_model.pkl')
-            
-            # Salva localmente
-            with open('intent_classifier_model.pkl', 'wb') as f:
-                f.write(data)
-            
-            print(f"✅ Modello scaricato da Supabase ({len(data)} bytes)")
-            return True
-            
-        except Exception as e:
-            print(f"ℹ️ Nessun modello su Supabase ({e})")
+    """Carica modello da Supabase Storage"""
+    try:
+        from supabase import create_client
+        import os
+        
+        url = os.getenv('SUPABASE_URL')
+        key = os.getenv('SUPABASE_SERVICE_KEY')
+        
+        # DEBUG
+        print(f"DEBUG: URL presente: {bool(url)}")
+        print(f"DEBUG: KEY presente: {bool(key)}")
+        print(f"DEBUG: KEY inizia con: {key[:20] if key else 'None'}...")
+        
+        if not url or not key:
+            print("DEBUG: Mancano URL o KEY")
             return False
+        
+        sb = create_client(url, key)
+        
+        # DEBUG - lista buckets
+        try:
+            buckets = sb.storage.list_buckets()
+            print(f"DEBUG: Buckets disponibili: {[b.name for b in buckets]}")
+        except Exception as e:
+            print(f"DEBUG: Errore list_buckets: {e}")
+        
+        # Download
+        data = sb.storage.from_('S4all_BOT').download('intent_classifier_model.pkl')
+        
+        # Salva localmente
+        with open('intent_classifier_model.pkl', 'wb') as f:
+            f.write(data)
+        
+        print(f"✅ Modello scaricato da Supabase ({len(data)} bytes)")
+        return True
+        
+    except Exception as e:
+        print(f"DEBUG: Errore completo: {type(e).__name__}: {e}")
+        return False
 
 # End intent_classifier.py
