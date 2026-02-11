@@ -59,7 +59,7 @@ intent_classifier = None
 
 # File dati
 AUTHORIZED_USERS_FILE = 'authorized_users.json'
-ACCESS_CODE_FILE = 'access_code.json'
+# Nota: access_code è gestito nel database (tabella app_config)
 FAQ_FILE = 'faq.json'
 LISTA_FILE = "lista.txt"
 ORDINI_FILE = "ordini_confermati.json"
@@ -596,19 +596,23 @@ def init_classifier():
         # Crea classificatore con keywords dinamiche
         classifier_instance = EnhancedIntentClassifier(dynamic_product_keywords=PAROLE_CHIAVE_LISTA)
         
-        # Carica il modello addestrato se esiste
-        try:
-            if os.path.exists('intent_classifier_model.pkl'):
-                classifier_instance.load_model('intent_classifier_model.pkl')
-                logger.info("✅ Classificatore caricato da file")
-            else:
-                logger.info("⚠️  Nessun modello pre-addestrato, uso classificatore di base")
-        except Exception as e:
-            logger.error(f"❌ Errore nel caricamento modello: {e}")
-            classifier_instance = EnhancedIntentClassifier(dynamic_product_keywords=PAROLE_CHIAVE_LISTA)
+        # === NUOVO: Prova a caricare da Supabase prima ===
+        if classifier_instance.load_from_supabase():
+            # Carica il modello scaricato
+            classifier_instance.load_model('intent_classifier_model.pkl')
+            logger.info("✅ Classificatore caricato da Supabase Storage")
+
+        elif os.path.exists('intent_classifier_model.pkl'):
+            classifier_instance.load_model('intent_classifier_model.pkl')
+            logger.info("✅ Classificatore caricato da file locale")
+        else:
+            logger.info("⚠️ Nessun modello pre-addestrato, uso classificatore di base")
+        # else: Exception as e:
+        # logger.error(f"❌ Errore nel caricamento modello: {e}")
+        # classifier_instance = EnhancedIntentClassifier(dynamic_product_keywords=PAROLE_CHIAVE_LISTA)
     return classifier_instance
 
-def calcola_intenzione(text):
+def calcola_intenzione(text):   
     """
     Versione migliorata che usa EnhancedIntentClassifier
     Mantiene compatibilità con gli intent esistenti nel codice
@@ -1040,6 +1044,22 @@ async def listadmins_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # FLASK ROUTES
 # ============================================================================
 
+@app.route('/admin/save-model', methods=['POST'])
+def admin_save_model():
+    """Salva il modello corrente su Supabase Storage"""
+    auth_token = request.args.get('token')
+    if auth_token != os.environ.get('ADMIN_TOKEN', 'S4all'):
+        return {"error": "Unauthorized"}, 401
+    
+    try:
+        global classifier_instance
+        if classifier_instance:
+            classifier_instance.save_to_supabase()
+            return {"success": True, "message": "Modello salvato su Supabase"}
+        return {"error": "Modello non inizializzato"}, 400
+    except Exception as e:
+        return {"error": str(e)}, 500
+        
 @app.route('/', methods=['GET'])
 def home():
     """Homepage con status del bot"""

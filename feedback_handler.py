@@ -100,7 +100,6 @@ class ModelRetrainer:
     def retrain(self) -> Dict:
         """
         Esegue retraining completo.
-        
         Returns:
             Dict con risultati: {'success': bool, 'accuracy': float, 'message': str}
         """
@@ -179,7 +178,12 @@ class ModelRetrainer:
             
             # 8. Salva nuovo modello
             classifier.save_model(self.model_path)
-            
+            # Salva anche su Supabase
+            try:
+                classifier.save_to_supabase()
+            except Exception as e:
+                logger.warning(f"⚠️ Errore salvataggio Supabase: {e}")
+                
             # 9. Marca feedback come usati
             feedback_ids = [f['id'] for f in feedback_data]
             db.mark_feedback_as_used(feedback_ids)

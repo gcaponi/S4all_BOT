@@ -20,14 +20,14 @@ class EnhancedIntentClassifier:
         
         # Soglie specifiche per intent (hybrid confidence system)
         self.INTENT_CONFIDENCE_THRESHOLDS = {
-            'order': 0.85,           # Ordini: alta confidenza richiesta
-            'order_confirmation': 0.80,  # Conferme ordine: alta confidenza
-            'search': 0.75,          # Ricerca prodotti: media-alta
-            'faq': 0.70,             # FAQ: media confidenza
-            'list': 0.70,            # Lista: media confidenza
-            'contact': 0.75,         # Contatti: media-alta
-            'saluto': 0.60,          # Saluti: bassa (spesso ignorati)
-            'fallback': 0.0          # Fallback: sempre accettato
+            'order': 0.85,                  # Ordini: alta confidenza richiesta
+            'order_confirmation': 0.80,     # Conferme ordine: alta confidenza
+            'search': 0.75,                 # Ricerca prodotti: media-alta
+            'faq': 0.70,                    # FAQ: media confidenza
+            'list': 0.70,                   # Lista: media confidenza
+            'contact': 0.75,                # Contatti: media-alta
+            'saluto': 0.60,                 # Saluti: bassa (spesso ignorati)
+            'fallback': 0.0                 # Fallback: sempre accettato
         }
         self.USE_HYBRID = True
         
@@ -1110,5 +1110,70 @@ class EnhancedIntentClassifier:
             print("\n📈 MATRICE DI CONFUSIONE:")
             for true_intent, pred_counts in self.confusion_matrix.items():
                 print(f"  {true_intent}: {dict(pred_counts)}")
+
+# ============================================================================
+# SUPABASE STORAGE - Solo questi 2 metodi
+# ============================================================================
+    
+    def save_to_supabase(self):
+        """Salva modello su Supabase Storage"""
+        try:
+            from supabase import create_client
+            import os
+            
+            url = os.getenv('SUPABASE_URL')
+            key = os.getenv('SUPABASE_SERVICE_KEY')
+            if not url or not key:
+                return
+            
+            sb = create_client(url, key)
+            bucket = 'bot-models'
+            
+            # Crea bucket se non esiste
+            try:
+                buckets = sb.storage.list_buckets()
+                if bucket not in [b.name for b in buckets]:
+                    sb.storage.create_bucket(bucket, {'public': False})
+            except:
+                pass
+            
+            # Upload
+            with open('intent_classifier_model.pkl', 'rb') as f:
+                sb.storage.from_(bucket).upload(
+                    'intent_classifier_model.pkl',
+                    f.read(),
+                    {'upsert': 'true'}
+                )
+            print("✅ Modello salvato su Supabase Storage")
+            
+        except Exception as e:
+            print(f"⚠️ Errore salvataggio Supabase: {e}")
+    
+    def load_from_supabase(self):
+        """Carica modello da Supabase Storage"""
+        try:
+            from supabase import create_client
+            import os
+            
+            url = os.getenv('SUPABASE_URL')
+            key = os.getenv('SUPABASE_SERVICE_KEY')
+            if not url or not key:
+                return False
+            
+            sb = create_client(url, key)
+            
+            # Download
+            data = sb.storage.from_('bot-models').download('intent_classifier_model.pkl')
+            
+            # Salva localmente
+            with open('intent_classifier_model.pkl', 'wb') as f:
+                f.write(data)
+            
+            print(f"✅ Modello scaricato da Supabase ({len(data)} bytes)")
+            return True
+            
+        except Exception as e:
+            print(f"ℹ️ Nessun modello su Supabase ({e})")
+            return False
 
 # End intent_classifier.py
