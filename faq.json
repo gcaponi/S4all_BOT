@@ -2,15 +2,19 @@
   "faq": [
     {
       "domanda": "COME ORDINARE",
-      "risposta": "Scrivere: Quantità/Nome Prodotto/Marca/Metodo di pagamento\nAttendere il preventivo che è da pagare entro 1 giorno da quando viene richiesto per ordini in bonifico,\n    3 giorni per ordini in crypto, non mi ritengo responsabile se pagate in ritardo senza avvisarmi nel caso fossero cambiati i dati di pagamento o non più disponibili i prodotti. I clienti che chiedono dati di pagamento e spariscono senza avvisare verranno bloccati da futuri acquisti, ordinate solo se avete soldi pronti, rispettate il mio ed il vostro tempo."
+      "risposta": "Scrivere: Quantità/Nome Prodotto/Marca/Metodo di pagamento. Attendere il preventivo che è da pagare entro 1 giorno da quando viene richiesto per ordini in bonifico, 3 giorni per ordini in crypto, non mi ritengo responsabile se pagate in ritardo senza avvisarmi nel caso fossero cambiati i dati di pagamento o non più disponibili i prodotti. I clienti che chiedono dati di pagamento e spariscono senza avvisare verranno bloccati da futuri acquisti, ordinate solo se avete soldi pronti, rispettate il mio ed il vostro tempo."
     },
     {
       "domanda": "COSTO SPEDIZIONE",
-      "risposta": "12€ con consegna entro 24/48 ore dal giorno di avvenuta spedizione. (Corriere espresso) L'ordine viene spedito \nENTRO 8-10 giorni \nLAVORATIVI  dalla ricezione del Pagamento.\nIl numero di Tracking viene fornito il giorno di spedizione o successivo alla partenza\nIn caso di danneggiamento pacco, smarrimento da parte del corriere, ed altre problematiche relative al corriere, non rimborso l'acquisto, è possibile pagare una garanzia extra di 2 euro prima della spedizione che copre qualsiasi problema di consegna, chi non si preoccupa di tracciare la propria spedizione in caso di giacenza non ritirata rischia di perdere l'ordine."
+      "risposta": "12€ con consegna entro 24/48 ore dal giorno di avvenuta spedizione. (Corriere espresso) L'ordine viene spedito ENTRO 8-10 giorni LAVORATIVI  dalla ricezione del Pagamento. Il numero di Tracking viene fornito il giorno di spedizione o successivo alla partenza. In caso di danneggiamento pacco, smarrimento da parte del corriere, ed altre problematiche relative al corriere, non rimborso l'acquisto, è possibile pagare una garanzia extra di 2 euro prima della spedizione che copre qualsiasi problema di consegna, chi non si preoccupa di tracciare la propria spedizione in caso di giacenza non ritirata rischia di perdere l'ordine."
     },
     {
       "domanda": "METODI DI PAGAMENTO",
-      "risposta": "Bitcoin,USDT/USDC/XMR/ETH e\nBonifico Bancario\n\n\n(supplemento del 11% sul totale ordine SOLO per ordini pagati in bonifico superiori a 200 euro e 20 euro fissi per qualsiasi importo inferiore a 200 euro) metodo più costoso e più rischioso per il cliente,consiglio sempre ccrypto per la vostra sicurezza e per evitare il supplemento del bonifico."
+      "risposta": "Bitcoin,USDT/USDC/XMR/ETH e Bonifico Bancario (supplemento del 11% sul totale ordine SOLO per ordini pagati in bonifico superiori a 200 euro e 20 euro fissi per qualsiasi importo inferiore a 200 euro) metodo più costoso e più rischioso per il cliente,consiglio sempre ccrypto per la vostra sicurezza e per evitare il supplemento del bonifico."
+    },
+    {
+      "domanda": "Cosa significa il simbolo 🔴 rosso vicino alcuni prodotti?",
+      "risposta": "Il simbolo 🔴 indica i prodotti terminati."
     },
     {
       "domanda": "Quali prodotti consigli?Quanta massa metto? Quanto grasso perdo?",
@@ -18,7 +22,7 @@
     },
     {
       "domanda": "Dopo quanto ricevo il mio pacco? Quando spedisci?",
-      "risposta": "La spedizione avviene ENTRO {non dopo\n    } 8-10 giorni lavorativi (SABATO,DOMENICA E FESTIVI ESCLUSI) dalla conferma di ricezione del pagamento, perfavore non scrivere ogni giorno se ho spedito, sarà mia premura contattarvi con il numero di Tracking ed il corriere utilizzato, da tale data la consegna avviene in circa 1-3 giorni lavorativi,\n    4-5 per le isole.\n{GLI ORDINI PAGATI IN BONIFICO RICHIEDONO QUALCHE GIORNO IN PIU' PER LA CONFERMA PAGAMENTO E SPEDIZIONE,ANCHE L'ISTANTANEO\n    }"
+      "risposta": "La spedizione avviene ENTRO {non dopo} 8-10 giorni lavorativi (SABATO,DOMENICA E FESTIVI ESCLUSI) dalla conferma di ricezione del pagamento, perfavore non scrivere ogni giorno se ho spedito, sarà mia premura contattarvi con il numero di Tracking ed il corriere utilizzato, da tale data la consegna avviene in circa 1-3 giorni lavorativi, 4-5 per le isole.\n{GLI ORDINI PAGATI IN BONIFICO RICHIEDONO QUALCHE GIORNO IN PIU' PER LA CONFERMA PAGAMENTO E SPEDIZIONE,ANCHE L'ISTANTANEO}"
     },
     {
       "domanda": "Puoi farmi uno sconto?",
@@ -43,6 +47,18 @@
     {
       "domanda": "Solo per questa volta ti chiedo di spedire subito è urgente la pct ,oppure mi dite di dover andare in vacanza o altro.",
       "risposta": "Le tempistiche sono uguali per tutti, faccio il prima possibile nei limiti a prescindere per ognuno di voi, rispondervi altro sarebbe una presa in giro,evitare di chiedere e organizzate bene i vostri tempi."
+    },
+    {
+      "domanda": "RIMBORSI",
+      "risposta": "Dopo aver PAGATO un ordine non è possibile effettuare cambi prodotti / aggiunte. Si accettano rimborsi solo se si dimostra di aver inviato ad analizzare un prodotto CHIUSO e non manomesso non corrispondente al contenuto dichiarato. Nel rimborso sono compresi i costi del prodotto ed i costi delle analisi. Si accettano solo test HPLC. Lamentele del tipo : 'ciao il prodotto non funziona' o analisi del sangue non sono accettate. I Rimborsi si effettuano solo in Crypto. Chi non accetta queste condizioni è libero di non ordinare."
+    },
+    {
+      "domanda": "L'ORARIO DI RISPOSTA",
+      "risposta": "07:00 ALLE 17:00 {ESCLUSI SABATO DOMENICA E FESTIVI} DOPO LE ORE 17:00 NON LAVORO, lasciate ugualmente un messaggio a qualsiasi ora così da ricevere risposta non appena mi collego."
+    },
+    {
+      "domanda": "CONTATTI",
+      "risposta": "Se vuoi puoi lasciarmi la tua Email per essere avvertito in caso di cambio contatto Telegram {tra qualche mese mi sposto su una nuova piattaforma per la sicurezza di tutti} e per essere avvertito all' arrivo dei prodotti terminati o prodotti nuovi e promozioni. Ti ricordo che i contatti ufficiali sono solo i seguenti, qualsiasi altro contatto non comunicato via mail in futuro è una truffa.\nEmail: SOURCE4ALL@PROTONMAIL.COM\nSIMPLEX MESSENGER: https://smp18.simplex.im/a#jqC3YjZHtYMF8IzjlqiJ1Qvo1lfnsLLoMJ4-_KGVCT0\nGRUPPO Telegram: @source4all_channel\nTelegram: SOURCE4ALL\nTelegram BOT: source4allBot"
     }
   ]
 }
