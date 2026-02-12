@@ -1120,8 +1120,12 @@ def webhook():
         
         update = Update.de_json(json_data, bot_application.bot)
         
+        # Gestione event loop robusta per ambiente multi-thread
         try:
             loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
@@ -1241,10 +1245,26 @@ async def handle_business_message(update: Update, context: ContextTypes.DEFAULT_
                 set_user_tag(chat_id, tag, client_name, client_username)
                 
                 logger.info(f"👤 Cliente registrato: {client_name} (@{client_username}) con tag {tag}")
+                
+                # Conferma registrazione all'admin
+                await context.bot.send_message(
+                    business_connection_id=business_connection_id,
+                    chat_id=chat_id,
+                    text=f"✅ Utente registrato con tag: <b>{tag}</b>",
+                    parse_mode='HTML'
+                )
             except Exception as e:
                 logger.error(f"❌ Errore estrazione dati cliente: {e}")
                 # Fallback: registra solo con tag
                 set_user_tag(chat_id, tag)
+                
+                # Conferma registrazione fallback
+                await context.bot.send_message(
+                    business_connection_id=business_connection_id,
+                    chat_id=chat_id,
+                    text=f"✅ Utente registrato con tag: <b>{tag}</b>",
+                    parse_mode='HTML'
+                )
         
         # Ignora tutti gli altri messaggi dell'admin (inclusi automatici!)
         logger.info(f"⏭️ Messaggio admin ignorato")

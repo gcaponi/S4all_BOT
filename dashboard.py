@@ -295,11 +295,36 @@ def _register_routes(app):
             return {"success": False, "message": "Unauthorized"}, 401
 
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            result = loop.run_until_complete(update_faq_from_web())
-            loop.close()
-
+            # Esegui in un thread separato con il proprio loop isolato
+            import threading
+            import queue
+            
+            result_queue = queue.Queue()
+            
+            def run_async_in_thread():
+                """Esegue la coroutine in un thread con il proprio loop"""
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    result = loop.run_until_complete(update_faq_from_web())
+                    result_queue.put(('success', result))
+                except Exception as e:
+                    result_queue.put(('error', str(e)))
+                finally:
+                    loop.close()
+            
+            thread = threading.Thread(target=run_async_in_thread)
+            thread.start()
+            thread.join(timeout=30)  # Timeout 30 secondi
+            
+            if thread.is_alive():
+                return {"success": False, "message": "Timeout durante aggiornamento FAQ"}, 504
+            
+            status, result = result_queue.get()
+            
+            if status == 'error':
+                return {"success": False, "message": result}, 500
+            
             if result:
                 faq_data = load_faq()
                 count = len(faq_data.get("faq", []))
