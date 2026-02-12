@@ -1735,16 +1735,17 @@ async def setup_bot():
             db.init_chat_sessions_table()
             logger.info("✅ Tabella chat_sessions pronta")
             
+            # Debug: check colonne user_tags
             logger.info("🔍 DEBUG: Checking user_tags columns...")
-        try:
-            from sqlalchemy import inspect
-            session = db.SessionLocal()
-            inspector = inspect(session.bind)
-            columns = inspector.get_columns('user_tags')
-            logger.info(f"🗂️ user_tags columns: {[col['name'] for col in columns]}")
-            session.close()
-        except Exception as e:
-            logger.error(f"❌ Column check failed: {e}")
+            try:
+                from sqlalchemy import inspect
+                session = db.SessionLocal()
+                inspector = inspect(session.bind)
+                columns = inspector.get_columns('user_tags')
+                logger.info(f"🗂️ user_tags columns: {[col['name'] for col in columns]}")
+                session.close()
+            except Exception as e:
+                logger.error(f"❌ Column check failed: {e}")
 
             # Inizializza tabella admins
             init_admins_table()
