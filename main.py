@@ -154,15 +154,33 @@ def fetch_markdown_from_html(url: str) -> str:
     return content.get_text("\n").strip()
 
 def parse_faq(markdown: str) -> list:
-    """Parsa FAQ - versione semplificata robusta"""
+    """Parsa FAQ - versione con rilevamento dinamico delle sezioni"""
     faq_list = []
     
     # Rimuovi line breaks problematici nelle emoji
     markdown = markdown.replace('\n ', ' ')
     
-    # STEP 1: Trova sezioni principali con emoji doppie
-    sections = re.findall(r'([🤔📨💵⬛])\s*([A-ZÀÈÉÌÒÙ\s]+?)\s*\1(.*?)(?=\n[🤔📨💵⬛]|$)', 
-                          markdown, re.DOTALL)
+    # Trova tutte le emoji che appaiono DOPPIE (escludendo quelle delle sottosezioni)
+    emoji_doppie = set()
+    pattern_emoji = r'([\U0001F600-\U0001F64F\U0001F300-\U0001F5FF\U0001F680-\U0001F6FF\U0001F1E0-\U0001F1FF\U00002702-\U000027B0\U000024C2-\U0001F251\U0001F900-\U0001F9FF\U0001FA00-\U0001FA6F\U0001FA70-\U0001FAFF])\s*[^\n]+?\s*\1'
+    
+    for match in re.finditer(pattern_emoji, markdown):
+        emoji = match.group(1)
+        if emoji not in ['📍', '🔘']:
+            emoji_doppie.add(emoji)
+    
+    if not emoji_doppie:
+        # Fallback se non trova niente
+        emoji_doppie = {'🤔', '📨', '💵', '⬛'}
+    
+    logger.info(f"🔍 Emoji sezioni trovate: {sorted(emoji_doppie)}")
+    
+    # Crea pattern dinamico con le emoji trovate
+    emoji_pattern = ''.join(re.escape(e) for e in sorted(emoji_doppie))
+    pattern_sezioni = r'([' + emoji_pattern + r'])\s*([^\n]+?)\s*\1\s*\n+(.*?)\s*(?=\n[' + emoji_pattern + r']|$)'
+    
+    # Trova sezioni principali
+    sections = re.findall(pattern_sezioni, markdown, re.DOTALL)
     
     for emoji, title, content in sections:
         title = title.strip()
