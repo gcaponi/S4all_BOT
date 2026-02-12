@@ -1131,29 +1131,48 @@ def _render_dashboard_html(auth_token, cases, stats, feedback_stats, available_i
             }}
             
             function updateFeedbackCounter(increment) {{
-                // Aggiorna contatore pending
-                const pendingEl = document.querySelector('.stat-box:nth-child(3) .stat-value');
+                // Trova il contatore pending (il terzo stat-box con label 'Feedback Pending')
+                const statBoxes = document.querySelectorAll('.stat-box');
+                let pendingEl = null;
+                statBoxes.forEach(box => {{
+                    const label = box.querySelector('.stat-label');
+                    if (label && label.textContent.includes('Feedback Pending')) {{
+                        pendingEl = box.querySelector('.stat-value');
+                    }}
+                }});
+                
                 let newCount = 0;
                 if (pendingEl) {{
-                    const current = parseInt(pendingEl.textContent);
+                    const current = parseInt(pendingEl.textContent) || 0;
                     newCount = current + increment;
                     pendingEl.textContent = newCount;
                 }}
                 
-                // Aggiorna testo retraining
-                const retrainInfo = document.querySelector('.feedback-info div:first-child');
-                if (retrainInfo && newCount > 0) {{
+                // Aggiorna anche il testo "Min: 10 | Attuali: X" nel div di destra
+                const statsBar = document.querySelector('.feedback-info > div:last-child > span');
+                if (statsBar) {{
+                    statsBar.textContent = 'Min: 10 | Attuali: ' + newCount;
+                }}
+                
+                // Aggiorna testo e stile retraining
+                const retrainInfo = document.querySelector('.feedback-info > div:first-child');
+                const feedbackInfo = document.querySelector('.feedback-info');
+                if (retrainInfo) {{
                     if (newCount >= 10) {{
                         retrainInfo.innerHTML = '<strong>🔄 Retraining Automatico:</strong> Pronto per retraining!<br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>';
-                        document.querySelector('.feedback-info').className = 'feedback-info ready';
+                        feedbackInfo.classList.remove('pending');
+                        feedbackInfo.classList.add('ready');
                         // Aggiungi bottone se non c'è
                         if (!document.querySelector('.feedback-info button')) {{
-                            const btnDiv = document.querySelector('.feedback-info div:last-child');
-                            const span = btnDiv.querySelector('span');
-                            if (span) span.insertAdjacentHTML('beforebegin', '<button class="save-btn" onclick="forceRetrain()">🚀 Forza Retraining</button>');
+                            const btnDiv = document.querySelector('.feedback-info > div:last-child');
+                            if (btnDiv) {{
+                                btnDiv.insertAdjacentHTML('afterbegin', '<button class="save-btn" onclick="forceRetrain()" style="margin-right: 10px;">🚀 Forza Retraining</button>');
+                            }}
                         }}
                     }} else {{
                         retrainInfo.innerHTML = '<strong>🔄 Retraining Automatico:</strong> Servono altri ' + (10 - newCount) + ' feedback per il retraining automatico<br><small style="opacity: 0.7;">Controllato ogni 1 ora automaticamente</small>';
+                        feedbackInfo.classList.remove('ready');
+                        feedbackInfo.classList.add('pending');
                     }}
                 }}
             }}
