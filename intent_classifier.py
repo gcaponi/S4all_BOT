@@ -25,7 +25,6 @@ class EnhancedIntentClassifier:
             'search': 0.75,                 # Ricerca prodotti: media-alta
             'faq': 0.70,                    # FAQ: media confidenza
             'list': 0.70,                   # Lista: media confidenza
-            'contact': 0.75,                # Contatti: media-alta
             'saluto': 0.60,                 # Saluti: bassa (spesso ignorati)
             'fallback': 0.0                 # Fallback: sempre accettato
         }
@@ -110,7 +109,13 @@ class EnhancedIntentClassifier:
                 r'\b(quanto|quando)\s+(ci\s+mette|ci\s+vuole|tempo|giorni)\b',
                 r'(ordine\s+)?minimo',
                 r'\b(quanto|come)\s+(tempo|giorni|settimane)\b',
-                r'\b(posso|si\s+può)\s+(ordinare|pagare)\b'
+                r'\b(posso|si\s+può)\s+(ordinare|pagare)\b',
+                # PATTERN CONTACT (migrati da intent contact)
+                r'\b(contatto|numero|telefono|email|whatsapp|telegram|instagram)\b.*\??',
+                r'^(contatto|numero|telefono|email|whatsapp)\??$',
+                r'\b(scrivi|chiama|messaggio|dm|parlare|umano)\b',
+                r'numero\s+(di\s+)?(telefono|cellulare)',
+                r'hai\s+(whatsapp|telegram|numero)'
             ],
             
             "list": [
@@ -124,14 +129,6 @@ class EnhancedIntentClassifier:
                 # FIX #3c: Pattern aggiuntivi per stock
                 r'\bstock\??$',  # "stock?"
                 r'\b(cosa|che)\s+avete\b',  # "cosa avete?" generico
-            ],
-            
-            "contact": [
-                r'\b(contatto|numero|telefono|email|whatsapp|telegram|instagram)\b.*\??',
-                r'^(contatto|numero|telefono|email|whatsapp)\??$',
-                r'\b(scrivi|chiama|messaggio|dm|parlare|umano)\b',
-                r'numero\s+(di\s+)?(telefono|cellulare)',
-                r'hai\s+(whatsapp|telegram|numero)'
             ],
             
             "order_confirmation": [
@@ -186,8 +183,10 @@ class EnhancedIntentClassifier:
         self.question_words = ['quando', 'dove', 'come', 'perché', 'posso', 'quanto', 'cosa', 'quale']
         self.faq_keywords = ['spedizione', 'consegna', 'pagamento', 'bonifico', 'crypto', 
                             'contrassegno', 'tempo', 'giorni', 'settimane', 'sicuro', 
-                            'discreto', 'garanzia', 'minimo', 'sconto', 'offerta']
-        self.contact_keywords = ['contatto', 'parlare', 'umano', 'assistenza', 'supporto', 'admin', 'numero', 'telefono', 'whatsapp']
+                            'discreto', 'garanzia', 'minimo', 'sconto', 'offerta',
+                            # Keyword contact migrate in FAQ
+                            'contatto', 'parlare', 'umano', 'assistenza', 'supporto', 'admin', 
+                            'numero', 'telefono', 'whatsapp', 'telegram', 'email', 'instagram']
         self.list_keywords = ['lista', 'catalogo', 'listino', 'stock', 'disponibile', 'disponibili']
     
     def _init_ml_model(self):
@@ -222,12 +221,12 @@ class EnhancedIntentClassifier:
             self.ml_pipeline.fit(messages, intents)
             self.is_trained = True
             
-            print(f"✅ Modello addestrato con {len(messages)} esempi")
-            print(f"   Classi: {set(intents)}")
+            print(f"[OK] Modello addestrato con {len(messages)} esempi")
+            print(f"       Classi: {set(intents)}")
             return True
             
         except Exception as e:
-            print(f"❌ Errore durante il training: {e}")
+            print(f"[ERROR] Errore durante il training: {e}")
             return False
     
     def classify(self, message, debug=False):
@@ -465,12 +464,12 @@ class EnhancedIntentClassifier:
             if fallback_result:
                 fallback_intent, fallback_conf = fallback_result
                 if debug:
-                    print(f"✅ Fallback rules: {fallback_intent} ({fallback_conf:.2f})")
+                    print(f"[OK] Fallback rules: {fallback_intent} ({fallback_conf:.2f})")
                 return fallback_intent, fallback_conf
             
             # Nessuna fallback rule matchata → ritorna fallback
             if debug:
-                print(f"❌ Nessuna fallback rule matchata → fallback")
+                print(f"[WARN] Nessuna fallback rule matchata -> fallback")
             return "fallback", 0.0
         
         return intent, confidence
@@ -553,20 +552,16 @@ class EnhancedIntentClassifier:
         # ORDINE PRIORITÀ (DAL PIÙ SPECIFICO AL GENERICO)
         # ============================================
         
-        # 0. CONTACT KEYWORDS (priorità assoluta)
-        if any(kw in message for kw in self.contact_keywords):
-            # Se chiede numero/telefono/whatsapp → contact
-            if any(w in message for w in ['numero', 'telefono', 'whatsapp', 'telegram', 'email']):
-                if 'tracking' not in message:  # Eccezione: "numero tracking" = FAQ
-                    return "contact", 0.98
-        
-        # 1. FAQ KEYWORDS (priorità massima per domande procedurali)
+        # 1. FAQ KEYWORDS (priorità massima per domande procedurali - INCLUDE anche contact)
         # Include forme singolari E plurali
         faq_strong_keywords = [
             'spedizione', 'spedizioni', 'consegna', 'consegne', 
             'pagamento', 'pagamenti', 'bonifico', 'bonifici',
             'crypto', 'tempo', 'giorni', 'giorno', 
-            'minimo', 'sconto', 'sconti'
+            'minimo', 'sconto', 'sconti',
+            # Keyword contact migrate in FAQ
+            'contatto', 'contatti', 'telefono', 'numero', 'whatsapp', 
+            'telegram', 'email', 'assistenza', 'supporto'
         ]
         if any(faq_word in message for faq_word in faq_strong_keywords):
             # PRIORITÀ ASSOLUTA: domande su costo servizi = FAQ (non search prodotti!)
@@ -869,7 +864,7 @@ class EnhancedIntentClassifier:
             return results
             
         except Exception as e:
-            print(f"❌ Errore nella valutazione: {e}")
+            print(f"[ERROR] Errore nella valutazione: {e}")
             return None
     
     def _detailed_evaluate(self, test_data):
@@ -967,7 +962,7 @@ class EnhancedIntentClassifier:
             print(row)
         
         if results['errors']:
-            print(f"\n❌ ERRORI DETTAGLIATI ({len(results['errors'])}):")
+            print(f"\n[ERRORS] ERRORI DETTAGLIATI ({len(results['errors'])}):")
             print("-"*40)
             for i, error in enumerate(results['errors'][:10], 1):
                 print(f"{i}. Messaggio: '{error['message']}'")
@@ -1000,15 +995,14 @@ class EnhancedIntentClassifier:
                     'wish_verbs': self.wish_verbs,
                     'question_words': self.question_words,
                     'faq_keywords': self.faq_keywords,
-                    'contact_keywords': self.contact_keywords,
                     'list_keywords': self.list_keywords,
                     'stats': stats_dict,
                     'confusion_matrix': confusion_dict
                 }, f)
-            print(f"✅ Modello salvato in {path}")
+            print(f"[OK] Modello salvato in {path}")
             return True
         except Exception as e:
-            print(f"❌ Errore nel salvataggio: {e}")
+            print(f"[ERROR] Errore nel salvataggio: {e}")
             return False
     
     def load_model(self, path='intent_classifier_model.pkl'):
@@ -1026,7 +1020,6 @@ class EnhancedIntentClassifier:
             self.wish_verbs = data.get('wish_verbs', self.wish_verbs)
             self.question_words = data.get('question_words', self.question_words)
             self.faq_keywords = data.get('faq_keywords', self.faq_keywords)
-            self.contact_keywords = data.get('contact_keywords', self.contact_keywords)
             self.list_keywords = data.get('list_keywords', self.list_keywords)
             
             # Converti dict in defaultdict per evitare KeyError
@@ -1038,10 +1031,10 @@ class EnhancedIntentClassifier:
             for key, value in confusion_data.items():
                 self.confusion_matrix[key] = defaultdict(int, value)
             
-            print(f"✅ Modello caricato da {path}")
+            print(f"[OK] Modello caricato da {path}")
             return True
         except Exception as e:
-            print(f"❌ Errore nel caricamento: {e}")
+            print(f"[ERROR] Errore nel caricamento: {e}")
             return False
     
     def save_config(self, path='classifier_config.json'):
@@ -1066,10 +1059,10 @@ class EnhancedIntentClassifier:
         try:
             with open(path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
-            print(f"✅ Configurazione salvata in {path}")
+            print(f"[OK] Configurazione salvata in {path}")
             return True
         except Exception as e:
-            print(f"❌ Errore nel salvataggio config: {e}")
+            print(f"[ERROR] Errore nel salvataggio config: {e}")
             return False
     
     def load_config(self, path='classifier_config.json'):
@@ -1090,10 +1083,10 @@ class EnhancedIntentClassifier:
             self.question_words = keywords.get('question_words', self.question_words)
             self.faq_keywords = keywords.get('faq_keywords', self.faq_keywords)
             
-            print(f"✅ Configurazione caricata da {path}")
+            print(f"[OK] Configurazione caricata da {path}")
             return True
         except Exception as e:
-            print(f"❌ Errore nel caricamento config: {e}")
+            print(f"[ERROR] Errore nel caricamento config: {e}")
             return False
     
     def print_stats(self):
@@ -1183,7 +1176,7 @@ class EnhancedIntentClassifier:
             with open('intent_classifier_model.pkl', 'wb') as f:
                 f.write(data)
             
-            print(f"✅ Modello scaricato da Supabase ({len(data)} bytes)")
+            print(f"[OK] Modello scaricato da Supabase ({len(data)} bytes)")
             return True
             
         except Exception as e:

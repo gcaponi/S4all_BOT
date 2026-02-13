@@ -657,10 +657,9 @@ def calcola_intenzione(text):
         intent_map = {
             "list": "lista",           # list -> lista
             "order": "ordine",         # order -> ordine
-            "faq": "faq",              # faq -> faq
+            "faq": "faq",              # faq -> faq (include anche contatti)
             "search": "ricerca_prodotti",  # search -> ricerca_prodotti
             "saluto": "saluto",        # saluto -> saluto
-            "contact": "contact",      # contact -> contact (se necessario)
             "order_confirmation": "conferma_ordine",
             "fallback_mute": "fallback_mute",
             "fallback": "fallback"     # fallback -> fallback

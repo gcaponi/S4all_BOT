@@ -94,7 +94,7 @@ def _register_routes(app):
         feedback_stats = db.get_feedback_stats()
         
         # Lista intent disponibili
-        available_intents = ['order', 'search', 'faq', 'list', 'contact', 'saluto', 'order_confirmation', 'fallback', 'fallback_mute']
+        available_intents = ['order', 'search', 'faq', 'list', 'saluto', 'order_confirmation', 'fallback', 'fallback_mute']
         
         html = _render_dashboard_html(auth_token, cases, stats, feedback_stats, available_intents)
         return html

@@ -222,7 +222,6 @@ def export_intent_for_correction(self, intent_name: str, limit: int = 1000) -> d
                     "search",
                     "faq",
                     "list",
-                    "contact",
                     "saluto",
                     "fallback",
                     "fallback_mute"

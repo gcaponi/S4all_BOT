@@ -164,23 +164,40 @@ class ModelRetrainer:
                 old_accuracy = self.evaluate_model(old_classifier, test_data)
                 
                 # Verifica miglioramento
-                if old_accuracy and accuracy < old_accuracy + MIN_ACCURACY_IMPROVEMENT:
+                model_improved = old_accuracy and accuracy >= old_accuracy + MIN_ACCURACY_IMPROVEMENT
+                
+                if not model_improved and old_accuracy:
                     logger.warning(
                         f"⚠️ Nuovo modello non migliora abbastanza: "
-                        f"{accuracy:.2%} vs {old_accuracy:.2%}"
+                        f"{accuracy:.2%} vs {old_accuracy:.2%} - "
+                        f"Salvo su Supabase solo per aggiornare i pattern"
                     )
+                    # Salva su Supabase anche senza miglioramento per aggiornare i pattern
+                    try:
+                        classifier.save_to_supabase()
+                        logger.info(f"✅ Pattern aggiornati su Supabase (accuracy: {accuracy:.2%})")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Errore salvataggio Supabase: {e}")
+                    
+                    # Marca feedback come usati anche senza miglioramento ML
+                    feedback_ids = [f['id'] for f in feedback_data]
+                    db.mark_feedback_as_used(feedback_ids)
+                    logger.info(f"✅ Feedback marcati come usati ({len(feedback_ids)} esempi)")
+                    
                     return {
-                        'success': False,
+                        'success': True,  # Consideriamo successo perche' i pattern sono aggiornati
                         'accuracy': accuracy,
                         'old_accuracy': old_accuracy,
-                        'message': f"Accuracy non migliorata: {accuracy:.2%} vs {old_accuracy:.2%}"
+                        'pattern_only': True,
+                        'message': f"Pattern aggiornati su Supabase. Accuracy: {accuracy:.2%} (vs {old_accuracy:.2%})"
                     }
             
-            # 8. Salva nuovo modello
+            # 8. Salva nuovo modello (solo se migliorato o non esisteva modello precedente)
             classifier.save_model(self.model_path)
             # Salva anche su Supabase
             try:
                 classifier.save_to_supabase()
+                logger.info(f"✅ Modello salvato su Supabase (accuracy: {accuracy:.2%})")
             except Exception as e:
                 logger.warning(f"⚠️ Errore salvataggio Supabase: {e}")
                 
