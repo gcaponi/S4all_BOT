@@ -60,8 +60,7 @@ class EnhancedIntentClassifier:
                 r'^(pago ora|ok manda|fatto|vado|faccio|si)$',
                 r'\b(fattura|ricevuta|scontrino)\b\??',
                 r'\b(mandami|invia|spediscimi|consegnami)\s+\d+\s+\w+',
-                # NUOVI pattern ordini impliciti
-                r'\b(voglio|vorrei|mi\s+serve)\s+\w+',
+                # Pattern ordini espliciti (con verbo azione + prodotto)
                 r'\b(prendo|prenoto|ordino)\s+\w+',
                 r'^\w+\s+(grazie|per\s+favore)$',
                 # FIX: Pattern per ordini vaghi con quantità
@@ -311,7 +310,7 @@ class EnhancedIntentClassifier:
             r'^(ok|va bene|perfetto|bene|ottimo)\s*(grazie)?$',
             r'^(grazie)\s*(mille)?$',
             r'\bgrazie\b.*\btutto\b',
-            r'^(ciao|salve|buongiorno|buonasera)\s*(grazie)?$'
+            r'^(ciao|salve|buongiorno|buonasera)\s+grazie$'
         ]
         
         for pattern in goodbye_patterns:
@@ -343,6 +342,27 @@ class EnhancedIntentClassifier:
                 if debug:
                     print(f"⏭️ Domanda su costo servizio FAQ detected -> FAQ")
                 return "faq", 1.0  # Confidence 1.0 per sovrascrivere ML
+
+        # ========================================
+        # EARLY CHECK: ORDER CONFIRMATION (pagamento effettuato)
+        # ========================================
+        payment_done_patterns = [
+            r'\b(ho|abbiamo)\s+(pagat|effettuat|inviat|mandat)',
+            r'\b(bonifico|pagamento|pagamnto|pago)\s+(fatto|effettuat|inviat|completat)',
+            r'^pagat[oa]$',
+            r'^(fatto|mandato|inviato|trasferito|completato)$',
+            r'\b(inviat|mandat|trasferi)[oa]?\s+(btc|bitcoin|crypto|usdt|ethereum|xmr|monero|soldi|bonifico)',
+            r'\b(bonifico|pagamento)\s+(inviat|completat)',
+            r'\b(conferma|completat|eseguit)\s+(pagamento|bonifico|trasferimento)',
+            r'\b(bnfco|pagamnto)\s+fatto',
+            r'\bpagat[oa]\s+(ora|adesso|con|tramite)',
+            r'\b(appena|già)\s+pagat',
+        ]
+        for pattern in payment_done_patterns:
+            if re.search(pattern, message_lower, re.I):
+                if debug:
+                    print(f"⏭️ Order confirmation detected")
+                return "order_confirmation", 1.0
 
         # RACCOLTA TUTTI I RISULTATI
         all_results = []
@@ -613,10 +633,11 @@ class EnhancedIntentClassifier:
             if re.search(pattern, message, re.I):
                 return "fallback", 0.95
         
-        # 3. WISH VERBS + PRODOTTO = ORDER (CORRETTO!)
+        # 3. WISH VERBS + PRODOTTO = SEARCH (utente vuole info/varianti)
+        # "voglio testo" = search (ci sono diversi tipi di testo)
         if any(verb in message for verb in self.wish_verbs):
             if has_product or has_category:
-                return "order", 0.90  # "voglio anavar" = ordine
+                return "search", 0.85  # "voglio anavar" = cerca info/varianti
             else:
                 # FIX: Riferimenti vaghi comuni negli ordini
                 vague_refs = ['quello', 'quella', 'quelli', 'quelle', 'cose', 'roba', 
@@ -647,11 +668,13 @@ class EnhancedIntentClassifier:
         if len(words) == 1:
             word_scores = {
                 'lista': ("list", 0.90), 'catalogo': ("list", 0.90), 'prezzi': ("list", 0.90),
-                'stock': ("list", 0.90), 'disponibilità': ("list", 0.90), 'listino': ("list", 0.90),  # ← FIX #3
+                'stock': ("list", 0.90), 'disponibilità': ("list", 0.90), 'listino': ("list", 0.90),
                 'orali': ("search", 0.85), 'sarms': ("search", 0.85), 'pct': ("search", 0.85),
-                'ok': ("order", 0.80), 'si': ("order", 0.80), 'fatto': ("order", 0.80),
+                'ok': ("order", 0.80), 'si': ("order", 0.80),
                 'help': ("faq", 0.80), 'supporto': ("faq", 0.80),
-                'ciao': ("saluto", 0.95), 'hey': ("saluto", 0.95),
+                'ciao': ("saluto", 0.95), 'hey': ("saluto", 0.95), 'salve': ("saluto", 0.95),
+                'buongiorno': ("saluto", 0.95), 'buonasera': ("saluto", 0.95), 'ehi': ("saluto", 0.95),
+                'hello': ("saluto", 0.95), 'hola': ("saluto", 0.95),
             }
             if words[0] in word_scores:
                 return word_scores[words[0]]
